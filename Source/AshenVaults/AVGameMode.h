@@ -19,6 +19,8 @@ struct FAVEnemy
     float Cooldown = 0.f;
     float Flash = 0.f;
     float Wander = 0.f;
+    float Telegraph = 0.f; // Melee attack wind-up, rendered by the HUD.
+    bool bElite = false;
     int32 Id = 0;
 };
 
@@ -27,7 +29,7 @@ struct FAVPickup
 {
     GENERATED_BODY()
     FVector2D Pos = FVector2D::ZeroVector;
-    int32 Type = 0; // 0 gold, 1 health, 2 stamina, 3 potion
+    int32 Type = 0; // 0 gold, 1 health, 2 stamina, 3 potion, 4 damage shard
     int32 Amount = 1;
     float Time = 0.f;
 };
@@ -54,6 +56,15 @@ struct FAVEffect
     float Angle = 0.f;
 };
 
+USTRUCT()
+struct FAVTrap
+{
+    GENERATED_BODY()
+    FVector2D Pos = FVector2D::ZeroVector;
+    float Windup = 0.f;
+    float Cooldown = 0.f;
+};
+
 UCLASS()
 class ASHENVAULTS_API AAVGameMode : public AGameModeBase
 {
@@ -64,6 +75,7 @@ public:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaSeconds) override;
 
+    static constexpr int32 FinalFloor = 3;
     static constexpr int32 MapW = 52;
     static constexpr int32 MapH = 38;
     static constexpr float TilePixels = 24.f;
@@ -75,6 +87,8 @@ public:
     UPROPERTY(BlueprintReadOnly) int32 XP = 0;
     UPROPERTY(BlueprintReadOnly) int32 Gold = 0;
     UPROPERTY(BlueprintReadOnly) int32 Kills = 0;
+    UPROPERTY(BlueprintReadOnly) int32 RunSeed = 0;
+    UPROPERTY(BlueprintReadOnly) int32 Combo = 0;
     UPROPERTY(BlueprintReadOnly) int32 Potions = 2;
     UPROPERTY(BlueprintReadOnly) float HP = 100.f;
     UPROPERTY(BlueprintReadOnly) float MaxHP = 100.f;
@@ -87,10 +101,16 @@ public:
     FVector2D Hero = FVector2D(4.f, 4.f);
     FVector2D Aim = FVector2D(1.f, 0.f);
     FVector2D Exit = FVector2D(8.f, 8.f);
+    FVector2D Shrine = FVector2D(8.f, 8.f);
+    bool bShrineUsed = false;
+    float ComboTime = 0.f;
+    FString Toast;
+    float ToastTime = 0.f;
     TArray<uint8> Tiles;
     TArray<FAVEnemy> Enemies;
     TArray<FAVPickup> Pickups;
     TArray<FAVBolt> Bolts;
+    TArray<FAVTrap> Traps;
     TArray<FAVEffect> Effects;
     float AttackCooldown = 0.f;
     float SpinCooldown = 0.f;
@@ -107,7 +127,7 @@ public:
     int32 EnemiesRemaining() const { return Enemies.Num(); }
     int32 NextXP() const { return 8 + Level * 7; }
     bool IsExitReady() const { return Enemies.Num() == 0; }
-    void NewRun();
+    void NewRun(bool bSameSeed = false);
 
 private:
     FRandomStream RNG;
@@ -118,6 +138,7 @@ private:
     bool PrevUse = false;
     bool PrevPause = false;
     bool PrevEnter = false;
+    bool PrevReplay = false;
     bool PrevChoices[3] = { false, false, false };
     FVector2D DashDirection = FVector2D(1.f, 0.f);
 

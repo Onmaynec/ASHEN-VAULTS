@@ -81,22 +81,26 @@ FVector2D AAVGameMode::MoveWithCollision(const FVector2D& From, const FVector2D&
     return Next;
 }
 
-void AAVGameMode::NewRun()
+void AAVGameMode::NewRun(bool bSameSeed)
 {
     Floor = 1; Level = 1; XP = 0; Gold = 0; Kills = 0; Potions = 2;
     HP = 100.f; MaxHP = 100.f; Stamina = 100.f; MaxStamina = 100.f;
     AttackPower = 18.f; MoveSpeed = 4.8f; RunTime = 0.f;
     AttackCooldown = 0.f; SpinCooldown = 0.f; DashTime = 0.f;
     Invulnerability = 0.f; ScreenShake = 0.f;
+    Combo = 0; ComboTime = 0.f; Toast.Empty(); ToastTime = 0.f;
     Phase = EAVPhase::Playing;
-    RNG.Initialize(static_cast<int32>(FDateTime::UtcNow().GetTicks() & 0x7fffffff));
+    if (!bSameSeed || RunSeed == 0)
+        RunSeed = static_cast<int32>(FDateTime::UtcNow().GetTicks() & 0x7fffffff);
+    RNG.Initialize(RunSeed);
     GenerateFloor();
 }
 
 void AAVGameMode::GenerateFloor()
 {
     Tiles.Init(0, MapW * MapH);
-    Enemies.Reset(); Pickups.Reset(); Bolts.Reset(); Effects.Reset();
+    Enemies.Reset(); Pickups.Reset(); Bolts.Reset(); Effects.Reset(); Traps.Reset();
+    bShrineUsed = false;
     struct FRoom { int32 X, Y, W, H; FVector2D Center() const { return FVector2D(X + W / 2.f, Y + H / 2.f); } };
     TArray<FRoom> Rooms;
     const int32 TargetCount = 9 + Floor * 2;
@@ -145,10 +149,33 @@ void AAVGameMode::GenerateFloor()
             for (int32 X = 4; X <= 17; ++X) Tiles[Y * MapW + X] = 1;
         Hero = FVector2D(9.5f, 8.5f);
         Exit = FVector2D(13.5f, 8.5f);
+        Shrine = FVector2D(6.5f, 8.5f);
         return;
     }
     Hero = Rooms[0].Center();
     Exit = Rooms.Last().Center();
+    Shrine = Rooms[Rooms.Num() / 2].Center();
+    // Rooms remain connected by the carved corridors. Keep traps away from
+    // spawn, stairs and the shrine, so none of the interactions become blocked.
+    for (int32 I = 1; I < Rooms.Num(); ++I)
+    {
+        if (I % 2 != 0) continue;
+        const FRoom& R = Rooms[I];
+        for (int32 Attempt = 0; Attempt < 4; ++Attempt)
+        {
+            const FVector2D Candidate(
+                RNG.RandRange(R.X + 1, R.X + R.W - 2) + 0.5f,
+                RNG.RandRange(R.Y + 1, R.Y + R.H - 2) + 0.5f);
+            if (FVector2D::Distance(Candidate, Hero) < 4.f ||
+                FVector2D::Distance(Candidate, Exit) < 2.2f ||
+                FVector2D::Distance(Candidate, Shrine) < 2.2f)
+                continue;
+            FAVTrap Trap;
+            Trap.Pos = Candidate;
+            Traps.Add(Trap);
+            break;
+        }
+    }
 
     int32 NextId = 1;
     for (int32 I = 1; I < Rooms.Num(); ++I)
@@ -162,6 +189,8 @@ void AAVGameMode::GenerateFloor()
                                   RNG.FRandRange(R.Y + 1.f, R.Y + R.H - 1.f));
             Enemy.Type = RNG.RandRange(0, 2);
             Enemy.MaxHP = (Enemy.Type == 1 ? 46.f : (Enemy.Type == 2 ? 22.f : 29.f)) * (1.f + 0.28f * (Floor - 1));
+            Enemy.bElite = RNG.FRand() < (0.12f + 0.03f * Floor);
+            if (Enemy.bElite) Enemy.MaxHP *= 1.65f;
             Enemy.HP = Enemy.MaxHP;
             Enemy.Cooldown = RNG.FRandRange(0.3f, 1.6f);
             Enemy.Id = NextId++;
@@ -226,6 +255,7 @@ void AAVGameMode::DamageHero(float Damage, const FVector2D& Source)
     HP = FMath::Max(0.f, HP - Damage);
     Invulnerability = 0.72f;
     ScreenShake = 0.26f;
+    Hero = MoveWithCollision(Hero, SafeDirection(Hero - Source) * 2.8f, 0.10f, 0.27f);
     AddEffect(Hero, 2, 0.8f);
     if (HP <= 0.f)
     {
@@ -261,9 +291,25 @@ void AAVGameMode::KillEnemy(int32 Index)
     const bool bBoss = Dead.Type == 3;
     Enemies.RemoveAtSwap(Index);
     ++Kills;
-    GrantExperience(bBoss ? 35 : 3 + Floor);
+    Combo = ComboTime > 0.f ? Combo + 1 : 1;
+    ComboTime = 4.5f;
+    if (Combo % 5 == 0)
+    {
+        Gold += 5;
+        Toast = TEXT("COMBO BONUS  +5 GOLD");
+        ToastTime = 1.5f;
+    }
+    GrantExperience(bBoss ? 35 : (3 + Floor) * (Dead.bElite ? 2 : 1));
     AddEffect(Dead.Pos, 3, bBoss ? 2.2f : 0.9f);
     DropLoot(Dead.Pos, bBoss);
+    if (Dead.bElite)
+    {
+        FAVPickup Shard;
+        Shard.Pos = Dead.Pos;
+        Shard.Type = 4;
+        Shard.Amount = 2;
+        Pickups.Add(Shard);
+    }
 }
 
 void AAVGameMode::GrantExperience(int32 Amount)
@@ -303,10 +349,12 @@ void AAVGameMode::PollInput(float DeltaSeconds)
 
     const bool bPause = Pressed(PC, EKeys::Escape, PrevPause) || PC->WasInputKeyJustPressed(EKeys::P);
     const bool bRestart = Pressed(PC, EKeys::Enter, PrevEnter);
+    const bool bReplay = Pressed(PC, EKeys::R, PrevReplay);
     const bool bChoice0 = Pressed(PC, EKeys::One, PrevChoices[0]);
     const bool bChoice1 = Pressed(PC, EKeys::Two, PrevChoices[1]);
     const bool bChoice2 = Pressed(PC, EKeys::Three, PrevChoices[2]);
-    const bool bHit = Pressed(PC, EKeys::LeftMouseButton, PrevAttack);
+    const bool bHit = Pressed(PC, EKeys::LeftMouseButton, PrevAttack) ||
+        (PC->IsInputKeyDown(EKeys::LeftMouseButton) && AttackCooldown <= 0.f);
     const bool bSpin = Pressed(PC, EKeys::Q, PrevSpin) || PC->WasInputKeyJustPressed(EKeys::RightMouseButton);
     const bool bDash = Pressed(PC, EKeys::SpaceBar, PrevDash);
     const bool bHeal = Pressed(PC, EKeys::E, PrevHeal);
@@ -315,6 +363,7 @@ void AAVGameMode::PollInput(float DeltaSeconds)
     if (Phase == EAVPhase::Dead || Phase == EAVPhase::Victory)
     {
         if (bRestart) NewRun();
+        else if (bReplay) NewRun(true);
         return;
     }
     if (bPause)
@@ -333,7 +382,6 @@ void AAVGameMode::PollInput(float DeltaSeconds)
 
     int32 ViewportX = 960, ViewportY = 540;
     PC->GetViewportSize(ViewportX, ViewportY);
-    const float Scale = FMath::Max(0.01f, FMath::Min(ViewportX / ViewW, ViewportY / ViewH));
     float MouseX = ViewportX * 0.5f, MouseY = ViewportY * 0.5f;
     if (PC->GetMousePosition(MouseX, MouseY))
         Aim = SafeDirection(FVector2D(MouseX - ViewportX * 0.5f, MouseY - ViewportY * 0.5f));
@@ -365,7 +413,16 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         --Potions; HP = FMath::Min(MaxHP, HP + 42.f);
         AddEffect(Hero, 2, 1.f);
     }
-    if (bUse && IsExitReady() && FVector2D::Distance(Hero, Exit) < 1.7f)
+    if (bUse && !bShrineUsed && FVector2D::Distance(Hero, Shrine) < 1.55f)
+    {
+        bShrineUsed = true;
+        HP = FMath::Min(MaxHP, HP + 35.f);
+        AttackPower += 2.f;
+        Toast = TEXT("SHRINE BLESSING  +35 HP  +2 DAMAGE");
+        ToastTime = 2.6f;
+        AddEffect(Shrine, 1, 1.6f);
+    }
+    else if (bUse && IsExitReady() && FVector2D::Distance(Hero, Exit) < 1.7f)
     {
         if (Floor >= 3) { Phase = EAVPhase::Victory; RecordRun(); }
         else
@@ -380,6 +437,8 @@ void AAVGameMode::PollInput(float DeltaSeconds)
 
 void AAVGameMode::UpdateCombat(float DeltaSeconds)
 {
+    // Wind-up attacks are deliberately avoidable: a dash or a step out of range
+    // during the warning prevents the damage.
     for (int32 I = Enemies.Num() - 1; I >= 0; --I)
     {
         FAVEnemy& E = Enemies[I];
@@ -388,46 +447,72 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         const FVector2D ToHero = Hero - E.Pos;
         const float Distance = ToHero.Size();
         const FVector2D Direction = SafeDirection(ToHero);
-        const float Speed = E.Type == 0 ? 2.45f : E.Type == 1 ? 1.65f : E.Type == 2 ? 2.05f : 1.8f;
+        const float Speed = (E.Type == 0 ? 2.45f : E.Type == 1 ? 1.65f :
+                             E.Type == 2 ? 2.05f : 1.8f) * (E.bElite ? 1.18f : 1.f);
         FVector2D DesiredVelocity = FVector2D::ZeroVector;
-        if (Distance < 13.f)
+        if (Distance < 13.f && E.Telegraph <= 0.f)
         {
             if (E.Type == 2 && Distance < 4.f)
                 DesiredVelocity = -Direction * Speed;
             else if (Distance > (E.Type == 2 ? 6.f : E.Type == 3 ? 1.3f : 0.9f))
                 DesiredVelocity = Direction * Speed;
         }
-        E.Pos = MoveWithCollision(E.Pos, DesiredVelocity + E.Knockback, DeltaSeconds, E.Type == 3 ? 0.48f : 0.26f);
-        E.Knockback = FMath::Lerp(E.Knockback, FVector2D::ZeroVector, FMath::Clamp(DeltaSeconds * 11.f, 0.f, 1.f));
+        E.Pos = MoveWithCollision(E.Pos, DesiredVelocity + E.Knockback,
+                                  DeltaSeconds, E.Type == 3 ? 0.48f : 0.26f);
+        E.Knockback = FMath::Lerp(E.Knockback, FVector2D::ZeroVector,
+                                  FMath::Clamp(DeltaSeconds * 11.f, 0.f, 1.f));
+
+        if (E.Telegraph > 0.f)
+        {
+            E.Telegraph -= DeltaSeconds;
+            if (E.Telegraph <= 0.f)
+            {
+                E.Telegraph = 0.f;
+                if (FVector2D::Distance(E.Pos, Hero) < (E.Type == 3 ? 1.5f : 1.20f))
+                    DamageHero((E.Type == 1 ? 18.f : E.Type == 3 ? 21.f :
+                                10.f + Floor * 2) * (E.bElite ? 1.35f : 1.f), E.Pos);
+                E.Cooldown = E.Type == 3 ? 1.2f : E.Type == 1 ? 1.4f : 1.1f;
+            }
+            continue;
+        }
         if (E.Cooldown > 0.f || Distance > 11.f) continue;
-        if (E.Type == 2 || E.Type == 3)
+
+        if (E.Type == 2 || (E.Type == 3 && Distance >= 1.5f))
         {
             if (Distance > 1.1f)
             {
                 FAVBolt Bolt;
                 Bolt.Pos = E.Pos;
                 Bolt.Velocity = Direction * (E.Type == 3 ? 7.8f : 6.8f);
-                Bolt.Damage = E.Type == 3 ? 19 : 12 + Floor * 2;
+                Bolt.Damage = FMath::RoundToInt((E.Type == 3 ? 19.f :
+                    12.f + Floor * 2.f) * (E.bElite ? 1.35f : 1.f));
                 Bolts.Add(Bolt);
                 if (E.Type == 3)
                 {
-                    FVector2D Orthogonal(-Direction.Y, Direction.X);
+                    const bool bEnraged = E.HP < E.MaxHP * 0.5f;
+                    const FVector2D Orthogonal(-Direction.Y, Direction.X);
                     for (int32 Sign = -1; Sign <= 1; Sign += 2)
                     {
                         FAVBolt Side = Bolt;
                         Side.Velocity = SafeDirection(Direction + Orthogonal * (0.30f * Sign)) * 7.3f;
                         Bolts.Add(Side);
+                        if (bEnraged)
+                        {
+                            FAVBolt Outer = Bolt;
+                            Outer.Velocity = SafeDirection(Direction + Orthogonal * (0.59f * Sign)) * 7.6f;
+                            Bolts.Add(Outer);
+                        }
                     }
                 }
             }
-            E.Cooldown = E.Type == 3 ? 1.25f : 2.1f;
+            E.Cooldown = E.Type == 3 ? (E.HP < E.MaxHP * 0.5f ? 0.96f : 1.25f) : 2.1f;
         }
-        else if (Distance < 1.05f)
+        else if (Distance < (E.Type == 3 ? 1.5f : 1.05f))
         {
-            DamageHero(E.Type == 1 ? 18.f : 10.f + Floor * 2, E.Pos);
-            E.Cooldown = E.Type == 1 ? 1.4f : 1.1f;
+            E.Telegraph = E.Type == 3 ? 0.47f : E.Type == 1 ? 0.44f : 0.31f;
         }
     }
+
     for (int32 I = Bolts.Num() - 1; I >= 0; --I)
     {
         FAVBolt& Bolt = Bolts[I];
@@ -444,6 +529,29 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             Bolts.RemoveAtSwap(I);
         }
     }
+
+    for (FAVTrap& Trap : Traps)
+    {
+        Trap.Cooldown = FMath::Max(0.f, Trap.Cooldown - DeltaSeconds);
+        if (Trap.Windup > 0.f)
+        {
+            Trap.Windup -= DeltaSeconds;
+            if (Trap.Windup <= 0.f)
+            {
+                Trap.Windup = 0.f;
+                Trap.Cooldown = 2.8f;
+                AddEffect(Trap.Pos, 2, 0.8f);
+                if (FVector2D::Distance(Trap.Pos, Hero) < 0.88f)
+                    DamageHero(14.f + Floor * 3.f, Trap.Pos);
+            }
+        }
+        else if (Trap.Cooldown <= 0.f &&
+                 FVector2D::Distance(Trap.Pos, Hero) < 0.78f)
+        {
+            Trap.Windup = 0.62f;
+        }
+    }
+
     for (int32 I = Pickups.Num() - 1; I >= 0; --I)
     {
         FAVPickup& P = Pickups[I];
@@ -456,6 +564,12 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             case 1: HP = FMath::Min(MaxHP, HP + P.Amount); break;
             case 2: Stamina = FMath::Min(MaxStamina, Stamina + P.Amount); break;
             case 3: ++Potions; break;
+            case 4:
+                AttackPower += P.Amount;
+                Toast = TEXT("ASHEN SHARD  +2 DAMAGE");
+                ToastTime = 1.8f;
+                break;
+            default: break;
             }
             Pickups.RemoveAtSwap(I);
         }
@@ -475,6 +589,9 @@ void AAVGameMode::Tick(float DeltaSeconds)
     Invulnerability = FMath::Max(0.f, Invulnerability - DT);
     ScreenShake = FMath::Max(0.f, ScreenShake - DT);
     Stamina = FMath::Min(MaxStamina, Stamina + 14.5f * DT);
+    ComboTime = FMath::Max(0.f, ComboTime - DT);
+    if (ComboTime == 0.f) Combo = 0;
+    ToastTime = FMath::Max(0.f, ToastTime - DT);
     UpdateCombat(DT);
     for (int32 I = Effects.Num() - 1; I >= 0; --I)
     {
