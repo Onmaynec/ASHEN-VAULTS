@@ -7,6 +7,20 @@
 #include <vector>
 using int32 = std::int32_t;
 using uint8 = std::uint8_t;
+using uint32 = std::uint32_t;
+struct FColor
+{
+    uint8 R, G, B, A;
+    FColor() : R(0), G(0), B(0), A(0) {}
+    FColor(uint8 InR, uint8 InG, uint8 InB, uint8 InA = 255)
+        : R(InR), G(InG), B(InB), A(InA) {}
+};
+struct FLinearColor
+{
+    float R, G, B, A;
+    FLinearColor(float InR, float InG, float InB, float InA = 1.f)
+        : R(InR), G(InG), B(InB), A(InA) {}
+};
 struct FVector2D
 {
     float X = 0.f, Y = 0.f;
@@ -46,6 +60,8 @@ struct FMath
 {
     static int32 FloorToInt(float Value) { return static_cast<int32>(std::floor(Value)); }
     static int32 CeilToInt(float Value) { return static_cast<int32>(std::ceil(Value)); }
+    template<typename T> static T Abs(T A) { return std::abs(A); }
+    template<typename T> static T Clamp(T V, T Lo, T Hi) { return std::min(std::max(V, Lo), Hi); }
     static int32 Min(int32 A, int32 B) { return std::min(A, B); }
     static int32 Max(int32 A, int32 B) { return std::max(A, B); }
 };
