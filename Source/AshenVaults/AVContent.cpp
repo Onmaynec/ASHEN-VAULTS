@@ -1,5 +1,10 @@
 #include "AVContent.h"
 
+float FAVContent::HeroHealth(int32 Id) { return Id == 1 ? 82.f : Id == 2 ? 75.f : 115.f; }
+float FAVContent::HeroStamina(int32 Id) { return Id == 1 ? 120.f : Id == 2 ? 135.f : 100.f; }
+float FAVContent::HeroAttack(int32 Id) { return Id == 1 ? 22.f : Id == 2 ? 16.f : 18.f; }
+float FAVContent::HeroSpeed(int32 Id) { return Id == 1 ? 5.7f : Id == 2 ? 4.6f : 4.8f; }
+
 int32 FAVContent::Biome(int32 Floor)
 {
     if (Floor <= 2) return 0; // Ashen Crypt
@@ -20,9 +25,9 @@ int32 FAVContent::EnemyRoll(int32 Floor, int32 Percentile)
     const int32 P = Percentile < 0 ? 0 : (Percentile > 99 ? 99 : Percentile);
     switch (Biome(Floor))
     {
-    case 0: return P < 38 ? 0 : P < 66 ? 1 : P < 84 ? 2 : 5;
-    case 1: return P < 30 ? 5 : P < 55 ? 6 : P < 77 ? 2 : 1;
-    default: return P < 36 ? 7 : P < 61 ? 10 : P < 84 ? 1 : 6;
+    case 0: return P < 38 ? 0 : P < 66 ? 1 : P < 84 ? 2 : P < 93 ? 11 : 5;
+    case 1: return P < 30 ? 5 : P < 55 ? 6 : P < 77 ? 2 : P < 90 ? 12 : 1;
+    default: return P < 36 ? 7 : P < 61 ? 10 : P < 84 ? 1 : P < 93 ? 13 : 14;
     }
 }
 
@@ -42,6 +47,10 @@ FAVEnemySpec FAVContent::Enemy(int32 Type, int32 Floor)
     case 8: S = { 240.f, 1.65f, 20.f, false, true }; break;
     case 9: S = { 360.f, 1.52f, 23.f, true, true }; break;
     case 10: S = { 21.f, 2.85f, 13.f, true, false }; break;
+    case 11: S = { 34.f, 3.10f, 16.f, false, false }; break; // Ash Reaver
+    case 12: S = { 40.f, 1.85f, 17.f, true, false }; break; // Spore Witch
+    case 13: S = { 64.f, 2.25f, 21.f, false, false }; break; // Ember Knight
+    case 14: S = { 27.f, 3.35f, 16.f, true, false }; break; // Cinder Specter
     default: break;
     }
     if (!S.Boss)
