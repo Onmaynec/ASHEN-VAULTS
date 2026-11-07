@@ -57,6 +57,18 @@ int main()
     // Behind the dividing wall: approach through the lower corridor.
     assert(Direction.Y > 0.1f);
 
+    // The diagonal destination is walkable but the two adjacent orthogonal
+    // tiles are solid; no corner-peeking / attacks through touching walls.
+    const auto Corner = Map({
+        "#####",
+        "#.#.#",
+        "##..#",
+        "#...#",
+        "#####"
+    });
+    assert(!FAVDungeonNavigation::LineOfSight(
+        Corner, 5, 5, FVector2D(1.5f, 1.5f), FVector2D(2.5f, 2.5f)));
+
     const auto Divided = Map({"#####", "#.#.#", "#####"});
     TArray<int32> Unreachable;
     FAVDungeonNavigation::BuildFlow(Divided, 5, 3, FVector2D(1.5f, 1.5f), Unreachable);

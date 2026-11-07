@@ -269,6 +269,8 @@ void AAVGameMode::GenerateFloor()
     int32 NextId = 1;
     for (int32 I = 1; I < Rooms.Num(); ++I)
     {
+        // The merchant's chamber is a safe retreat, not an accidental arena.
+        if (bMerchantSpawned && I == 1) continue;
         const FRoom& R = Rooms[I];
         const int32 Count = RNG.RandRange(1, FMath::Min(4, 2 + Floor));
         for (int32 E = 0; E < Count; ++E)
@@ -406,6 +408,11 @@ void AAVGameMode::BuyFromMerchant(int32 Slot)
         Toast = TEXT("NOT ENOUGH GOLD"); ToastTime = 1.4f;
         return;
     }
+    if (Slot == 0 && HP >= MaxHP)
+    {
+        Toast = TEXT("HEALTH ALREADY FULL"); ToastTime = 1.4f;
+        return;
+    }
     Gold -= Price;
     ShopPurchased[Slot] = true;
     switch (Slot)
@@ -468,7 +475,7 @@ void AAVGameMode::Strike(bool bSpin)
         AddEffect(Enemy.Pos, 2, 0.55f);
         if (Enemy.HP <= 0.f) KillEnemy(I);
     }
-    StrikeProps(bSpin, Damage);
+    if (Phase == EAVPhase::Playing) StrikeProps(bSpin, Damage);
 }
 
 void AAVGameMode::ThrowKnife()
@@ -701,8 +708,13 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         Hero = MoveWithCollision(Hero, Direction * MoveSpeed, DeltaSeconds, 0.27f);
 
     if (bHit) Strike(false);
+    // A sword can defeat a guardian and open a relic selection instantly:
+    // don't process another action in the same frame after phase changes.
+    if (Phase != EAVPhase::Playing) return;
     if (bSpin) Strike(true);
+    if (Phase != EAVPhase::Playing) return;
     if (bReplay) ThrowKnife();
+    if (Phase != EAVPhase::Playing) return;
     if (bHeal && Potions > 0 && HP < MaxHP)
     {
         --Potions; HP = FMath::Min(MaxHP, HP + 42.f);

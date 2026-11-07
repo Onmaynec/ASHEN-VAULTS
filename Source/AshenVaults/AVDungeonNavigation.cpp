@@ -13,12 +13,23 @@ bool FAVDungeonNavigation::LineOfSight(const TArray<uint8>& Tiles, int32 Width,
 {
     const FVector2D Delta = To - From;
     const int32 Steps = FMath::Max(1, FMath::CeilToInt(Delta.Size() * 4.f));
+    int32 PrevX = FMath::FloorToInt(From.X);
+    int32 PrevY = FMath::FloorToInt(From.Y);
     for (int32 I = 0; I <= Steps; ++I)
     {
         const FVector2D P = From + Delta * (static_cast<float>(I) / Steps);
-        if (!IsWalkable(Tiles, Width, Height, FMath::FloorToInt(P.X),
-                         FMath::FloorToInt(P.Y)))
+        const int32 X = FMath::FloorToInt(P.X);
+        const int32 Y = FMath::FloorToInt(P.Y);
+        if (!IsWalkable(Tiles, Width, Height, X, Y))
             return false;
+        // Supercover corner rule: two walls touching diagonally block sight
+        // even if the sampled point lies in the walkable diagonal cell.
+        if (X != PrevX && Y != PrevY &&
+            !IsWalkable(Tiles, Width, Height, PrevX, Y) &&
+            !IsWalkable(Tiles, Width, Height, X, PrevY))
+            return false;
+        PrevX = X;
+        PrevY = Y;
     }
     return true;
 }
