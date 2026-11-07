@@ -1,0 +1,57 @@
+// ASHEN VAULTS — author-controlled HLSL lighting/palette functions.
+// This file is a shader-source reference for the future UE4 Material/Paper2D
+// pipeline. The v0.5.0 game still renders through Canvas/AVArt.cpp; this
+// .ush is NOT registered or dispatched at runtime. Do not call it shipped GPU
+// lighting until the renderer has a real Material asset binding.
+//
+// Input normal and light direction must be in the same tangent/world space.
+#ifndef ASHEN_VAULTS_PIXEL_MATERIAL_INCLUDED
+#define ASHEN_VAULTS_PIXEL_MATERIAL_INCLUDED
+
+float AVDistanceAttenuation(float2 PixelUV, float2 SourceUV, float Radius)
+{
+    float d = distance(PixelUV, SourceUV);
+    float t = saturate(1.0 - d / max(Radius, 0.0001));
+    return t * t * (3.0 - 2.0 * t);
+}
+
+float3 AVPalettePosterize(float3 LinearColor, float Levels)
+{
+    float Steps = max(Levels, 2.0) - 1.0;
+    return floor(saturate(LinearColor) * Steps + 0.5) / Steps;
+}
+
+float AVFlicker(float TimeSeconds, float Phase)
+{
+    // Low amplitude multi-frequency flutter (stable deterministic input).
+    return 0.84 + 0.11 * sin(TimeSeconds * 6.8 + Phase) +
+                   0.05 * sin(TimeSeconds * 13.7 + Phase * 2.41);
+}
+
+float3 AVReliefDiffuse(float3 BaseColor, float3 Normal,
+                       float3 LightDirection, float3 LightColor,
+                       float Ambient, float LightPower, float Levels)
+{
+    float3 N = normalize(Normal);
+    float3 L = normalize(LightDirection);
+    float Facing = saturate(dot(N, L));
+    float Shade = saturate(Ambient + Facing * LightPower);
+    return AVPalettePosterize(BaseColor * (Shade * LightColor), Levels);
+}
+
+float3 AVEmissionMix(float3 LitSurface, float3 GlowColor, float GlowMask,
+                     float TimeSeconds, float Phase, float Levels)
+{
+    const float Glow = GlowMask * AVFlicker(TimeSeconds, Phase);
+    return AVPalettePosterize(LitSurface + GlowColor * Glow, Levels);
+}
+
+float AVSoftWallShadow(float3 LightPosition, float3 SurfacePosition,
+                       float OcclusionMask, float ShadowStrength)
+{
+    // The occlusion mask is expected to be computed from actual collision /
+    // line-of-sight geometry, not inferred from depth or the pixel's alpha.
+    return 1.0 - saturate(OcclusionMask * ShadowStrength);
+}
+
+#endif
