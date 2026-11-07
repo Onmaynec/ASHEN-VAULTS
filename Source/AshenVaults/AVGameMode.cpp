@@ -1,6 +1,7 @@
 #include "AVGameMode.h"
 #include "AVHUD.h"
 #include "AVSaveGame.h"
+#include "AVDungeonNavigation.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
@@ -57,6 +58,50 @@ bool AAVGameMode::IsFloor(int32 X, int32 Y) const
         Tiles.IsValidIndex(Y * MapW + X) && Tiles[Y * MapW + X] != 0;
 }
 
+bool AAVGameMode::IsVisibleCell(int32 X, int32 Y) const
+{
+    return X >= 0 && Y >= 0 && X < MapW && Y < MapH &&
+        Visible.IsValidIndex(Y * MapW + X) && Visible[Y * MapW + X] != 0;
+}
+
+bool AAVGameMode::IsExploredCell(int32 X, int32 Y) const
+{
+    return X >= 0 && Y >= 0 && X < MapW && Y < MapH &&
+        Explored.IsValidIndex(Y * MapW + X) && Explored[Y * MapW + X] != 0;
+}
+
+bool AAVGameMode::IsVisibleAt(const FVector2D& Pos) const
+{
+    return IsVisibleCell(FMath::FloorToInt(Pos.X), FMath::FloorToInt(Pos.Y));
+}
+
+int32 AAVGameMode::UnopenedChests() const
+{
+    int32 Count = 0;
+    for (const FAVChest& Chest : Chests)
+        if (!Chest.bOpened) ++Count;
+    return Count;
+}
+
+void AAVGameMode::RefreshAwareness(float DeltaSeconds, bool bForce)
+{
+    if (Tiles.Num() != MapW * MapH) return;
+    const int32 X = FMath::FloorToInt(Hero.X);
+    const int32 Y = FMath::FloorToInt(Hero.Y);
+    if (bForce || X != LastVisionX || Y != LastVisionY)
+    {
+        FAVDungeonNavigation::Reveal(Tiles, MapW, MapH, Hero, 8.5f, Visible, Explored);
+        LastVisionX = X;
+        LastVisionY = Y;
+    }
+    FlowRefreshTime -= DeltaSeconds;
+    if (bForce || FlowRefreshTime <= 0.f)
+    {
+        FAVDungeonNavigation::BuildFlow(Tiles, MapW, MapH, Hero, FlowDistances);
+        FlowRefreshTime = 0.22f;
+    }
+}
+
 bool AAVGameMode::CanMove(const FVector2D& Pos, float Radius) const
 {
     return IsFloor(FMath::FloorToInt(Pos.X - Radius), FMath::FloorToInt(Pos.Y - Radius)) &&
@@ -86,7 +131,7 @@ void AAVGameMode::NewRun(bool bSameSeed)
     Floor = 1; Level = 1; XP = 0; Gold = 0; Kills = 0; Potions = 2;
     HP = 100.f; MaxHP = 100.f; Stamina = 100.f; MaxStamina = 100.f;
     AttackPower = 18.f; MoveSpeed = 4.8f; RunTime = 0.f;
-    AttackCooldown = 0.f; SpinCooldown = 0.f; DashTime = 0.f;
+    AttackCooldown = 0.f; KnifeCooldown = 0.f; SpinCooldown = 0.f; DashTime = 0.f;
     Invulnerability = 0.f; ScreenShake = 0.f;
     Combo = 0; ComboTime = 0.f; Toast.Empty(); ToastTime = 0.f;
     Phase = EAVPhase::Playing;
@@ -103,7 +148,11 @@ void AAVGameMode::GenerateFloor()
     RNG.Initialize(static_cast<int32>(static_cast<uint32>(RunSeed) ^
         (0x9e3779b9u * static_cast<uint32>(Floor))));
     Tiles.Init(0, MapW * MapH);
-    Enemies.Reset(); Pickups.Reset(); Bolts.Reset(); Effects.Reset(); Traps.Reset();
+    Visible.Init(0, MapW * MapH);
+    Explored.Init(0, MapW * MapH);
+    FlowDistances.Init(-1, MapW * MapH);
+    LastVisionX = -1; LastVisionY = -1; FlowRefreshTime = 0.f;
+    Enemies.Reset(); Pickups.Reset(); Bolts.Reset(); Effects.Reset(); Traps.Reset(); Chests.Reset();
     bShrineUsed = false;
     struct FRoom { int32 X, Y, W, H; FVector2D Center() const { return FVector2D(X + W / 2.f, Y + H / 2.f); } };
     TArray<FRoom> Rooms;
@@ -154,6 +203,7 @@ void AAVGameMode::GenerateFloor()
         Hero = FVector2D(9.5f, 8.5f);
         Exit = FVector2D(13.5f, 8.5f);
         Shrine = FVector2D(6.5f, 8.5f);
+        RefreshAwareness(0.f, true);
         return;
     }
     Hero = Rooms[0].Center();
@@ -179,6 +229,23 @@ void AAVGameMode::GenerateFloor()
             Traps.Add(Trap);
             break;
         }
+    }
+
+    // Treasure chambers: optional detours; one chance in five hides a mimic.
+    for (int32 I = 2; I < Rooms.Num() - 1; I += 3)
+    {
+        const FRoom& R = Rooms[I];
+        FAVChest Chest;
+        Chest.Pos = FVector2D(R.X + 1.5f, R.Y + 1.5f);
+        if (FVector2D::Distance(Chest.Pos, Shrine) < 2.5f ||
+            FVector2D::Distance(Chest.Pos, Exit) < 2.5f)
+            Chest.Pos = FVector2D(R.X + R.W - 1.5f, R.Y + R.H - 1.5f);
+        bool bBlocked = false;
+        for (const FAVTrap& Trap : Traps)
+            bBlocked |= FVector2D::Distance(Chest.Pos, Trap.Pos) < 1.3f;
+        if (bBlocked) continue;
+        Chest.bMimic = RNG.FRand() < 0.18f;
+        Chests.Add(Chest);
     }
 
     int32 NextId = 1;
@@ -217,6 +284,7 @@ void AAVGameMode::GenerateFloor()
         Pickup.Amount = 22;
         Pickups.Add(Pickup);
     }
+    RefreshAwareness(0.f, true);
 }
 
 void AAVGameMode::AddEffect(const FVector2D& Pos, int32 Kind, float Radius, float Angle)
@@ -251,6 +319,56 @@ void AAVGameMode::Strike(bool bSpin)
         AddEffect(Enemy.Pos, 2, 0.55f);
         if (Enemy.HP <= 0.f) KillEnemy(I);
     }
+}
+
+void AAVGameMode::ThrowKnife()
+{
+    if (KnifeCooldown > 0.f || Stamina < 18.f || Aim.IsNearlyZero()) return;
+    Stamina -= 18.f;
+    KnifeCooldown = 0.65f;
+    FAVBolt Blade;
+    Blade.bFriendly = true;
+    Blade.Pos = Hero + Aim * 0.52f;
+    Blade.Velocity = Aim * 11.f;
+    Blade.Time = 1.1f;
+    Blade.Damage = FMath::RoundToInt(AttackPower * 0.83f);
+    Bolts.Add(Blade);
+    AddEffect(Hero, 0, 0.5f, FMath::Atan2(Aim.Y, Aim.X));
+}
+
+bool AAVGameMode::OpenNearbyChest()
+{
+    for (FAVChest& Chest : Chests)
+    {
+        if (Chest.bOpened || FVector2D::Distance(Hero, Chest.Pos) >= 1.45f) continue;
+        Chest.bOpened = true;
+        AddEffect(Chest.Pos, 3, 0.85f);
+        if (Chest.bMimic)
+        {
+            FAVEnemy Mimic;
+            Mimic.Type = 4;
+            Mimic.Pos = Chest.Pos;
+            Mimic.MaxHP = 64.f + Floor * 18.f;
+            Mimic.HP = Mimic.MaxHP;
+            Mimic.Cooldown = 0.35f;
+            Mimic.Id = 100000 + Kills + Chests.Num();
+            Enemies.Add(Mimic);
+            Toast = TEXT("A MIMIC! DODGE!");
+        }
+        else
+        {
+            Gold += RNG.RandRange(12, 28) * Floor;
+            FAVPickup Reward;
+            Reward.Pos = Chest.Pos;
+            Reward.Type = RNG.FRand() < 0.22f ? 4 : RNG.FRand() < 0.55f ? 3 : 1;
+            Reward.Amount = Reward.Type == 4 ? 2 : Reward.Type == 3 ? 1 : 30;
+            Pickups.Add(Reward);
+            Toast = TEXT("TREASURE FOUND!");
+        }
+        ToastTime = 2.3f;
+        return true;
+    }
+    return false;
 }
 
 void AAVGameMode::DamageHero(float Damage, const FVector2D& Source)
@@ -353,7 +471,7 @@ void AAVGameMode::PollInput(float DeltaSeconds)
 
     const bool bPause = Pressed(PC, EKeys::Escape, PrevPause) || PC->WasInputKeyJustPressed(EKeys::P);
     const bool bRestart = Pressed(PC, EKeys::Enter, PrevEnter);
-    const bool bReplay = Pressed(PC, EKeys::R, PrevReplay);
+    const bool bReplay = Pressed(PC, EKeys::R, PrevReplay); // Retry after death; knife during play.
     const bool bChoice0 = Pressed(PC, EKeys::One, PrevChoices[0]);
     const bool bChoice1 = Pressed(PC, EKeys::Two, PrevChoices[1]);
     const bool bChoice2 = Pressed(PC, EKeys::Three, PrevChoices[2]);
@@ -412,6 +530,7 @@ void AAVGameMode::PollInput(float DeltaSeconds)
 
     if (bHit) Strike(false);
     if (bSpin) Strike(true);
+    if (bReplay) ThrowKnife();
     if (bHeal && Potions > 0 && HP < MaxHP)
     {
         --Potions; HP = FMath::Min(MaxHP, HP + 42.f);
@@ -425,6 +544,10 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         Toast = TEXT("SHRINE BLESSING  +35 HP  +2 DAMAGE");
         ToastTime = 2.6f;
         AddEffect(Shrine, 1, 1.6f);
+    }
+    else if (bUse && OpenNearbyChest())
+    {
+        // A chest may release a mimic, which re-locks the stairs.
     }
     else if (bUse && IsExitReady() && FVector2D::Distance(Hero, Exit) < 1.7f)
     {
@@ -452,14 +575,19 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         const float Distance = ToHero.Size();
         const FVector2D Direction = SafeDirection(ToHero);
         const float Speed = (E.Type == 0 ? 2.45f : E.Type == 1 ? 1.65f :
-                             E.Type == 2 ? 2.05f : 1.8f) * (E.bElite ? 1.18f : 1.f);
+                             E.Type == 2 ? 2.05f : E.Type == 4 ? 3.05f : 1.8f) *
+                            (E.bElite ? 1.18f : 1.f);
         FVector2D DesiredVelocity = FVector2D::ZeroVector;
         if (Distance < 13.f && E.Telegraph <= 0.f)
         {
             if (E.Type == 2 && Distance < 4.f)
                 DesiredVelocity = -Direction * Speed;
             else if (Distance > (E.Type == 2 ? 6.f : E.Type == 3 ? 1.3f : 0.9f))
-                DesiredVelocity = Direction * Speed;
+            {
+                const FVector2D Path = FAVDungeonNavigation::FlowDirection(
+                    Tiles, FlowDistances, MapW, MapH, E.Pos, Hero);
+                DesiredVelocity = Path * Speed;
+            }
         }
         E.Pos = MoveWithCollision(E.Pos, DesiredVelocity + E.Knockback,
                                   DeltaSeconds, E.Type == 3 ? 0.48f : 0.26f);
@@ -479,7 +607,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             }
             continue;
         }
-        if (E.Cooldown > 0.f || Distance > 11.f) continue;
+        if (E.Cooldown > 0.f || Distance > 8.4f) continue;
 
         if (E.Type == 2 || (E.Type == 3 && Distance >= 1.5f))
         {
@@ -513,13 +641,14 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         }
         else if (Distance < (E.Type == 3 ? 1.5f : 1.05f))
         {
-            E.Telegraph = E.Type == 3 ? 0.47f : E.Type == 1 ? 0.44f : 0.31f;
+            E.Telegraph = E.Type == 3 ? 0.47f : E.Type == 1 ? 0.44f : E.Type == 4 ? 0.26f : 0.31f;
         }
     }
 
     for (int32 I = Bolts.Num() - 1; I >= 0; --I)
     {
         FAVBolt& Bolt = Bolts[I];
+        const FVector2D OldPosition = Bolt.Pos;
         Bolt.Pos += Bolt.Velocity * DeltaSeconds;
         Bolt.Time -= DeltaSeconds;
         if (Bolt.Time <= 0.f || !CanMove(Bolt.Pos, 0.06f))
@@ -527,10 +656,43 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             Bolts.RemoveAtSwap(I);
             continue;
         }
-        if (FVector2D::Distance(Bolt.Pos, Hero) < 0.43f)
+        if (Bolt.bFriendly)
         {
-            DamageHero(Bolt.Damage, Bolt.Pos);
-            Bolts.RemoveAtSwap(I);
+            bool bHitEnemy = false;
+            for (int32 EnemyIndex = Enemies.Num() - 1; EnemyIndex >= 0; --EnemyIndex)
+            {
+                FAVEnemy& E = Enemies[EnemyIndex];
+                const float Radius = E.Type == 3 ? 0.72f : 0.46f;
+                // A swept test prevents the knife tunnelling through smaller targets.
+                const FVector2D Segment = Bolt.Pos - OldPosition;
+                const float LengthSquared = Segment.SizeSquared();
+                const float T = LengthSquared > KINDA_SMALL_NUMBER ?
+                    FMath::Clamp(FVector2D::DotProduct(E.Pos - OldPosition, Segment) /
+                                 LengthSquared, 0.f, 1.f) : 0.f;
+                const FVector2D Closest = OldPosition + Segment * T;
+                if (FVector2D::Distance(Closest, E.Pos) > Radius) continue;
+                E.HP -= Bolt.Damage;
+                E.Flash = 0.16f;
+                E.Knockback += SafeDirection(E.Pos - OldPosition) * 3.1f;
+                AddEffect(E.Pos, 2, 0.4f);
+                if (E.HP <= 0.f) KillEnemy(EnemyIndex);
+                bHitEnemy = true;
+                break;
+            }
+            if (bHitEnemy) Bolts.RemoveAtSwap(I);
+        }
+        else
+        {
+            const FVector2D Segment = Bolt.Pos - OldPosition;
+            const float LenSq = Segment.SizeSquared();
+            const float T = LenSq > KINDA_SMALL_NUMBER ?
+                FMath::Clamp(FVector2D::DotProduct(Hero - OldPosition, Segment) /
+                             LenSq, 0.f, 1.f) : 0.f;
+            if (FVector2D::Distance(OldPosition + Segment * T, Hero) < 0.43f)
+            {
+                DamageHero(Bolt.Damage, Bolt.Pos);
+                Bolts.RemoveAtSwap(I);
+            }
         }
     }
 
@@ -588,6 +750,7 @@ void AAVGameMode::Tick(float DeltaSeconds)
     if (Phase != EAVPhase::Playing) return;
     RunTime += DT;
     AttackCooldown = FMath::Max(0.f, AttackCooldown - DT);
+    KnifeCooldown = FMath::Max(0.f, KnifeCooldown - DT);
     SpinCooldown = FMath::Max(0.f, SpinCooldown - DT);
     DashTime = FMath::Max(0.f, DashTime - DT);
     Invulnerability = FMath::Max(0.f, Invulnerability - DT);
@@ -596,6 +759,7 @@ void AAVGameMode::Tick(float DeltaSeconds)
     ComboTime = FMath::Max(0.f, ComboTime - DT);
     if (ComboTime == 0.f) Combo = 0;
     ToastTime = FMath::Max(0.f, ToastTime - DT);
+    RefreshAwareness(DT);
     UpdateCombat(DT);
     for (int32 I = Effects.Num() - 1; I >= 0; --I)
     {

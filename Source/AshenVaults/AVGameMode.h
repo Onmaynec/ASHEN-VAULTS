@@ -42,6 +42,7 @@ struct FAVBolt
     FVector2D Velocity = FVector2D::ZeroVector;
     float Time = 2.f;
     int32 Damage = 10;
+    bool bFriendly = false;
 };
 
 USTRUCT()
@@ -63,6 +64,15 @@ struct FAVTrap
     FVector2D Pos = FVector2D::ZeroVector;
     float Windup = 0.f;
     float Cooldown = 0.f;
+};
+
+USTRUCT()
+struct FAVChest
+{
+    GENERATED_BODY()
+    FVector2D Pos = FVector2D::ZeroVector;
+    bool bOpened = false;
+    bool bMimic = false;
 };
 
 UCLASS()
@@ -107,12 +117,19 @@ public:
     FString Toast;
     float ToastTime = 0.f;
     TArray<uint8> Tiles;
+    // Every floor is initially unknown. Visible is the current line-of-sight
+    // mask, Explored is persistent for that floor.
+    TArray<uint8> Visible;
+    TArray<uint8> Explored;
+    TArray<int32> FlowDistances;
     TArray<FAVEnemy> Enemies;
     TArray<FAVPickup> Pickups;
     TArray<FAVBolt> Bolts;
     TArray<FAVTrap> Traps;
+    TArray<FAVChest> Chests;
     TArray<FAVEffect> Effects;
     float AttackCooldown = 0.f;
+    float KnifeCooldown = 0.f;
     float SpinCooldown = 0.f;
     float DashTime = 0.f;
     float Invulnerability = 0.f;
@@ -123,6 +140,10 @@ public:
     int32 LifetimeGold = 0;
 
     bool IsFloor(int32 X, int32 Y) const;
+    bool IsVisibleCell(int32 X, int32 Y) const;
+    bool IsExploredCell(int32 X, int32 Y) const;
+    bool IsVisibleAt(const FVector2D& Pos) const;
+    int32 UnopenedChests() const;
     bool CanMove(const FVector2D& Pos, float Radius) const;
     int32 EnemiesRemaining() const { return Enemies.Num(); }
     int32 NextXP() const { return 8 + Level * 7; }
@@ -141,10 +162,16 @@ private:
     bool PrevReplay = false;
     bool PrevChoices[3] = { false, false, false };
     FVector2D DashDirection = FVector2D(1.f, 0.f);
+    int32 LastVisionX = -1;
+    int32 LastVisionY = -1;
+    float FlowRefreshTime = 0.f;
 
     void GenerateFloor();
     void PollInput(float DeltaSeconds);
     void UpdateCombat(float DeltaSeconds);
+    void RefreshAwareness(float DeltaSeconds, bool bForce = false);
+    void ThrowKnife();
+    bool OpenNearbyChest();
     void DamageHero(float Damage, const FVector2D& Source);
     void Strike(bool bSpin);
     void KillEnemy(int32 Index);
