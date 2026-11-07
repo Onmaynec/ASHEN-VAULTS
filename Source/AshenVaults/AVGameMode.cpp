@@ -130,8 +130,10 @@ FVector2D AAVGameMode::MoveWithCollision(const FVector2D& From, const FVector2D&
 void AAVGameMode::NewRun(bool bSameSeed)
 {
     Floor = 1; Level = 1; XP = 0; Gold = 0; Kills = 0; Potions = 2;
-    HP = 100.f; MaxHP = 100.f; Stamina = 100.f; MaxStamina = 100.f;
-    AttackPower = 18.f; MoveSpeed = 4.8f; RunTime = 0.f;
+    MaxHP = FAVContent::HeroHealth(HeroClass); HP = MaxHP;
+    MaxStamina = FAVContent::HeroStamina(HeroClass); Stamina = MaxStamina;
+    AttackPower = FAVContent::HeroAttack(HeroClass);
+    MoveSpeed = FAVContent::HeroSpeed(HeroClass); RunTime = 0.f;
     RelicMask = 0u; RelicCount = 0; Echoes = 0; bRelicPending = false;
     HeroVelocity = FVector2D::ZeroVector;
     PoisonTime = 0.f; BurnTime = 0.f; StatusTick = 0.f; DashCooldown = 0.f;
@@ -646,6 +648,15 @@ void AAVGameMode::KillEnemy(int32 Index)
         Shard.Amount = 2;
         Pickups.Add(Shard);
     }
+    // Rare run-long upgrade drops: vitality, endurance and haste shards.
+    if (RNG.FRand() < (bBoss ? 0.85f : 0.075f))
+    {
+        FAVPickup Upgrade;
+        Upgrade.Pos = Pos;
+        Upgrade.Type = RNG.RandRange(5, 7);
+        Upgrade.Amount = 1;
+        Pickups.Add(Upgrade);
+    }
     if (bBoss)
         OfferRelic();
 }
@@ -688,6 +699,15 @@ void AAVGameMode::PollInput(float DeltaSeconds)
     const bool bPause = Pressed(PC, EKeys::Escape, PrevPause) || PC->WasInputKeyJustPressed(EKeys::P);
     const bool bRestart = Pressed(PC, EKeys::Enter, PrevEnter);
     const bool bReplay = Pressed(PC, EKeys::R, PrevReplay); // Retry after death; knife during play.
+    if (Pressed(PC, EKeys::H, PrevHero))
+    {
+        HeroClass = (HeroClass + 1) % FAVContent::HeroCount;
+        NewRun(); // Class changes restart the run; never mix stats mid-run.
+        Toast = HeroClass == 0 ? TEXT("WARDEN SELECTED") :
+                HeroClass == 1 ? TEXT("DUELIST SELECTED") : TEXT("ARCANIST SELECTED");
+        ToastTime = 3.f;
+        return;
+    }
     if (Pressed(PC, EKeys::F3, PrevQuality))
     {
         VisualQuality = (VisualQuality + 1) % 3;
@@ -838,10 +858,10 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         const float Distance = ToHero.Size();
         const FVector2D Direction = SafeDirection(ToHero);
         const float Speed = Spec.Speed * (E.bElite ? 1.18f : 1.f);
-        const bool bCaster = E.Type == 2 || E.Type == 6 || E.Type == 10;
+        const bool bCaster = E.Type == 2 || E.Type == 6 || E.Type == 10 || E.Type == 12 || E.Type == 14;
         const bool bMeleeBoss = E.Type == 8;
         const float Reach = Spec.Boss ? (bMeleeBoss ? 2.0f : 1.6f) :
-                            E.Type == 7 ? 1.30f : 1.08f;
+                            (E.Type == 7 || E.Type == 13) ? 1.30f : 1.08f;
         FVector2D DesiredVelocity = FVector2D::ZeroVector;
         if (Distance < 14.f && E.Telegraph <= 0.f)
         {
@@ -1025,6 +1045,12 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 Toast = TEXT("ASHEN SHARD  +2 DAMAGE");
                 ToastTime = 1.8f;
                 break;
+            case 5: MaxHP += 12.f; HP = FMath::Min(MaxHP, HP + 12.f);
+                Toast = TEXT("VITALITY SHARD: +12 MAX HP"); ToastTime = 2.f; break;
+            case 6: MaxStamina += 10.f; Stamina = FMath::Min(MaxStamina, Stamina + 10.f);
+                Toast = TEXT("ENDURANCE SHARD: +10 MAX STAMINA"); ToastTime = 2.f; break;
+            case 7: MoveSpeed += 0.18f;
+                Toast = TEXT("HASTE SHARD: +0.18 SPEED"); ToastTime = 2.f; break;
             default: break;
             }
             Pickups.RemoveAtSwap(I);
