@@ -316,7 +316,7 @@ void AAVGameMode::GenerateFloor()
             const FRoom& R = Rooms[I];
             FAVHazard Hazard;
             Hazard.Type = Floor >= 5 ? 1 : 0;
-            Hazard.Pos = FVector2D(R.X + R.W * 0.5f, R.Y + R.H * 0.5f);
+            Hazard.Pos = FVector2D(R.X + 1.5f, R.Y + R.H - 1.5f);
             if (FVector2D::Distance(Hazard.Pos, Shrine) > 2.f &&
                 FVector2D::Distance(Hazard.Pos, Exit) > 2.f &&
                 (!bMerchantSpawned || FVector2D::Distance(Hazard.Pos, Merchant) > 2.f))
@@ -514,7 +514,8 @@ bool AAVGameMode::OpenNearbyChest()
         }
         else
         {
-            Gold += RNG.RandRange(12, 28) * Floor;
+            const int32 Treasure = RNG.RandRange(12, 28) * Floor;
+            Gold += HasRelic(5) ? FMath::CeilToInt(Treasure * 1.5f) : Treasure;
             FAVPickup Reward;
             Reward.Pos = Chest.Pos;
             Reward.Type = RNG.FRand() < 0.22f ? 4 : RNG.FRand() < 0.55f ? 3 : 1;

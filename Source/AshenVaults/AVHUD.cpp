@@ -708,7 +708,8 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
 
     Text(TEXT("LMB   SLASH"), 280.f * Scale, (Y / Scale + 11.f) * Scale, Pale, 0.95f);
     Text(TEXT("Q / RMB   SPIN"), 280.f * Scale, Y + 34.f * Scale,
-         Game.Stamina >= 32.f && Game.SpinCooldown <= 0.f ? Mint : Pale, 0.95f);
+         Game.Stamina >= (Game.HasRelic(3) ? 24.f : 32.f) &&
+         Game.SpinCooldown <= 0.f ? Mint : Pale, 0.95f);
     Text(TEXT("R   THROW BLADE"), 447.f * Scale, Y + 11.f * Scale,
          Game.KnifeCooldown <= 0.f && Game.Stamina >= 18.f ? Mint : Pale, 0.95f);
     Text(FString::Printf(TEXT("E   POTION x%d"), Game.Potions),
