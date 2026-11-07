@@ -75,7 +75,7 @@ UTexture2D* FAVArt::BuildTile(int32 Biome, int32 TileVariant)
                         static_cast<uint32>(TileVariant) * 487u;
 
     TArray<FColor> Pixels;
-    Pixels.SetNumUninitialized(N * N);
+    Pixels.Init(FColor(), N * N);
     for (int32 Y = 0; Y < N; ++Y)
     {
         for (int32 X = 0; X < N; ++X)
