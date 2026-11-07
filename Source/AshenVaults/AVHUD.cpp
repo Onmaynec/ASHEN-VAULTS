@@ -657,6 +657,11 @@ void AAVHUD::DrawMiniMap(const AAVGameMode& Game)
                      Game.IsVisibleCell(X, Y) ?
                          FLinearColor(0.26f, 0.34f, 0.37f, 1.f) :
                          FLinearColor(0.13f, 0.16f, 0.19f, 1.f));
+    if (Game.bMerchantSpawned && Game.IsExploredCell(
+            FMath::FloorToInt(Game.Merchant.X), FMath::FloorToInt(Game.Merchant.Y)))
+        Rect(X0 + Game.Merchant.X * Unit - Unit * 0.5f,
+             Y0 + Game.Merchant.Y * Unit - Unit * 0.5f,
+             4.f * Scale, 4.f * Scale, GoldColor);
     if (!Game.bShrineUsed && Game.IsExploredCell(
             FMath::FloorToInt(Game.Shrine.X), FMath::FloorToInt(Game.Shrine.Y)))
         Rect(X0 + Game.Shrine.X * Unit - Unit * 0.5f,
