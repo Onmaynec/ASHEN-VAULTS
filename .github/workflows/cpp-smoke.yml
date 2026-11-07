@@ -1,0 +1,47 @@
+name: ASHEN VAULTS — standalone C++ checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Source/AshenVaults/AVArt.cpp'
+      - 'Source/AshenVaults/AVArt.h'
+      - 'Source/AshenVaults/AVContent.cpp'
+      - 'Source/AshenVaults/AVContent.h'
+      - 'Source/AshenVaults/AVDungeonNavigation.cpp'
+      - 'Source/AshenVaults/AVDungeonNavigation.h'
+      - 'Tests/Standalone/**'
+      - '.github/workflows/cpp-smoke.yml'
+  pull_request:
+    paths:
+      - 'Source/AshenVaults/AVArt.cpp'
+      - 'Source/AshenVaults/AVArt.h'
+      - 'Source/AshenVaults/AVContent.cpp'
+      - 'Source/AshenVaults/AVContent.h'
+      - 'Source/AshenVaults/AVDungeonNavigation.cpp'
+      - 'Source/AshenVaults/AVDungeonNavigation.h'
+      - 'Tests/Standalone/**'
+      - '.github/workflows/cpp-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cpp-smoke:
+    name: UE-independent C++14 module tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+      - name: Verify C++ compiler
+        run: g++ --version
+      - name: Dungeon pathfinding and visibility
+        run: bash Tests/Standalone/run.sh
+      - name: Combat content and boss rosters
+        run: bash Tests/Standalone/run_content.sh
+      - name: Runtime pixel textures and lighting curves
+        run: bash Tests/Standalone/run_art.sh
+
+# Does NOT build Unreal Engine, run UHT, or verify Windows packaging.
