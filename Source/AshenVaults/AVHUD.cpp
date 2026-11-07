@@ -689,9 +689,12 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
     const float P = 16.f * Scale;
     Rect(0.f, 0.f, Canvas->SizeX, 37.f * Scale, FLinearColor(0.018f, 0.024f, 0.041f, 0.94f));
     Text(TEXT("ASHEN VAULTS"), P, 10.f * Scale, GoldColor, 1.2f);
-    Text(FString::Printf(TEXT("DEPTH %d / %d  |  LVL %d  |  KILLS %d  |  GOLD %d"),
-        Game.Floor, AAVGameMode::FinalFloor, Game.Level, Game.Kills, Game.Gold),
-        255.f * Scale, 10.f * Scale, Pale, 0.89f);
+    const TCHAR* BiomeName = Game.CurrentBiome() == 0 ? TEXT("ASHEN CRYPT") :
+                             Game.CurrentBiome() == 1 ? TEXT("SPORE HOLLOWS") :
+                                                        TEXT("EMBER FOUNDRY");
+    Text(FString::Printf(TEXT("DEPTH %d/%d  %s  |  LVL %d  |  KILLS %d  |  GOLD %d"),
+        Game.Floor, AAVGameMode::FinalFloor, BiomeName, Game.Level, Game.Kills, Game.Gold),
+        214.f * Scale, 10.f * Scale, Pale, 0.86f);
 
     const float Y = Canvas->SizeY - 74.f * Scale;
     Rect(0.f, Y, Canvas->SizeX, 74.f * Scale, FLinearColor(0.018f, 0.025f, 0.041f, 0.94f));
@@ -714,8 +717,33 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
          FString::Printf(TEXT("FOES %d  |  CACHE %d"),
              Game.EnemiesRemaining(), Game.UnopenedChests()),
          646.f * Scale, Y + 11.f * Scale, Game.IsExitReady() ? Mint : Blood, 0.95f);
-    Text(TEXT("SPACE DODGE   P PAUSE"), 646.f * Scale, Y + 34.f * Scale, Pale, 0.83f);
+    Text(FString::Printf(TEXT("DODGE SPACE   RELICS %d"), Game.RelicCount),
+         646.f * Scale, Y + 34.f * Scale, Pale, 0.83f);
 
+    if (Game.PoisonTime > 0.f)
+        Text(FString::Printf(TEXT("POISON  %.0f"), Game.PoisonTime),
+             16.f * Scale, 53.f * Scale, Mint, 0.96f);
+    if (Game.BurnTime > 0.f)
+        Text(FString::Printf(TEXT("BURN  %.0f"), Game.BurnTime),
+             16.f * Scale, (Game.PoisonTime > 0.f ? 72.f : 53.f) * Scale, GoldColor, 0.96f);
+
+    // Show the active floor guardian even when it moves behind fog.
+    for (const FAVEnemy& Boss : Game.Enemies)
+    {
+        if (Boss.Type != 3 && Boss.Type != 8 && Boss.Type != 9) continue;
+        const TCHAR* Name = Boss.Type == 8 ? TEXT("THE BONE REGENT") :
+                            Boss.Type == 9 ? TEXT("FORGE TYRANT") :
+                                             TEXT("THE VAULT WARDEN");
+        const float X = Canvas->SizeX * 0.5f - 195.f * Scale;
+        const float BossY = Canvas->SizeY - 110.f * Scale;
+        Rect(X, BossY, 390.f * Scale, 21.f * Scale,
+             FLinearColor(0.035f, 0.04f, 0.065f, 0.94f));
+        Rect(X + 3.f * Scale, BossY + 13.f * Scale,
+             384.f * Scale * FMath::Clamp(Boss.HP / Boss.MaxHP, 0.f, 1.f),
+             5.f * Scale, Blood);
+        Text(Name, X + 108.f * Scale, BossY + 1.f * Scale, GoldColor, 0.82f);
+        break;
+    }
     if (Game.Combo >= 2)
         Text(FString::Printf(TEXT("COMBO x%d"), Game.Combo),
              Canvas->SizeX * 0.5f - 46.f * Scale, 53.f * Scale, GoldColor, 1.4f);
@@ -740,6 +768,58 @@ void AAVHUD::DrawOverlay(const AAVGameMode& Game)
         Text(TEXT("2  ASHEN BLADE     +7 ATTACK DAMAGE"), Left + 43.f * Scale, Top + 113.f * Scale, Pale, 1.f);
         Text(TEXT("3  WINDRUNNER      +SPEED  /  +12 STAMINA"), Left + 43.f * Scale, Top + 155.f * Scale, Pale, 1.f);
         Text(TEXT("PRESS 1, 2 OR 3"), Left + 183.f * Scale, Top + 204.f * Scale, Mint, 0.9f);
+    }
+    else if (Game.Phase == EAVPhase::Relic)
+    {
+        static const TCHAR* RelicNames[6] =
+        {
+            TEXT("BLOODFANG"), TEXT("IRON OATH"), TEXT("STORMGLASS"),
+            TEXT("EMBER SIGIL"), TEXT("WIND CHARM"), TEXT("GILDED EYE")
+        };
+        static const TCHAR* Descriptions[6] =
+        {
+            TEXT("+3 HP PER KILL  /  +15 MAX HP"),
+            TEXT("20 PERCENT LESS DAMAGE"),
+            TEXT("STRONGER, FASTER THROW"),
+            TEXT("WHIRLWIND BOOST  /  +4 ATTACK"),
+            TEXT("CHEAPER DODGE  /  +20 STAMINA"),
+            TEXT("50 PERCENT MORE GOLD")
+        };
+        Text(TEXT("CHOOSE AN ANCIENT RELIC"),
+             Left + 105.f * Scale, Top + 20.f * Scale, GoldColor, 1.2f);
+        for (int32 I = 0; I < 3; ++I)
+        {
+            const int32 Index = FMath::Clamp(Game.RelicChoices[I], 0, 5);
+            const float Y = Top + (68.f + I * 43.f) * Scale;
+            Text(FString::Printf(TEXT("%d  %s"), I + 1, RelicNames[Index]),
+                 Left + 38.f * Scale, Y, Mint, 1.f);
+            Text(Descriptions[Index], Left + 229.f * Scale, Y + 2.f * Scale, Pale, 0.81f);
+        }
+        Text(TEXT("PRESS 1 / 2 / 3 TO CLAIM"),
+             Left + 154.f * Scale, Top + 205.f * Scale, GoldColor, 0.9f);
+    }
+    else if (Game.Phase == EAVPhase::Shop)
+    {
+        Text(TEXT("THE WANDERING MERCHANT"),
+             Left + 113.f * Scale, Top + 19.f * Scale, GoldColor, 1.2f);
+        Text(FString::Printf(TEXT("YOUR GOLD  %d"), Game.Gold),
+             Left + 204.f * Scale, Top + 49.f * Scale, Pale, 0.94f);
+        static const TCHAR* Items[3] =
+        { TEXT("HEAL +45 HP"), TEXT("SHARPEN  +5 DAMAGE"), TEXT("HEALTH POTION +1") };
+        for (int32 I = 0; I < 3; ++I)
+        {
+            const float Y = Top + (80.f + I * 38.f) * Scale;
+            const bool Sold = Game.ShopPurchased[I];
+            Text(FString::Printf(TEXT("%d  %s"), I + 1, Items[I]),
+                 Left + 39.f * Scale, Y, Sold ? Aether : Pale, 1.f);
+            Text(Sold ? TEXT("SOLD") :
+                 FString::Printf(TEXT("%d GOLD"), Game.ShopPrice(I)),
+                 Left + 345.f * Scale, Y, Sold ? Aether : GoldColor, 0.9f);
+        }
+        Text(TEXT("1 / 2 / 3 BUY    F / ESC LEAVE"),
+             Left + 126.f * Scale, Top + 206.f * Scale, Mint, 0.89f);
+        if (Game.ToastTime > 0.f)
+            Text(Game.Toast, Left + 185.f * Scale, Top + 178.f * Scale, Blood, 0.84f);
     }
     else if (Game.Phase == EAVPhase::Paused)
     {
