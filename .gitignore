@@ -1,0 +1,19 @@
+# Unreal Engine 4 — generated files
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+.idea/
+.vscode/
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.xcodeproj
+*.xcworkspace
+*.DS_Store
+# Keep authored Content assets; exclude local DDC only.
+Content/Developers/

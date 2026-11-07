@@ -1,0 +1,12 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "4.27",
+  "Category": "Games",
+  "Description": "ASHEN VAULTS — pixel-art top-down dungeon roguelite.",
+  "Modules": [
+    { "Name": "AshenVaults", "Type": "Runtime", "LoadingPhase": "Default" }
+  ],
+  "Plugins": [
+    { "Name": "Paper2D", "Enabled": true }
+  ]
+}
