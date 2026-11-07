@@ -643,6 +643,21 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         else if (bReplay) NewRun(true);
         return;
     }
+    if (Phase == EAVPhase::Shop)
+    {
+        if (bPause || bUse) { Phase = EAVPhase::Playing; return; }
+        if (bChoice0) BuyFromMerchant(0);
+        else if (bChoice1) BuyFromMerchant(1);
+        else if (bChoice2) BuyFromMerchant(2);
+        return;
+    }
+    if (Phase == EAVPhase::Relic)
+    {
+        if (bChoice0) ChooseRelic(0);
+        else if (bChoice1) ChooseRelic(1);
+        else if (bChoice2) ChooseRelic(2);
+        return;
+    }
     if (bPause)
     {
         Phase = Phase == EAVPhase::Paused ? EAVPhase::Playing : EAVPhase::Paused;
@@ -670,9 +685,11 @@ void AAVGameMode::PollInput(float DeltaSeconds)
     if (PC->IsInputKeyDown(EKeys::A)) Direction.X -= 1.f;
     if (PC->IsInputKeyDown(EKeys::D)) Direction.X += 1.f;
     Direction = SafeDirection(Direction);
-    if (bDash && Stamina >= 23.f && DashTime <= 0.f)
+    const float DashCost = HasRelic(4) ? 16.f : 23.f;
+    if (bDash && Stamina >= DashCost && DashCooldown <= 0.f && DashTime <= 0.f)
     {
-        Stamina -= 23.f;
+        Stamina -= DashCost;
+        DashCooldown = HasRelic(4) ? 0.47f : 0.7f;
         DashDirection = Direction.IsNearlyZero() ? Aim : Direction;
         DashTime = 0.17f;
         Invulnerability = FMath::Max(Invulnerability, 0.25f);
@@ -689,9 +706,14 @@ void AAVGameMode::PollInput(float DeltaSeconds)
     if (bHeal && Potions > 0 && HP < MaxHP)
     {
         --Potions; HP = FMath::Min(MaxHP, HP + 42.f);
+        PoisonTime = 0.f; BurnTime = 0.f;
         AddEffect(Hero, 2, 1.f);
     }
-    if (bUse && !bShrineUsed && FVector2D::Distance(Hero, Shrine) < 1.55f)
+    if (bUse && bMerchantSpawned && FVector2D::Distance(Hero, Merchant) < 1.65f)
+    {
+        Phase = EAVPhase::Shop;
+    }
+    else if (bUse && !bShrineUsed && FVector2D::Distance(Hero, Shrine) < 1.55f)
     {
         bShrineUsed = true;
         HP = FMath::Min(MaxHP, HP + 35.f);
@@ -908,6 +930,7 @@ void AAVGameMode::Tick(float DeltaSeconds)
     KnifeCooldown = FMath::Max(0.f, KnifeCooldown - DT);
     SpinCooldown = FMath::Max(0.f, SpinCooldown - DT);
     DashTime = FMath::Max(0.f, DashTime - DT);
+    DashCooldown = FMath::Max(0.f, DashCooldown - DT);
     Invulnerability = FMath::Max(0.f, Invulnerability - DT);
     ScreenShake = FMath::Max(0.f, ScreenShake - DT);
     Stamina = FMath::Min(MaxStamina, Stamina + 14.5f * DT);
@@ -916,6 +939,23 @@ void AAVGameMode::Tick(float DeltaSeconds)
     ToastTime = FMath::Max(0.f, ToastTime - DT);
     RefreshAwareness(DT);
     UpdateCombat(DT);
+    if (Phase != EAVPhase::Playing) return;
+
+    // Over-time hazards tick at most once per second; potions cleanse both.
+    PoisonTime = FMath::Max(0.f, PoisonTime - DT);
+    BurnTime = FMath::Max(0.f, BurnTime - DT);
+    if (PoisonTime > 0.f || BurnTime > 0.f)
+    {
+        StatusTick += DT;
+        if (StatusTick >= 1.f)
+        {
+            StatusTick -= 1.f;
+            const float DotDamage = (PoisonTime > 0.f ? 4.f : 0.f) +
+                                    (BurnTime > 0.f ? 6.f : 0.f);
+            DamageHero(DotDamage, Hero);
+        }
+    }
+    else StatusTick = 0.f;
     for (int32 I = Effects.Num() - 1; I >= 0; --I)
     {
         Effects[I].Life -= DT;
