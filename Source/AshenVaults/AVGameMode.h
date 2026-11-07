@@ -94,6 +94,17 @@ struct FAVProp
     int32 Type = 0;
 };
 
+/** Layered non-colliding world prop. Rune nodes can be activated once. */
+USTRUCT()
+struct FAVDecor
+{
+    GENERATED_BODY()
+    FVector2D Pos = FVector2D::ZeroVector;
+    int32 Type = 0; // 0..2 crypt, 3..5 spores, 6..8 foundry
+    bool bActivated = false;
+    float Phase = 0.f;
+};
+
 UCLASS()
 class ASHENVAULTS_API AAVGameMode : public AGameModeBase
 {
@@ -120,6 +131,8 @@ public:
     UPROPERTY(BlueprintReadOnly) int32 Combo = 0;
     UPROPERTY(BlueprintReadOnly) int32 Potions = 2;
     UPROPERTY(BlueprintReadOnly) int32 RelicCount = 0;
+    UPROPERTY(BlueprintReadOnly) int32 Echoes = 0;
+    UPROPERTY(BlueprintReadOnly) int32 VisualQuality = 2; // 0 low, 1 medium, 2 high
     UPROPERTY(BlueprintReadOnly) float HP = 100.f;
     UPROPERTY(BlueprintReadOnly) float MaxHP = 100.f;
     UPROPERTY(BlueprintReadOnly) float Stamina = 100.f;
@@ -129,6 +142,7 @@ public:
 
     EAVPhase Phase = EAVPhase::Playing;
     FVector2D Hero = FVector2D(4.f, 4.f);
+    FVector2D HeroVelocity = FVector2D::ZeroVector;
     FVector2D Aim = FVector2D(1.f, 0.f);
     FVector2D Exit = FVector2D(8.f, 8.f);
     FVector2D Shrine = FVector2D(8.f, 8.f);
@@ -159,6 +173,7 @@ public:
     TArray<FAVChest> Chests;
     TArray<FAVHazard> Hazards;
     TArray<FAVProp> Props;
+    TArray<FAVDecor> Decorations;
     TArray<FAVEffect> Effects;
     float AttackCooldown = 0.f;
     float KnifeCooldown = 0.f;
@@ -195,6 +210,7 @@ private:
     bool PrevPause = false;
     bool PrevEnter = false;
     bool PrevReplay = false;
+    bool PrevQuality = false;
     bool PrevChoices[3] = { false, false, false };
     FVector2D DashDirection = FVector2D(1.f, 0.f);
     int32 LastVisionX = -1;
@@ -211,6 +227,7 @@ private:
     void BuyFromMerchant(int32 Slot);
     void StrikeProps(bool bSpin, float Damage);
     bool OpenNearbyChest();
+    bool ActivateNearbyEcho();
     void DamageHero(float Damage, const FVector2D& Source);
     void Strike(bool bSpin);
     void KillEnemy(int32 Index);

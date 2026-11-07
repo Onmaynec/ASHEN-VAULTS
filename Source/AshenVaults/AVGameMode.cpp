@@ -132,7 +132,8 @@ void AAVGameMode::NewRun(bool bSameSeed)
     Floor = 1; Level = 1; XP = 0; Gold = 0; Kills = 0; Potions = 2;
     HP = 100.f; MaxHP = 100.f; Stamina = 100.f; MaxStamina = 100.f;
     AttackPower = 18.f; MoveSpeed = 4.8f; RunTime = 0.f;
-    RelicMask = 0u; RelicCount = 0; bRelicPending = false;
+    RelicMask = 0u; RelicCount = 0; Echoes = 0; bRelicPending = false;
+    HeroVelocity = FVector2D::ZeroVector;
     PoisonTime = 0.f; BurnTime = 0.f; StatusTick = 0.f; DashCooldown = 0.f;
     AttackCooldown = 0.f; KnifeCooldown = 0.f; SpinCooldown = 0.f; DashTime = 0.f;
     Invulnerability = 0.f; ScreenShake = 0.f;
@@ -156,7 +157,8 @@ void AAVGameMode::GenerateFloor()
     FlowDistances.Init(-1, MapW * MapH);
     LastVisionX = -1; LastVisionY = -1; FlowRefreshTime = 0.f;
     Enemies.Reset(); Pickups.Reset(); Bolts.Reset(); Effects.Reset(); Traps.Reset(); Chests.Reset();
-    Hazards.Reset(); Props.Reset();
+    Hazards.Reset(); Props.Reset(); Decorations.Reset();
+    HeroVelocity = FVector2D::ZeroVector;
     bMerchantSpawned = false;
     for (int32 I = 0; I < 3; ++I) ShopPurchased[I] = false;
     PoisonTime = 0.f; BurnTime = 0.f; StatusTick = 0.f;
@@ -337,6 +339,33 @@ void AAVGameMode::GenerateFloor()
         for (const FAVChest& Chest : Chests)
             bNearChest |= FVector2D::Distance(Prop.Pos, Chest.Pos) < 1.1f;
         if (!bNearChest) Props.Add(Prop);
+    }
+    // Deterministic environmental silhouettes. They are decorative and do
+    // not block collision, stairs or pickup positions. Each biome has its own
+    // stonework, light fixture and one-time Echo artifact.
+    const int32 BiomeBase = CurrentBiome() * 3;
+    for (int32 I = 0; I < Rooms.Num(); ++I)
+    {
+        const FRoom& R = Rooms[I];
+        const int32 Count = I == 0 ? 2 : RNG.RandRange(2, 3);
+        for (int32 D = 0; D < Count; ++D)
+        {
+            FAVDecor Decor;
+            Decor.Type = BiomeBase + (D + I) % 3;
+            Decor.Pos = FVector2D(
+                D == 0 ? R.X + 1.6f : D == 1 ? R.X + R.W - 1.6f : R.X + R.W * 0.5f,
+                D == 0 ? R.Y + 1.6f : D == 1 ? R.Y + 1.6f : R.Y + R.H - 1.6f);
+            Decor.Phase = RNG.FRandRange(0.f, 6.28318f);
+            if (FVector2D::Distance(Decor.Pos, Hero) < 2.3f ||
+                FVector2D::Distance(Decor.Pos, Shrine) < 1.8f ||
+                FVector2D::Distance(Decor.Pos, Exit) < 1.8f ||
+                (bMerchantSpawned && FVector2D::Distance(Decor.Pos, Merchant) < 1.8f))
+                continue;
+            bool bNearTrap = false;
+            for (const FAVTrap& Trap : Traps)
+                bNearTrap |= FVector2D::Distance(Trap.Pos, Decor.Pos) < 0.9f;
+            if (!bNearTrap) Decorations.Add(Decor);
+        }
     }
     RefreshAwareness(0.f, true);
 }
@@ -529,6 +558,30 @@ bool AAVGameMode::OpenNearbyChest()
     return false;
 }
 
+bool AAVGameMode::ActivateNearbyEcho()
+{
+    for (FAVDecor& Decor : Decorations)
+    {
+        if (Decor.bActivated || Decor.Type % 3 != 2 ||
+            FVector2D::Distance(Decor.Pos, Hero) >= 1.7f)
+            continue;
+        Decor.bActivated = true;
+        ++Echoes;
+        Gold += 5 * Floor;
+        MaxStamina += 4.f;
+        Stamina = FMath::Min(MaxStamina, Stamina + 18.f);
+        // Echoes map a nearby chamber without revealing live enemies.
+        TArray<uint8> TemporaryVisibility;
+        FAVDungeonNavigation::Reveal(Tiles, MapW, MapH, Decor.Pos,
+                                     9.f, TemporaryVisibility, Explored);
+        Toast = TEXT("ECHO RECLAIMED: +GOLD / +STAMINA / MAP");
+        ToastTime = 2.9f;
+        AddEffect(Decor.Pos, 1, 2.7f);
+        return true;
+    }
+    return false;
+}
+
 void AAVGameMode::DamageHero(float Damage, const FVector2D& Source)
 {
     if (Invulnerability > 0.f || Phase != EAVPhase::Playing) return;
@@ -635,6 +688,13 @@ void AAVGameMode::PollInput(float DeltaSeconds)
     const bool bPause = Pressed(PC, EKeys::Escape, PrevPause) || PC->WasInputKeyJustPressed(EKeys::P);
     const bool bRestart = Pressed(PC, EKeys::Enter, PrevEnter);
     const bool bReplay = Pressed(PC, EKeys::R, PrevReplay); // Retry after death; knife during play.
+    if (Pressed(PC, EKeys::F3, PrevQuality))
+    {
+        VisualQuality = (VisualQuality + 1) % 3;
+        Toast = VisualQuality == 2 ? TEXT("VISUALS: HIGH") :
+                VisualQuality == 1 ? TEXT("VISUALS: MEDIUM") : TEXT("VISUALS: LOW");
+        ToastTime = 2.f;
+    }
     const bool bChoice0 = Pressed(PC, EKeys::One, PrevChoices[0]);
     const bool bChoice1 = Pressed(PC, EKeys::Two, PrevChoices[1]);
     const bool bChoice2 = Pressed(PC, EKeys::Three, PrevChoices[2]);
@@ -703,10 +763,19 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         Invulnerability = FMath::Max(Invulnerability, 0.25f);
         AddEffect(Hero, 1, 0.7f);
     }
+    const FVector2D BeforeMovement = Hero;
     if (DashTime > 0.f)
-        Hero = MoveWithCollision(Hero, DashDirection * 16.f, DeltaSeconds, 0.27f);
+    {
+        // The dash never gains extra distance on slow frames.
+        const float DashDt = FMath::Min(DashTime, DeltaSeconds);
+        Hero = MoveWithCollision(Hero, DashDirection * 16.f, DashDt, 0.27f);
+        if (DeltaSeconds > DashDt)
+            Hero = MoveWithCollision(Hero, Direction * MoveSpeed,
+                                     DeltaSeconds - DashDt, 0.27f);
+    }
     else
         Hero = MoveWithCollision(Hero, Direction * MoveSpeed, DeltaSeconds, 0.27f);
+    HeroVelocity = (Hero - BeforeMovement) / FMath::Max(0.001f, DeltaSeconds);
 
     if (bHit) Strike(false);
     // A sword can defeat a guardian and open a relic selection instantly:
@@ -738,6 +807,10 @@ void AAVGameMode::PollInput(float DeltaSeconds)
     else if (bUse && OpenNearbyChest())
     {
         // A chest may release a mimic, which re-locks the stairs.
+    }
+    else if (bUse && ActivateNearbyEcho())
+    {
+        // One-time lore artifact, reward and nearby map discovery.
     }
     else if (bUse && IsExitReady() && FVector2D::Distance(Hero, Exit) < 1.7f)
     {
@@ -962,43 +1035,53 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
 void AAVGameMode::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
-    const float DT = FMath::Min(DeltaSeconds, 0.05f);
-    PollInput(DT);
+    // The old 50ms clamp silently slowed the whole world below 20 FPS.
+    // Subdivide up to half a second of real elapsed time into stable steps.
+    // Very long OS stalls are capped to avoid simulating unsafe seconds of
+    // unseen attacks in a single frame; normal 10/15/30 FPS is unaffected.
+    const float FrameDelta = FMath::Clamp(DeltaSeconds, 0.f, 0.5f);
+    PollInput(FrameDelta);
     if (Phase != EAVPhase::Playing) return;
-    RunTime += DT;
-    AttackCooldown = FMath::Max(0.f, AttackCooldown - DT);
-    KnifeCooldown = FMath::Max(0.f, KnifeCooldown - DT);
-    SpinCooldown = FMath::Max(0.f, SpinCooldown - DT);
-    DashTime = FMath::Max(0.f, DashTime - DT);
-    DashCooldown = FMath::Max(0.f, DashCooldown - DT);
-    Invulnerability = FMath::Max(0.f, Invulnerability - DT);
-    ScreenShake = FMath::Max(0.f, ScreenShake - DT);
-    Stamina = FMath::Min(MaxStamina, Stamina + 14.5f * DT);
-    ComboTime = FMath::Max(0.f, ComboTime - DT);
-    if (ComboTime == 0.f) Combo = 0;
-    ToastTime = FMath::Max(0.f, ToastTime - DT);
-    RefreshAwareness(DT);
-    UpdateCombat(DT);
-    if (Phase != EAVPhase::Playing) return;
+    const int32 Steps = FMath::Clamp(FMath::CeilToInt(FrameDelta / (1.f / 45.f)), 1, 24);
+    const float DT = FrameDelta / Steps;
+    for (int32 Step = 0; Step < Steps; ++Step)
+    {
+        if (Phase != EAVPhase::Playing) break;
+        RunTime += DT;
+        AttackCooldown = FMath::Max(0.f, AttackCooldown - DT);
+        KnifeCooldown = FMath::Max(0.f, KnifeCooldown - DT);
+        SpinCooldown = FMath::Max(0.f, SpinCooldown - DT);
+        DashTime = FMath::Max(0.f, DashTime - DT);
+        DashCooldown = FMath::Max(0.f, DashCooldown - DT);
+        Invulnerability = FMath::Max(0.f, Invulnerability - DT);
+        ScreenShake = FMath::Max(0.f, ScreenShake - DT);
+        Stamina = FMath::Min(MaxStamina, Stamina + 14.5f * DT);
+        ComboTime = FMath::Max(0.f, ComboTime - DT);
+        if (ComboTime <= 0.f) Combo = 0;
+        ToastTime = FMath::Max(0.f, ToastTime - DT);
+        RefreshAwareness(DT);
+        UpdateCombat(DT);
+        if (Phase != EAVPhase::Playing) break;
 
-    // Over-time hazards tick at most once per second; potions cleanse both.
-    PoisonTime = FMath::Max(0.f, PoisonTime - DT);
-    BurnTime = FMath::Max(0.f, BurnTime - DT);
-    if (PoisonTime > 0.f || BurnTime > 0.f)
-    {
-        StatusTick += DT;
-        if (StatusTick >= 1.f)
+        PoisonTime = FMath::Max(0.f, PoisonTime - DT);
+        BurnTime = FMath::Max(0.f, BurnTime - DT);
+        if (PoisonTime > 0.f || BurnTime > 0.f)
         {
-            StatusTick -= 1.f;
-            const float DotDamage = (PoisonTime > 0.f ? 4.f : 0.f) +
-                                    (BurnTime > 0.f ? 6.f : 0.f);
-            DamageHero(DotDamage, Hero);
+            StatusTick += DT;
+            if (StatusTick >= 1.f)
+            {
+                StatusTick -= 1.f;
+                const float DotDamage = (PoisonTime > 0.f ? 4.f : 0.f) +
+                                        (BurnTime > 0.f ? 6.f : 0.f);
+                DamageHero(DotDamage, Hero);
+            }
         }
-    }
-    else StatusTick = 0.f;
-    for (int32 I = Effects.Num() - 1; I >= 0; --I)
-    {
-        Effects[I].Life -= DT;
-        if (Effects[I].Life <= 0.f) Effects.RemoveAtSwap(I);
+        else StatusTick = 0.f;
+
+        for (int32 I = Effects.Num() - 1; I >= 0; --I)
+        {
+            Effects[I].Life -= DT;
+            if (Effects[I].Life <= 0.f) Effects.RemoveAtSwap(I);
+        }
     }
 }
