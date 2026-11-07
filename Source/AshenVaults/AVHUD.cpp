@@ -210,6 +210,97 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
         Put(2, 4, Fire); Put(13, 4, Fire);
     }
 
+    else if (Type >= 17 && Type <= 22) // new archetypes and three boss silhouettes
+    {
+        const FColor Body = Type == 17 ? PixelColor(118, 106, 107) :
+            Type == 18 ? PixelColor(82, 146, 110) :
+            Type == 19 ? PixelColor(149, 74, 55) :
+            Type == 20 ? PixelColor(156, 146, 115) :
+            Type == 21 ? PixelColor(186, 93, 49) : PixelColor(112, 95, 168);
+        const FColor Glow = Type == 17 ? PixelColor(232, 88, 105) :
+            Type == 18 ? PixelColor(188, 244, 117) :
+            Type == 19 ? PixelColor(255, 159, 57) :
+            Type == 20 ? PixelColor(244, 201, 131) :
+            Type == 21 ? PixelColor(252, 171, 68) : PixelColor(189, 154, 251);
+        Box(3, 12, 12, 14, Shadow);
+        Box(3, 7, 12, 11, Outline);
+        Box(4, 5, 11, 10, Body);
+        Box(5, 4, 10, 6, Body);
+        Box(6, 7, 7, 8, Glow); Box(9, 7, 10, 8, Glow);
+        Box(4, 11, 6, 13, Body); Box(9, 11, 11, 13, Body);
+        if (Type == 17) // grave hound: low, horned silhouette
+        {
+            Box(2, 8, 5, 10, Body);
+            Put(3, 5, White); Put(11, 3, White); Put(12, 6, Shadow);
+            Box(12, 9, 14, 10, Body);
+        }
+        else if (Type == 18) // sporecaller: toxic mushroom cap
+        {
+            Box(3, 3, 12, 5, Glow);
+            Box(5, 2, 10, 3, Body);
+            Put(6, 3, White); Put(10, 4, White);
+            Put(2, 9, Glow); Put(13, 10, Glow);
+        }
+        else if (Type == 19) // cinder golem: stone arms and magma seams
+        {
+            Box(1, 7, 4, 12, Body); Box(11, 7, 14, 12, Body);
+            Box(7, 4, 8, 13, Glow);
+            Box(4, 8, 6, 8, Glow); Box(9, 10, 11, 10, Glow);
+        }
+        else if (Type == 20) // bone regent: crown
+        {
+            Box(3, 3, 12, 4, Glow);
+            Put(3, 1, White); Put(7, 0, White); Put(12, 1, White);
+            Box(4, 6, 11, 10, Metal);
+            Box(6, 8, 9, 8, Shadow);
+        }
+        else if (Type == 21) // forge tyrant: blazing horns
+        {
+            Box(3, 2, 5, 5, Fire); Box(10, 2, 12, 5, Fire);
+            Put(2, 1, Glow); Put(13, 1, Glow);
+            Box(6, 9, 9, 12, Glow);
+            Box(1, 9, 3, 12, Body); Box(12, 9, 14, 12, Body);
+        }
+        else if (Type == 22) // void wisp: floating orb
+        {
+            Box(4, 4, 11, 11, Body);
+            Box(6, 6, 9, 9, Glow);
+            Box(7, 7, 8, 8, White);
+            Put(2, 5, Glow); Put(13, 10, Glow); Put(6, 2, Glow);
+            Box(4, 12, 11, 14, FColor::Transparent);
+        }
+    }
+    else if (Type == 23) // wandering merchant
+    {
+        Box(3, 12, 12, 14, Shadow);
+        Box(4, 6, 11, 12, PixelColor(86, 72, 121));
+        Box(5, 3, 10, 6, PixelColor(175, 139, 109));
+        Box(3, 3, 12, 4, PixelColor(81, 63, 93));
+        Box(6, 5, 6, 5, GoldColor.ToFColor(true));
+        Box(9, 5, 9, 5, GoldColor.ToFColor(true));
+        Box(12, 7, 14, 11, PixelColor(159, 116, 58));
+        Put(13, 8, Fire); Put(13, 10, Fire);
+    }
+    else if (Type == 24 || Type == 25) // destructible pot or crate
+    {
+        if (Type == 24)
+        {
+            Box(4, 5, 11, 12, PixelColor(87, 69, 73));
+            Box(5, 3, 10, 5, PixelColor(142, 113, 100));
+            Box(5, 6, 10, 11, PixelColor(149, 94, 87));
+            Box(6, 6, 6, 11, PixelColor(198, 136, 105));
+            Box(7, 12, 8, 13, Shadow);
+        }
+        else
+        {
+            Box(3, 4, 12, 13, PixelColor(102, 64, 48));
+            Box(4, 5, 11, 12, PixelColor(165, 106, 68));
+            Box(5, 5, 6, 12, PixelColor(83, 59, 56));
+            Box(10, 5, 11, 12, PixelColor(83, 59, 56));
+            Box(3, 8, 12, 9, PixelColor(198, 142, 83));
+        }
+    }
+
     UTexture2D* Texture = UTexture2D::CreateTransient(N, N, PF_B8G8R8A8);
     if (!Texture) return nullptr;
     Texture->Filter = TF_Nearest;
@@ -235,7 +326,7 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
 void AAVHUD::InitSprites()
 {
     if (Sprites.Num() > 0) return;
-    for (int32 I = 0; I <= 16; ++I) Sprites.Add(MakeSprite(I));
+    for (int32 I = 0; I <= 25; ++I) Sprites.Add(MakeSprite(I));
 }
 
 void AAVHUD::Sprite(int32 Type, const FVector2D& Pos, float Size, float Alpha)
@@ -270,11 +361,11 @@ void AAVHUD::DrawDungeon(const AAVGameMode& Game)
                 const int32 Hash = (X * 1777 + Y * 6511 + X * Y * 17) & 15;
                 const float Variation = Hash / 255.f;
                 Rect(SX, SY, T + 0.5f, T + 0.5f,
-                     Game.Floor == 1 ?
+                     Game.CurrentBiome() == 0 ?
                          FLinearColor(0.105f + Variation, 0.126f + Variation, 0.148f + Variation, 1.f) :
-                     Game.Floor == 2 ?
-                         FLinearColor(0.135f + Variation, 0.109f + Variation, 0.127f + Variation, 1.f) :
-                         FLinearColor(0.086f + Variation, 0.130f + Variation, 0.151f + Variation, 1.f));
+                     Game.CurrentBiome() == 1 ?
+                         FLinearColor(0.085f + Variation, 0.153f + Variation, 0.122f + Variation, 1.f) :
+                         FLinearColor(0.181f + Variation, 0.097f + Variation, 0.095f + Variation, 1.f));
                 Rect(SX + 1.f * Scale, SY + 1.f * Scale, T - 2.f * Scale, 1.f * Scale,
                      FLinearColor(0.155f, 0.17f, 0.19f, 0.7f));
                 if ((Hash % 3) == 0)
@@ -348,6 +439,35 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
                                   FLinearColor(0.26f, 0.12f, 0.15f, 0.45f));
         Sprite(9, Game.Exit, 1.1f, Game.IsExitReady() ? 1.f : 0.55f);
     }
+    if (Game.bMerchantSpawned && Game.IsVisibleAt(Game.Merchant))
+    {
+        const FVector2D Pt = Screen(Game.Merchant);
+        Rect(Pt.X - 17.f * Scale, Pt.Y - 16.f * Scale,
+             34.f * Scale, 3.f * Scale, GoldColor);
+        Sprite(23, Game.Merchant, 1.15f);
+    }
+    for (const FAVHazard& Hazard : Game.Hazards)
+    {
+        if (!Game.IsVisibleAt(Hazard.Pos)) continue;
+        const FVector2D Pt = Screen(Hazard.Pos);
+        const float Glow = 0.2f + 0.1f * FMath::Sin(Game.RunTime * 6.f + Hazard.Pos.X);
+        const FLinearColor Color = Hazard.Type == 0 ?
+            FLinearColor(0.28f, 0.83f, 0.27f, Glow) :
+            FLinearColor(1.f, 0.31f, 0.05f, Glow);
+        Rect(Pt.X - 20.f * Scale, Pt.Y - 20.f * Scale,
+             40.f * Scale, 40.f * Scale, Color);
+        Rect(Pt.X - 11.f * Scale, Pt.Y - 8.f * Scale,
+             22.f * Scale, 16.f * Scale, Color);
+        for (int32 I = 0; I < 4; ++I)
+            Rect(Pt.X + (I * 7.f - 12.f) * Scale,
+                 Pt.Y + (FMath::Sin(Game.RunTime * 3.f + I) * 5.f - 5.f) * Scale,
+                 3.f * Scale, 3.f * Scale,
+                 Hazard.Type == 0 ? Mint : GoldColor);
+    }
+    for (const FAVProp& Prop : Game.Props)
+        if (Game.IsVisibleAt(Prop.Pos))
+            Sprite(Prop.Type == 0 ? 24 : 25, Prop.Pos, 0.93f);
+
     if (!Game.bShrineUsed && Game.IsVisibleAt(Game.Shrine))
     {
         const FVector2D Site = Screen(Game.Shrine);
@@ -410,7 +530,8 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
     {
         if (!Game.IsVisibleAt(E.Pos)) continue;
         const FVector2D Pt = Screen(E.Pos);
-        const float Radius = E.Type == 3 ? 1.6f : 1.f;
+        const bool bBoss = E.Type == 3 || E.Type == 8 || E.Type == 9;
+        const float Radius = bBoss ? 1.65f : E.Type == 7 ? 1.2f : 1.f;
         Rect(Pt.X - 9.f * Scale * Radius, Pt.Y + 7.f * Scale * Radius,
              18.f * Scale * Radius, 3.f * Scale,
              FLinearColor(0.f, 0.f, 0.f, 0.34f));
@@ -427,17 +548,21 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
             Rect(Pt.X - 12.f * Scale, Pt.Y + 10.f * Scale,
                  24.f * Scale * (E.Type == 3 ? E.Telegraph / 0.47f :
                        E.Type == 1 ? E.Telegraph / 0.44f :
-                       E.Type == 4 ? E.Telegraph / 0.26f : E.Telegraph / 0.31f),
+                       E.Type == 4 ? E.Telegraph / 0.26f :
+                       bBoss ? E.Telegraph / 0.53f :
+                       E.Type == 7 ? E.Telegraph / 0.54f : E.Telegraph / 0.31f),
                  2.f * Scale, Warning);
         }
-        Sprite(E.Type == 0 ? 1 : E.Type == 1 ? 2 : E.Type == 2 ? 3 :
-               E.Type == 4 ? 16 : 4,
-               E.Pos, Radius, E.Flash > 0.f ? 0.55f : 1.f);
-        if (E.HP < E.MaxHP || E.Type == 3 || E.bElite)
+        const int32 SpriteType = E.Type == 0 ? 1 : E.Type == 1 ? 2 :
+            E.Type == 2 ? 3 : E.Type == 3 ? 4 : E.Type == 4 ? 16 :
+            E.Type == 5 ? 17 : E.Type == 6 ? 18 : E.Type == 7 ? 19 :
+            E.Type == 8 ? 20 : E.Type == 9 ? 21 : 22;
+        Sprite(SpriteType, E.Pos, Radius, E.Flash > 0.f ? 0.55f : 1.f);
+        if (E.HP < E.MaxHP || bBoss || E.bElite)
         {
-            const float W = (E.Type == 3 ? 45.f : 23.f) * Scale;
-            Rect(Pt.X - W * 0.5f, Pt.Y - (E.Type == 3 ? 24.f : 19.f) * Scale, W, 3.f * Scale, Ink);
-            Rect(Pt.X - W * 0.5f, Pt.Y - (E.Type == 3 ? 24.f : 19.f) * Scale,
+            const float W = (bBoss ? 45.f : 23.f) * Scale;
+            Rect(Pt.X - W * 0.5f, Pt.Y - (bBoss ? 25.f : 19.f) * Scale, W, 3.f * Scale, Ink);
+            Rect(Pt.X - W * 0.5f, Pt.Y - (bBoss ? 25.f : 19.f) * Scale,
                  W * FMath::Clamp(E.HP / E.MaxHP, 0.f, 1.f), 2.f * Scale, Blood);
         }
     }
@@ -485,7 +610,10 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         }
     }
 
-    if (!Game.bShrineUsed && FVector2D::Distance(Game.Hero, Game.Shrine) < 2.1f)
+    if (Game.bMerchantSpawned && FVector2D::Distance(Game.Hero, Game.Merchant) < 2.0f)
+        Text(TEXT("F  VISIT THE MERCHANT"),
+             Hp.X - 77.f * Scale, Hp.Y - 49.f * Scale, GoldColor, 0.85f);
+    else if (!Game.bShrineUsed && FVector2D::Distance(Game.Hero, Game.Shrine) < 2.1f)
         Text(TEXT("F  PRAY  +HP / +DAMAGE"),
              Hp.X - 69.f * Scale, Hp.Y - 49.f * Scale, Mint, 0.88f);
     else if ([&Game]()
