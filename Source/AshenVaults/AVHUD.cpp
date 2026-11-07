@@ -639,6 +639,46 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         if (Game.IsVisibleAt(Prop.Pos))
             Sprite(Prop.Type == 0 ? 24 : 25, Prop.Pos, 0.93f);
 
+    // Layered world silhouettes: non-colliding 2.5D props have contact
+    // shadows and subtle emissive features that reflect the biome palette.
+    for (const FAVDecor& Decor : Game.Decorations)
+    {
+        if (!Game.IsVisibleAt(Decor.Pos)) continue;
+        const FVector2D Pt = Screen(Decor.Pos);
+        const float S = Scale;
+        const bool bLuminous = Decor.Type % 3 == 1;
+        const bool bEcho = Decor.Type % 3 == 2;
+        const float PulseIntensity = 0.5f + 0.5f *
+            FMath::Sin(Game.RunTime * 5.5f + Decor.Phase);
+        const FLinearColor LightColor = FAVArt::LightColor(Game.CurrentBiome());
+        Rect(Pt.X - 11.f * S, Pt.Y + 8.f * S,
+             22.f * S, 5.f * S,
+             FLinearColor(0.f, 0.003f, 0.012f, 0.55f));
+        if (bLuminous && Game.VisualQuality > 0)
+        {
+            Rect(Pt.X - 15.f * S, Pt.Y - 17.f * S,
+                 30.f * S, 26.f * S,
+                 FLinearColor(LightColor.R, LightColor.G, LightColor.B,
+                              0.035f + PulseIntensity * 0.085f));
+        }
+        const FVector2D Bob = Decor.Pos +
+            FVector2D(0.f, bLuminous ? -PulseIntensity * 0.06f : 0.f);
+        Sprite(26 + Decor.Type, Bob, bEcho ? 1.32f : 1.12f,
+               Decor.bActivated ? 0.45f : 1.f);
+        if (bEcho && !Decor.bActivated)
+        {
+            for (int32 I = 0; I < 3; ++I)
+            {
+                const float A = Game.RunTime * 1.6f + Decor.Phase + I * 2.094f;
+                const FVector2D Spark = Pt + FVector2D(FMath::Cos(A), FMath::Sin(A)) *
+                    (13.f * S);
+                Rect(Spark.X, Spark.Y, 2.f * S, 2.f * S,
+                     FLinearColor(LightColor.R, LightColor.G, LightColor.B,
+                                  0.5f + 0.45f * PulseIntensity));
+            }
+        }
+    }
+
     if (!Game.bShrineUsed && Game.IsVisibleAt(Game.Shrine))
     {
         const FVector2D Site = Screen(Game.Shrine);
@@ -728,7 +768,11 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
             E.Type == 2 ? 3 : E.Type == 3 ? 4 : E.Type == 4 ? 16 :
             E.Type == 5 ? 17 : E.Type == 6 ? 18 : E.Type == 7 ? 19 :
             E.Type == 8 ? 20 : E.Type == 9 ? 21 : 22;
-        Sprite(SpriteType, E.Pos, Radius, E.Flash > 0.f ? 0.55f : 1.f);
+        const float EnemyBob = FMath::Sin(Game.RunTime *
+            (E.Type == 5 ? 15.f : 7.f) + E.Id * 0.7f) *
+            (E.Type == 10 ? 0.12f : 0.045f);
+        Sprite(SpriteType, E.Pos + FVector2D(0.f, EnemyBob),
+               Radius, E.Flash > 0.f ? 0.55f : 1.f);
         if (E.HP < E.MaxHP || bBoss || E.bElite)
         {
             const float W = (bBoss ? 45.f : 23.f) * Scale;
@@ -742,8 +786,19 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
     Rect(Hp.X - 10.f * Scale, Hp.Y + 9.f * Scale, 20.f * Scale, 3.f * Scale,
          FLinearColor(0.f, 0.f, 0.f, 0.5f));
     if (Game.DashTime > 0.f)
-        Sprite(0, Game.Hero - Game.Aim * 0.35f, 1.12f, 0.28f);
-    Sprite(0, Game.Hero, 1.17f, Game.Invulnerability > 0.f && FMath::Sin(Game.RunTime * 32.f) > 0.f ? 0.5f : 1.f);
+    {
+        const FVector2D Direction = Game.HeroVelocity.GetSafeNormal();
+        for (int32 Trail = 1; Trail <= 3; ++Trail)
+            Sprite(0, Game.Hero - Direction * (0.22f * Trail),
+                   1.12f, 0.30f / Trail);
+    }
+    const bool bWalking = Game.HeroVelocity.Size() > 0.2f;
+    const int32 WalkFrame = bWalking && (FMath::FloorToInt(Game.RunTime * 8.f) % 2 != 0)
+        ? 35 : 0;
+    const float WalkBob = bWalking ? FMath::Sin(Game.RunTime * 16.f) * 0.045f : 0.f;
+    Sprite(WalkFrame, Game.Hero + FVector2D(0.f, WalkBob), 1.17f,
+           Game.Invulnerability > 0.f &&
+           FMath::Sin(Game.RunTime * 32.f) > 0.f ? 0.5f : 1.f);
 
     const FVector2D Arrow = Hp + Game.Aim * (18.f * Scale);
     Rect(Arrow.X - Scale, Arrow.Y - Scale, 3.f * Scale, 3.f * Scale, GoldColor);
@@ -771,12 +826,21 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         {
             const FLinearColor Color = E.Kind == 2 ? Blood : GoldColor;
             const float Radius = E.Radius * T * (0.3f + Progress);
-            for (int32 I = 0; I < 8; ++I)
+            const int32 Shards = Game.VisualQuality == 2 ? 14 : 8;
+            for (int32 I = 0; I < Shards; ++I)
             {
-                const float A = I * 0.785398f;
-                const FVector2D Pixel = Pt + FVector2D(FMath::Cos(A), FMath::Sin(A)) * Radius;
-                Rect(Pixel.X, Pixel.Y, 3.f * Scale, 3.f * Scale,
+                const float A = I * 6.283185f / Shards + E.Angle;
+                const FVector2D Direction(FMath::Cos(A), FMath::Sin(A));
+                const FVector2D Pixel = Pt + Direction * Radius;
+                const float Particle = (I % 4 == 0 ? 4.f : 2.f) * Scale;
+                Rect(Pixel.X, Pixel.Y, Particle, Particle,
                      FLinearColor(Color.R, Color.G, Color.B, 1.f - Progress));
+                if (Game.VisualQuality == 2)
+                    Rect(Pixel.X - Direction.X * 5.f * Scale,
+                         Pixel.Y - Direction.Y * 5.f * Scale,
+                         2.f * Scale, 2.f * Scale,
+                         FLinearColor(Color.R, Color.G, Color.B,
+                                      0.45f * (1.f - Progress)));
             }
         }
     }
@@ -796,6 +860,16 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
     }())
         Text(TEXT("F  OPEN TREASURE"), Hp.X - 61.f * Scale,
              Hp.Y - 49.f * Scale, GoldColor, 0.88f);
+    else if ([&Game]()
+    {
+        for (const FAVDecor& Decor : Game.Decorations)
+            if (!Decor.bActivated && Decor.Type % 3 == 2 &&
+                FVector2D::Distance(Game.Hero, Decor.Pos) < 2.1f)
+                return true;
+        return false;
+    }())
+        Text(TEXT("F  RECLAIM AN ECHO"),
+             Hp.X - 69.f * Scale, Hp.Y - 49.f * Scale, Aether, 0.88f);
     else if (Game.IsExitReady() && FVector2D::Distance(Game.Hero, Game.Exit) < 2.1f)
         Text(TEXT("F  ENTER THE DEPTHS"),
              Hp.X - 57.f * Scale, Hp.Y - 49.f * Scale, Mint, 0.88f);
@@ -843,6 +917,13 @@ void AAVHUD::DrawMiniMap(const AAVGameMode& Game)
         Rect(X0 + Game.Exit.X * Unit - Unit * 0.5f,
              Y0 + Game.Exit.Y * Unit - Unit * 0.5f,
              3.f * Scale, 3.f * Scale, Game.IsExitReady() ? Mint : Blood);
+    for (const FAVDecor& Decor : Game.Decorations)
+        if (!Decor.bActivated && Decor.Type % 3 == 2 &&
+            Game.IsExploredCell(FMath::FloorToInt(Decor.Pos.X),
+                                FMath::FloorToInt(Decor.Pos.Y)))
+            Rect(X0 + Decor.Pos.X * Unit - Unit * 0.5f,
+                 Y0 + Decor.Pos.Y * Unit - Unit * 0.5f,
+                 3.f * Scale, 3.f * Scale, Aether);
     for (const FAVChest& Chest : Game.Chests)
         if (!Chest.bOpened && Game.IsExploredCell(FMath::FloorToInt(Chest.Pos.X),
                                                   FMath::FloorToInt(Chest.Pos.Y)))
@@ -894,8 +975,11 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
          FString::Printf(TEXT("FOES %d  |  CACHE %d"),
              Game.EnemiesRemaining(), Game.UnopenedChests()),
          646.f * Scale, Y + 11.f * Scale, Game.IsExitReady() ? Mint : Blood, 0.95f);
-    Text(FString::Printf(TEXT("DODGE SPACE   RELICS %d"), Game.RelicCount),
+    Text(FString::Printf(TEXT("RELICS %d   ECHOES %d"), Game.RelicCount, Game.Echoes),
          646.f * Scale, Y + 34.f * Scale, Pale, 0.83f);
+    Text(FString::Printf(TEXT("F3  FX %s"), Game.VisualQuality == 2 ?
+         TEXT("HIGH") : Game.VisualQuality == 1 ? TEXT("MED") : TEXT("LOW")),
+         816.f * Scale, Y + 53.f * Scale, Aether, 0.73f);
 
     if (Game.PoisonTime > 0.f)
         Text(FString::Printf(TEXT("POISON  %.0f"), Game.PoisonTime),
