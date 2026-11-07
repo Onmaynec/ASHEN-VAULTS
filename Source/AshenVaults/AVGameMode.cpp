@@ -98,6 +98,10 @@ void AAVGameMode::NewRun(bool bSameSeed)
 
 void AAVGameMode::GenerateFloor()
 {
+    // Floor layouts are independent of combat loot RNG consumption.
+    // This makes the same run seed reproducible on every depth.
+    RNG.Initialize(static_cast<int32>(static_cast<uint32>(RunSeed) ^
+        (0x9e3779b9u * static_cast<uint32>(Floor))));
     Tiles.Init(0, MapW * MapH);
     Enemies.Reset(); Pickups.Reset(); Bolts.Reset(); Effects.Reset(); Traps.Reset();
     bShrineUsed = false;
@@ -197,7 +201,7 @@ void AAVGameMode::GenerateFloor()
             Enemies.Add(Enemy);
         }
     }
-    if (Floor == 3)
+    if (Floor == FinalFloor)
     {
         FAVEnemy Boss;
         Boss.Pos = Exit; Boss.Type = 3; Boss.HP = 360.f; Boss.MaxHP = 360.f;
@@ -424,7 +428,7 @@ void AAVGameMode::PollInput(float DeltaSeconds)
     }
     else if (bUse && IsExitReady() && FVector2D::Distance(Hero, Exit) < 1.7f)
     {
-        if (Floor >= 3) { Phase = EAVPhase::Victory; RecordRun(); }
+        if (Floor >= FinalFloor) { Phase = EAVPhase::Victory; RecordRun(); }
         else
         {
             ++Floor;

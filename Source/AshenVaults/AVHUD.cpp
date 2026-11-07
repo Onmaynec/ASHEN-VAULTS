@@ -450,8 +450,8 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
     const float P = 16.f * Scale;
     Rect(0.f, 0.f, Canvas->SizeX, 37.f * Scale, FLinearColor(0.018f, 0.024f, 0.041f, 0.94f));
     Text(TEXT("ASHEN VAULTS"), P, 10.f * Scale, GoldColor, 1.2f);
-    Text(FString::Printf(TEXT("DEPTH %d / 3  |  LVL %d  |  KILLS %d  |  GOLD %d"),
-        Game.Floor, Game.Level, Game.Kills, Game.Gold),
+    Text(FString::Printf(TEXT("DEPTH %d / %d  |  LVL %d  |  KILLS %d  |  GOLD %d"),
+        Game.Floor, AAVGameMode::FinalFloor, Game.Level, Game.Kills, Game.Gold),
         255.f * Scale, 10.f * Scale, Pale, 0.89f);
 
     const float Y = Canvas->SizeY - 74.f * Scale;
@@ -511,8 +511,8 @@ void AAVHUD::DrawOverlay(const AAVGameMode& Game)
         Text(Won ? TEXT("THE VAULT IS SILENT") : TEXT("YOU HAVE FALLEN"),
              Left + (Won ? 125.f : 153.f) * Scale, Top + 28.f * Scale,
              Won ? Mint : Blood, 1.4f);
-        Text(FString::Printf(TEXT("DEPTH %d / 3    KILLS %d    GOLD %d"),
-             Game.Floor, Game.Kills, Game.Gold),
+        Text(FString::Printf(TEXT("DEPTH %d / %d    KILLS %d    GOLD %d"),
+             Game.Floor, AAVGameMode::FinalFloor, Game.Kills, Game.Gold),
              Left + 133.f * Scale, Top + 92.f * Scale, Pale, 1.f);
         Text(FString::Printf(TEXT("BEST DEPTH %d    BEST KILLS %d"),
              Game.BestFloor, Game.BestKills),
