@@ -147,6 +147,25 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
         Box(7, 7, 8, 8, White);
         Put(5, 8, Fire); Put(10, 7, Fire);
     }
+    else if (Type == 11) // ancient shrine
+    {
+        Box(3, 12, 12, 14, Shadow);
+        Box(5, 9, 10, 12, DarkMetal);
+        Box(4, 8, 11, 9, Metal);
+        Box(6, 5, 9, 8, PixelColor(53, 124, 133));
+        Box(7, 3, 8, 6, PixelColor(86, 211, 193));
+        Put(7, 2, White); Put(8, 2, White);
+        Box(3, 5, 4, 10, DarkMetal); Box(11, 5, 12, 10, DarkMetal);
+    }
+    else if (Type == 12) // ashen damage shard
+    {
+        Put(7, 2, White); Put(8, 2, White);
+        Box(6, 3, 9, 4, PixelColor(186, 132, 244));
+        Box(5, 5, 10, 9, PixelColor(119, 70, 194));
+        Box(6, 10, 9, 11, PixelColor(80, 46, 152));
+        Put(7, 12, PixelColor(63, 39, 116));
+        Box(7, 4, 8, 7, PixelColor(225, 194, 255));
+    }
 
     UTexture2D* Texture = UTexture2D::CreateTransient(N, N, PF_B8G8R8A8);
     if (!Texture) return nullptr;
@@ -173,7 +192,7 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
 void AAVHUD::InitSprites()
 {
     if (Sprites.Num() > 0) return;
-    for (int32 I = 0; I <= 10; ++I) Sprites.Add(MakeSprite(I));
+    for (int32 I = 0; I <= 12; ++I) Sprites.Add(MakeSprite(I));
 }
 
 void AAVHUD::Sprite(int32 Type, const FVector2D& Pos, float Size, float Alpha)
@@ -181,8 +200,12 @@ void AAVHUD::Sprite(int32 Type, const FVector2D& Pos, float Size, float Alpha)
     if (!Canvas || !Sprites.IsValidIndex(Type) || !Sprites[Type]) return;
     const FVector2D At = Screen(Pos);
     const float Width = AAVGameMode::TilePixels * Scale * Size;
-    Canvas->DrawTile(Sprites[Type], At.X - Width * 0.5f, At.Y - Width * 0.5f,
-                     Width, Width, 0.f, 0.f, 1.f, 1.f, FLinearColor(1.f, 1.f, 1.f, Alpha), BLEND_Translucent);
+    // UCanvas::DrawTile does not accept an FLinearColor argument on UE4.27.
+    // AHUD::DrawTexture uses the correct tint + blend-mode signature.
+    DrawTexture(Sprites[Type], At.X - Width * 0.5f, At.Y - Width * 0.5f,
+                Width, Width, 0.f, 0.f, 1.f, 1.f,
+                FLinearColor(1.f, 1.f, 1.f, Alpha), BLEND_Translucent,
+                1.f, false, 0.f, FVector2D::ZeroVector);
 }
 
 void AAVHUD::DrawDungeon(const AAVGameMode& Game)
@@ -202,7 +225,11 @@ void AAVHUD::DrawDungeon(const AAVGameMode& Game)
                 const int32 Hash = (X * 1777 + Y * 6511 + X * Y * 17) & 15;
                 const float Variation = Hash / 255.f;
                 Rect(SX, SY, T + 0.5f, T + 0.5f,
-                     FLinearColor(0.105f + Variation, 0.126f + Variation, 0.148f + Variation, 1.f));
+                     Game.Floor == 1 ?
+                         FLinearColor(0.105f + Variation, 0.126f + Variation, 0.148f + Variation, 1.f) :
+                     Game.Floor == 2 ?
+                         FLinearColor(0.135f + Variation, 0.109f + Variation, 0.127f + Variation, 1.f) :
+                         FLinearColor(0.086f + Variation, 0.130f + Variation, 0.151f + Variation, 1.f));
                 Rect(SX + 1.f * Scale, SY + 1.f * Scale, T - 2.f * Scale, 1.f * Scale,
                      FLinearColor(0.155f, 0.17f, 0.19f, 0.7f));
                 if ((Hash % 3) == 0)
@@ -252,10 +279,44 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
                               FLinearColor(0.26f, 0.12f, 0.15f, 0.45f));
     Sprite(9, Game.Exit, 1.1f, Game.IsExitReady() ? 1.f : 0.55f);
 
+    if (!Game.bShrineUsed)
+    {
+        const FVector2D Site = Screen(Game.Shrine);
+        Rect(Site.X - 17.f * Scale, Site.Y - 11.f * Scale,
+             34.f * Scale, 25.f * Scale,
+             FLinearColor(0.12f, 0.42f, 0.42f, 0.13f + Pulse * 0.17f));
+        Sprite(11, Game.Shrine, 1.4f);
+    }
+
+    for (const FAVTrap& Trap : Game.Traps)
+    {
+        const FVector2D Pt = Screen(Trap.Pos);
+        const bool Armed = Trap.Windup > 0.f;
+        const FLinearColor TrapColor = Armed ?
+            (FMath::Sin(Game.RunTime * 25.f) > 0.f ?
+                FLinearColor(0.96f, 0.29f, 0.20f, 1.f) : GoldColor) :
+            (Trap.Cooldown > 0.f ?
+                FLinearColor(0.25f, 0.27f, 0.31f, 0.6f) :
+                FLinearColor(0.38f, 0.14f, 0.17f, 0.85f));
+        Rect(Pt.X - 8.f * Scale, Pt.Y - 8.f * Scale,
+             16.f * Scale, 16.f * Scale, Ink);
+        for (int32 I = -1; I <= 1; ++I)
+            Rect(Pt.X + (I * 5.f - 1.f) * Scale, Pt.Y - 5.f * Scale,
+                 3.f * Scale, 11.f * Scale, TrapColor);
+        if (Armed)
+        {
+            Rect(Pt.X - 14.f * Scale, Pt.Y - 14.f * Scale,
+                 28.f * Scale, 2.f * Scale, TrapColor);
+            Rect(Pt.X - 14.f * Scale, Pt.Y + 12.f * Scale,
+                 28.f * Scale, 2.f * Scale, TrapColor);
+        }
+    }
+
     for (const FAVPickup& P : Game.Pickups)
     {
         const FVector2D Pt = P.Pos + FVector2D(0.f, -0.11f * FMath::Sin(P.Time * 5.2f));
-        Sprite(P.Type == 0 ? 5 : P.Type == 1 ? 6 : P.Type == 2 ? 7 : 8, Pt, 0.7f);
+        Sprite(P.Type == 0 ? 5 : P.Type == 1 ? 6 : P.Type == 2 ? 7 :
+               P.Type == 3 ? 8 : 12, Pt, P.Type == 4 ? 0.9f : 0.7f);
     }
     for (const FAVBolt& Bolt : Game.Bolts)
         Sprite(10, Bolt.Pos, 0.55f);
@@ -267,9 +328,24 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         Rect(Pt.X - 9.f * Scale * Radius, Pt.Y + 7.f * Scale * Radius,
              18.f * Scale * Radius, 3.f * Scale,
              FLinearColor(0.f, 0.f, 0.f, 0.34f));
+        if (E.bElite)
+        {
+            Rect(Pt.X - 11.f * Scale, Pt.Y - 15.f * Scale, 22.f * Scale, 2.f * Scale, GoldColor);
+            Rect(Pt.X - 13.f * Scale, Pt.Y - 13.f * Scale, 2.f * Scale, 22.f * Scale, GoldColor);
+        }
+        if (E.Telegraph > 0.f)
+        {
+            const FLinearColor Warning = FMath::Sin(Game.RunTime * 30.f) > 0.f ? Blood : GoldColor;
+            Rect(Pt.X - 12.f * Scale, Pt.Y + 13.f * Scale,
+                 24.f * Scale, 2.f * Scale, Warning);
+            Rect(Pt.X - 12.f * Scale, Pt.Y + 10.f * Scale,
+                 24.f * Scale * (E.Type == 3 ? E.Telegraph / 0.47f :
+                       E.Type == 1 ? E.Telegraph / 0.44f : E.Telegraph / 0.31f),
+                 2.f * Scale, Warning);
+        }
         Sprite(E.Type == 0 ? 1 : E.Type == 1 ? 2 : E.Type == 2 ? 3 : 4,
                E.Pos, Radius, E.Flash > 0.f ? 0.55f : 1.f);
-        if (E.HP < E.MaxHP || E.Type == 3)
+        if (E.HP < E.MaxHP || E.Type == 3 || E.bElite)
         {
             const float W = (E.Type == 3 ? 45.f : 23.f) * Scale;
             Rect(Pt.X - W * 0.5f, Pt.Y - (E.Type == 3 ? 24.f : 19.f) * Scale, W, 3.f * Scale, Ink);
@@ -320,8 +396,12 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         }
     }
 
-    if (Game.IsExitReady() && FVector2D::Distance(Game.Hero, Game.Exit) < 2.1f)
-        Text(TEXT("F  ENTER THE DEPTHS"), Hp.X - 57.f * Scale, Hp.Y - 49.f * Scale, Mint, 0.88f);
+    if (!Game.bShrineUsed && FVector2D::Distance(Game.Hero, Game.Shrine) < 2.1f)
+        Text(TEXT("F  PRAY  +HP / +DAMAGE"),
+             Hp.X - 69.f * Scale, Hp.Y - 49.f * Scale, Mint, 0.88f);
+    else if (Game.IsExitReady() && FVector2D::Distance(Game.Hero, Game.Exit) < 2.1f)
+        Text(TEXT("F  ENTER THE DEPTHS"),
+             Hp.X - 57.f * Scale, Hp.Y - 49.f * Scale, Mint, 0.88f);
 }
 
 void AAVHUD::Bar(float X, float Y, float W, float H, float Fraction,
@@ -349,6 +429,10 @@ void AAVHUD::DrawMiniMap(const AAVGameMode& Game)
             if (Game.IsFloor(X, Y))
                 Rect(X0 + X * Unit, Y0 + Y * Unit, Unit * 0.87f, Unit * 0.87f,
                      FLinearColor(0.26f, 0.34f, 0.37f, 1.f));
+    if (!Game.bShrineUsed)
+        Rect(X0 + Game.Shrine.X * Unit - Unit * 0.5f,
+             Y0 + Game.Shrine.Y * Unit - Unit * 0.5f,
+             3.f * Scale, 3.f * Scale, Mint);
     Rect(X0 + Game.Exit.X * Unit - Unit * 0.5f,
          Y0 + Game.Exit.Y * Unit - Unit * 0.5f, 3.f * Scale, 3.f * Scale,
          Game.IsExitReady() ? Mint : Blood);
@@ -357,6 +441,8 @@ void AAVHUD::DrawMiniMap(const AAVGameMode& Game)
              2.f * Scale, 2.f * Scale, Blood);
     Rect(X0 + Game.Hero.X * Unit - Unit * 0.5f, Y0 + Game.Hero.Y * Unit - Unit * 0.5f,
          4.f * Scale, 4.f * Scale, GoldColor);
+    Text(FString::Printf(TEXT("SEED %d"), Game.RunSeed),
+         X0, Y0 + H + 7.f * Scale, Pale, 0.72f);
 }
 
 void AAVHUD::DrawInterface(const AAVGameMode& Game)
@@ -389,6 +475,12 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
          646.f * Scale, Y + 11.f * Scale, Game.IsExitReady() ? Mint : Blood, 0.95f);
     Text(TEXT("WASD MOVE    P PAUSE"), 646.f * Scale, Y + 34.f * Scale, Pale, 0.83f);
 
+    if (Game.Combo >= 2)
+        Text(FString::Printf(TEXT("COMBO x%d"), Game.Combo),
+             Canvas->SizeX * 0.5f - 46.f * Scale, 53.f * Scale, GoldColor, 1.4f);
+    if (Game.ToastTime > 0.f)
+        Text(Game.Toast, Canvas->SizeX * 0.5f - 123.f * Scale,
+             92.f * Scale, Mint, 1.02f);
     DrawMiniMap(Game);
 }
 
@@ -425,8 +517,8 @@ void AAVHUD::DrawOverlay(const AAVGameMode& Game)
         Text(FString::Printf(TEXT("BEST DEPTH %d    BEST KILLS %d"),
              Game.BestFloor, Game.BestKills),
              Left + 132.f * Scale, Top + 128.f * Scale, GoldColor, 0.95f);
-        Text(TEXT("PRESS ENTER TO START AGAIN"),
-             Left + 128.f * Scale, Top + 186.f * Scale, Mint, 1.f);
+        Text(TEXT("ENTER  NEW RUN     R  RETRY SAME SEED"),
+             Left + 90.f * Scale, Top + 184.f * Scale, Mint, 0.94f);
     }
 }
 
@@ -441,10 +533,16 @@ void AAVHUD::DrawHUD()
     Scale = FMath::Max(0.1f, FMath::Min(Canvas->SizeX / AAVGameMode::ViewW,
                                         Canvas->SizeY / AAVGameMode::ViewH));
     Center = FVector2D(Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f);
-    Origin = Center - Game->Hero * (AAVGameMode::TilePixels * Scale);
+    const FVector2D Shake(FMath::Sin(Game->RunTime * 113.f),
+                          FMath::Cos(Game->RunTime * 91.f));
+    Origin = Center - Game->Hero * (AAVGameMode::TilePixels * Scale) +
+             Shake * (Game->ScreenShake * 11.f * Scale);
     Rect(0.f, 0.f, Canvas->SizeX, Canvas->SizeY, Ink);
     DrawDungeon(*Game);
     DrawActors(*Game);
+    if (Game->Invulnerability > 0.5f)
+        Rect(0.f, 0.f, Canvas->SizeX, Canvas->SizeY,
+             FLinearColor(0.33f, 0.025f, 0.036f, 0.10f));
     DrawInterface(*Game);
     DrawOverlay(*Game);
 }
