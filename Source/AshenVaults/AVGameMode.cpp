@@ -741,138 +741,153 @@ void AAVGameMode::PollInput(float DeltaSeconds)
 
 void AAVGameMode::UpdateCombat(float DeltaSeconds)
 {
-    // Wind-up attacks are deliberately avoidable: a dash or a step out of range
-    // during the warning prevents the damage.
     for (int32 I = Enemies.Num() - 1; I >= 0; --I)
     {
+        if (Phase != EAVPhase::Playing) return;
         FAVEnemy& E = Enemies[I];
+        const FAVEnemySpec Spec = FAVContent::Enemy(E.Type, Floor);
         E.Cooldown -= DeltaSeconds;
         E.Flash = FMath::Max(0.f, E.Flash - DeltaSeconds);
         const FVector2D ToHero = Hero - E.Pos;
         const float Distance = ToHero.Size();
         const FVector2D Direction = SafeDirection(ToHero);
-        const float Speed = (E.Type == 0 ? 2.45f : E.Type == 1 ? 1.65f :
-                             E.Type == 2 ? 2.05f : E.Type == 4 ? 3.05f : 1.8f) *
-                            (E.bElite ? 1.18f : 1.f);
+        const float Speed = Spec.Speed * (E.bElite ? 1.18f : 1.f);
+        const bool bCaster = E.Type == 2 || E.Type == 6 || E.Type == 10;
+        const bool bMeleeBoss = E.Type == 8;
+        const float Reach = Spec.Boss ? (bMeleeBoss ? 2.0f : 1.6f) :
+                            E.Type == 7 ? 1.30f : 1.08f;
         FVector2D DesiredVelocity = FVector2D::ZeroVector;
-        if (Distance < 13.f && E.Telegraph <= 0.f)
+        if (Distance < 14.f && E.Telegraph <= 0.f)
         {
-            if (E.Type == 2 && Distance < 4.f)
+            if (bCaster && Distance < 3.8f)
                 DesiredVelocity = -Direction * Speed;
-            else if (Distance > (E.Type == 2 ? 6.f : E.Type == 3 ? 1.3f : 0.9f))
-            {
-                const FVector2D Path = FAVDungeonNavigation::FlowDirection(
-                    Tiles, FlowDistances, MapW, MapH, E.Pos, Hero);
-                DesiredVelocity = Path * Speed;
-            }
+            else if (Distance > (bCaster ? 5.3f :
+                                 Spec.Ranged && !bMeleeBoss ? 4.9f : Reach * 0.8f))
+                DesiredVelocity = FAVDungeonNavigation::FlowDirection(
+                    Tiles, FlowDistances, MapW, MapH, E.Pos, Hero) * Speed;
         }
         E.Pos = MoveWithCollision(E.Pos, DesiredVelocity + E.Knockback,
-                                  DeltaSeconds, E.Type == 3 ? 0.48f : 0.26f);
+                                  DeltaSeconds, Spec.Boss ? 0.47f : 0.26f);
         E.Knockback = FMath::Lerp(E.Knockback, FVector2D::ZeroVector,
-                                  FMath::Clamp(DeltaSeconds * 11.f, 0.f, 1.f));
-
+                                  FMath::Clamp(DeltaSeconds * 10.f, 0.f, 1.f));
         if (E.Telegraph > 0.f)
         {
             E.Telegraph -= DeltaSeconds;
             if (E.Telegraph <= 0.f)
             {
                 E.Telegraph = 0.f;
-                if (FVector2D::Distance(E.Pos, Hero) < (E.Type == 3 ? 1.5f : 1.20f))
-                    DamageHero((E.Type == 1 ? 18.f : E.Type == 3 ? 21.f :
-                                10.f + Floor * 2) * (E.bElite ? 1.35f : 1.f), E.Pos);
-                E.Cooldown = E.Type == 3 ? 1.2f : E.Type == 1 ? 1.4f : 1.1f;
+                // Enemies cannot swing through walls, either.
+                if (FVector2D::Distance(E.Pos, Hero) < Reach + 0.16f &&
+                    FAVDungeonNavigation::LineOfSight(Tiles, MapW, MapH, E.Pos, Hero))
+                    DamageHero(Spec.Damage * (E.bElite ? 1.35f : 1.f), E.Pos);
+                E.Cooldown = Spec.Boss ? 1.15f : E.Type == 7 ? 1.6f :
+                             E.Type == 1 ? 1.4f : 1.08f;
             }
             continue;
         }
-        if (E.Cooldown > 0.f || Distance > 8.4f) continue;
+        if (E.Cooldown > 0.f || Distance > 8.3f) continue;
 
-        if (E.Type == 2 || (E.Type == 3 && Distance >= 1.5f))
+        const bool bRangedAttack = (Spec.Ranged && Distance >= Reach) ||
+                                   (bMeleeBoss && Distance >= 2.2f);
+        if (bRangedAttack)
         {
-            if (Distance > 1.1f)
+            // Fix: ranged enemies require actual line of sight, not distance alone.
+            if (!FAVDungeonNavigation::LineOfSight(Tiles, MapW, MapH, E.Pos, Hero))
             {
-                FAVBolt Bolt;
-                Bolt.Pos = E.Pos;
-                Bolt.Velocity = Direction * (E.Type == 3 ? 7.8f : 6.8f);
-                Bolt.Damage = FMath::RoundToInt((E.Type == 3 ? 19.f :
-                    12.f + Floor * 2.f) * (E.bElite ? 1.35f : 1.f));
-                Bolts.Add(Bolt);
-                if (E.Type == 3)
+                E.Cooldown = 0.20f;
+                continue;
+            }
+            FAVBolt Bolt;
+            Bolt.Pos = E.Pos;
+            Bolt.Velocity = Direction * (Spec.Boss ? 7.8f : E.Type == 10 ? 9.f : 6.8f);
+            Bolt.Damage = FMath::RoundToInt(Spec.Damage * (E.bElite ? 1.35f : 1.f));
+            Bolt.Status = (E.Type == 6 ? 1 : E.Type == 9 ? 2 : 0);
+            Bolts.Add(Bolt);
+
+            if (Spec.Boss)
+            {
+                const FVector2D Side(-Direction.Y, Direction.X);
+                const bool bFurious = E.HP <= E.MaxHP * 0.5f;
+                for (int32 Sign = -1; Sign <= 1; Sign += 2)
                 {
-                    const bool bEnraged = E.HP < E.MaxHP * 0.5f;
-                    const FVector2D Orthogonal(-Direction.Y, Direction.X);
-                    for (int32 Sign = -1; Sign <= 1; Sign += 2)
+                    FAVBolt Spread = Bolt;
+                    Spread.Velocity = SafeDirection(Direction + Side * (0.33f * Sign)) * 7.4f;
+                    Bolts.Add(Spread);
+                    if (bFurious)
                     {
-                        FAVBolt Side = Bolt;
-                        Side.Velocity = SafeDirection(Direction + Orthogonal * (0.30f * Sign)) * 7.3f;
-                        Bolts.Add(Side);
-                        if (bEnraged)
-                        {
-                            FAVBolt Outer = Bolt;
-                            Outer.Velocity = SafeDirection(Direction + Orthogonal * (0.59f * Sign)) * 7.6f;
-                            Bolts.Add(Outer);
-                        }
+                        FAVBolt Far = Bolt;
+                        Far.Velocity = SafeDirection(Direction + Side * (0.65f * Sign)) * 7.1f;
+                        Bolts.Add(Far);
                     }
                 }
+                E.Cooldown = bFurious ? (E.Type == 9 ? 0.85f : 0.96f) : 1.35f;
             }
-            E.Cooldown = E.Type == 3 ? (E.HP < E.MaxHP * 0.5f ? 0.96f : 1.25f) : 2.1f;
+            else E.Cooldown = E.Type == 10 ? 1.40f : E.Type == 6 ? 1.75f : 2.1f;
         }
-        else if (Distance < (E.Type == 3 ? 1.5f : 1.05f))
+        else if (Distance < Reach + 0.2f)
         {
-            E.Telegraph = E.Type == 3 ? 0.47f : E.Type == 1 ? 0.44f : E.Type == 4 ? 0.26f : 0.31f;
+            E.Telegraph = Spec.Boss ? 0.53f : E.Type == 7 ? 0.54f :
+                          E.Type == 1 ? 0.44f : E.Type == 4 ? 0.26f : 0.31f;
         }
     }
 
+    // Missiles are swept against both walls and actors, preventing a fast
+    // projectile crossing a wall when its end point happens to be on a floor.
     for (int32 I = Bolts.Num() - 1; I >= 0; --I)
     {
+        if (Phase != EAVPhase::Playing) return;
         FAVBolt& Bolt = Bolts[I];
-        const FVector2D OldPosition = Bolt.Pos;
+        const FVector2D Old = Bolt.Pos;
         Bolt.Pos += Bolt.Velocity * DeltaSeconds;
         Bolt.Time -= DeltaSeconds;
-        if (Bolt.Time <= 0.f || !CanMove(Bolt.Pos, 0.06f))
+        if (Bolt.Time <= 0.f || !CanMove(Bolt.Pos, 0.06f) ||
+            !FAVDungeonNavigation::LineOfSight(Tiles, MapW, MapH, Old, Bolt.Pos))
         {
             Bolts.RemoveAtSwap(I);
             continue;
         }
+        const FVector2D Segment = Bolt.Pos - Old;
+        const float LenSq = Segment.SizeSquared();
         if (Bolt.bFriendly)
         {
-            bool bHitEnemy = false;
-            for (int32 EnemyIndex = Enemies.Num() - 1; EnemyIndex >= 0; --EnemyIndex)
+            bool bHit = false;
+            for (int32 J = Enemies.Num() - 1; J >= 0; --J)
             {
-                FAVEnemy& E = Enemies[EnemyIndex];
-                const float Radius = E.Type == 3 ? 0.72f : 0.46f;
-                // A swept test prevents the knife tunnelling through smaller targets.
-                const FVector2D Segment = Bolt.Pos - OldPosition;
-                const float LengthSquared = Segment.SizeSquared();
-                const float T = LengthSquared > KINDA_SMALL_NUMBER ?
-                    FMath::Clamp(FVector2D::DotProduct(E.Pos - OldPosition, Segment) /
-                                 LengthSquared, 0.f, 1.f) : 0.f;
-                const FVector2D Closest = OldPosition + Segment * T;
-                if (FVector2D::Distance(Closest, E.Pos) > Radius) continue;
+                FAVEnemy& E = Enemies[J];
+                const float T = LenSq > KINDA_SMALL_NUMBER ?
+                    FMath::Clamp(FVector2D::DotProduct(E.Pos - Old, Segment) / LenSq, 0.f, 1.f) : 0.f;
+                const float Radius = FAVContent::Enemy(E.Type, Floor).Boss ? 0.76f : 0.47f;
+                if (FVector2D::Distance(Old + Segment * T, E.Pos) > Radius) continue;
                 E.HP -= Bolt.Damage;
                 E.Flash = 0.16f;
-                E.Knockback += SafeDirection(E.Pos - OldPosition) * 3.1f;
+                E.Knockback += SafeDirection(E.Pos - Old) * 3.1f;
                 AddEffect(E.Pos, 2, 0.4f);
-                if (E.HP <= 0.f) KillEnemy(EnemyIndex);
-                bHitEnemy = true;
+                if (E.HP <= 0.f) KillEnemy(J);
+                bHit = true;
                 break;
             }
-            if (bHitEnemy) Bolts.RemoveAtSwap(I);
+            if (bHit) Bolts.RemoveAtSwap(I);
         }
         else
         {
-            const FVector2D Segment = Bolt.Pos - OldPosition;
-            const float LenSq = Segment.SizeSquared();
             const float T = LenSq > KINDA_SMALL_NUMBER ?
-                FMath::Clamp(FVector2D::DotProduct(Hero - OldPosition, Segment) /
-                             LenSq, 0.f, 1.f) : 0.f;
-            if (FVector2D::Distance(OldPosition + Segment * T, Hero) < 0.43f)
+                FMath::Clamp(FVector2D::DotProduct(Hero - Old, Segment) / LenSq, 0.f, 1.f) : 0.f;
+            if (FVector2D::Distance(Old + Segment * T, Hero) < 0.43f)
             {
+                const bool bVulnerable = Invulnerability <= 0.f;
+                const int32 Status = Bolt.Status;
                 DamageHero(Bolt.Damage, Bolt.Pos);
+                if (bVulnerable && Phase != EAVPhase::Dead)
+                {
+                    if (Status == 1) PoisonTime = FMath::Max(PoisonTime, 4.2f);
+                    if (Status == 2) BurnTime = FMath::Max(BurnTime, 3.3f);
+                }
                 Bolts.RemoveAtSwap(I);
             }
         }
     }
 
+    if (Phase != EAVPhase::Playing) return;
     for (FAVTrap& Trap : Traps)
     {
         Trap.Cooldown = FMath::Max(0.f, Trap.Cooldown - DeltaSeconds);
@@ -890,11 +905,23 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         }
         else if (Trap.Cooldown <= 0.f &&
                  FVector2D::Distance(Trap.Pos, Hero) < 0.78f)
-        {
             Trap.Windup = 0.62f;
-        }
     }
 
+    // Contact areas apply a temporary status, but not during a dodge iframe.
+    for (FAVHazard& Hazard : Hazards)
+    {
+        Hazard.Cooldown = FMath::Max(0.f, Hazard.Cooldown - DeltaSeconds);
+        if (Hazard.Cooldown > 0.f ||
+            FVector2D::Distance(Hero, Hazard.Pos) > 1.f ||
+            Invulnerability > 0.f) continue;
+        Hazard.Cooldown = 1.25f;
+        if (Hazard.Type == 0) PoisonTime = FMath::Max(PoisonTime, 4.0f);
+        else BurnTime = FMath::Max(BurnTime, 3.f);
+        AddEffect(Hazard.Pos, 2, 0.6f);
+    }
+
+    if (Phase != EAVPhase::Playing) return;
     for (int32 I = Pickups.Num() - 1; I >= 0; --I)
     {
         FAVPickup& P = Pickups[I];
