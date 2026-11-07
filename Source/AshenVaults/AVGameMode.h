@@ -123,6 +123,7 @@ public:
     static constexpr float ViewH = 540.f;
 
     UPROPERTY(BlueprintReadOnly) int32 Floor = 1;
+    UPROPERTY(BlueprintReadOnly) int32 HeroClass = 0; // H cycles class and starts a new run
     UPROPERTY(BlueprintReadOnly) int32 Level = 1;
     UPROPERTY(BlueprintReadOnly) int32 XP = 0;
     UPROPERTY(BlueprintReadOnly) int32 Gold = 0;
@@ -211,6 +212,7 @@ private:
     bool PrevEnter = false;
     bool PrevReplay = false;
     bool PrevQuality = false;
+    bool PrevHero = false;
     bool PrevChoices[3] = { false, false, false };
     FVector2D DashDirection = FVector2D(1.f, 0.f);
     int32 LastVisionX = -1;
