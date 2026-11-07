@@ -1,0 +1,136 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/GameModeBase.h"
+#include "AVGameMode.generated.h"
+
+UENUM()
+enum class EAVPhase : uint8 { Playing, Upgrade, Paused, Dead, Victory };
+
+USTRUCT()
+struct FAVEnemy
+{
+    GENERATED_BODY()
+    FVector2D Pos = FVector2D::ZeroVector;
+    FVector2D Knockback = FVector2D::ZeroVector;
+    int32 Type = 0; // 0 ashling, 1 armored sentinel, 2 seer, 3 warden
+    float HP = 10.f;
+    float MaxHP = 10.f;
+    float Cooldown = 0.f;
+    float Flash = 0.f;
+    float Wander = 0.f;
+    int32 Id = 0;
+};
+
+USTRUCT()
+struct FAVPickup
+{
+    GENERATED_BODY()
+    FVector2D Pos = FVector2D::ZeroVector;
+    int32 Type = 0; // 0 gold, 1 health, 2 stamina, 3 potion
+    int32 Amount = 1;
+    float Time = 0.f;
+};
+
+USTRUCT()
+struct FAVBolt
+{
+    GENERATED_BODY()
+    FVector2D Pos = FVector2D::ZeroVector;
+    FVector2D Velocity = FVector2D::ZeroVector;
+    float Time = 2.f;
+    int32 Damage = 10;
+};
+
+USTRUCT()
+struct FAVEffect
+{
+    GENERATED_BODY()
+    FVector2D Pos = FVector2D::ZeroVector;
+    float Life = 0.3f;
+    float Duration = 0.3f;
+    float Radius = 1.f;
+    int32 Kind = 0; // 0 melee, 1 spin, 2 hit, 3 death
+    float Angle = 0.f;
+};
+
+UCLASS()
+class ASHENVAULTS_API AAVGameMode : public AGameModeBase
+{
+    GENERATED_BODY()
+
+public:
+    AAVGameMode();
+    virtual void BeginPlay() override;
+    virtual void Tick(float DeltaSeconds) override;
+
+    static constexpr int32 MapW = 52;
+    static constexpr int32 MapH = 38;
+    static constexpr float TilePixels = 24.f;
+    static constexpr float ViewW = 960.f;
+    static constexpr float ViewH = 540.f;
+
+    UPROPERTY(BlueprintReadOnly) int32 Floor = 1;
+    UPROPERTY(BlueprintReadOnly) int32 Level = 1;
+    UPROPERTY(BlueprintReadOnly) int32 XP = 0;
+    UPROPERTY(BlueprintReadOnly) int32 Gold = 0;
+    UPROPERTY(BlueprintReadOnly) int32 Kills = 0;
+    UPROPERTY(BlueprintReadOnly) int32 Potions = 2;
+    UPROPERTY(BlueprintReadOnly) float HP = 100.f;
+    UPROPERTY(BlueprintReadOnly) float MaxHP = 100.f;
+    UPROPERTY(BlueprintReadOnly) float Stamina = 100.f;
+    UPROPERTY(BlueprintReadOnly) float MaxStamina = 100.f;
+    UPROPERTY(BlueprintReadOnly) float AttackPower = 18.f;
+    UPROPERTY(BlueprintReadOnly) float MoveSpeed = 4.8f;
+
+    EAVPhase Phase = EAVPhase::Playing;
+    FVector2D Hero = FVector2D(4.f, 4.f);
+    FVector2D Aim = FVector2D(1.f, 0.f);
+    FVector2D Exit = FVector2D(8.f, 8.f);
+    TArray<uint8> Tiles;
+    TArray<FAVEnemy> Enemies;
+    TArray<FAVPickup> Pickups;
+    TArray<FAVBolt> Bolts;
+    TArray<FAVEffect> Effects;
+    float AttackCooldown = 0.f;
+    float SpinCooldown = 0.f;
+    float DashTime = 0.f;
+    float Invulnerability = 0.f;
+    float ScreenShake = 0.f;
+    float RunTime = 0.f;
+    int32 BestFloor = 1;
+    int32 BestKills = 0;
+    int32 LifetimeGold = 0;
+
+    bool IsFloor(int32 X, int32 Y) const;
+    bool CanMove(const FVector2D& Pos, float Radius) const;
+    int32 EnemiesRemaining() const { return Enemies.Num(); }
+    int32 NextXP() const { return 8 + Level * 7; }
+    bool IsExitReady() const { return Enemies.Num() == 0; }
+    void NewRun();
+
+private:
+    FRandomStream RNG;
+    bool PrevAttack = false;
+    bool PrevSpin = false;
+    bool PrevDash = false;
+    bool PrevHeal = false;
+    bool PrevUse = false;
+    bool PrevPause = false;
+    bool PrevEnter = false;
+    bool PrevChoices[3] = { false, false, false };
+    FVector2D DashDirection = FVector2D(1.f, 0.f);
+
+    void GenerateFloor();
+    void PollInput(float DeltaSeconds);
+    void UpdateCombat(float DeltaSeconds);
+    void DamageHero(float Damage, const FVector2D& Source);
+    void Strike(bool bSpin);
+    void KillEnemy(int32 Index);
+    void GrantExperience(int32 Amount);
+    void SelectUpgrade(int32 Choice);
+    void AddEffect(const FVector2D& Pos, int32 Kind, float Radius = 1.f, float Angle = 0.f);
+    void DropLoot(const FVector2D& Pos, bool bBoss);
+    void RecordRun();
+    FVector2D MoveWithCollision(const FVector2D& From, const FVector2D& Velocity, float DeltaSeconds, float Radius) const;
+};
