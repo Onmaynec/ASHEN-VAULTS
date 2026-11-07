@@ -2,6 +2,7 @@
 #include "AVHUD.h"
 #include "AVSaveGame.h"
 #include "AVDungeonNavigation.h"
+#include "AVContent.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
@@ -131,6 +132,8 @@ void AAVGameMode::NewRun(bool bSameSeed)
     Floor = 1; Level = 1; XP = 0; Gold = 0; Kills = 0; Potions = 2;
     HP = 100.f; MaxHP = 100.f; Stamina = 100.f; MaxStamina = 100.f;
     AttackPower = 18.f; MoveSpeed = 4.8f; RunTime = 0.f;
+    RelicMask = 0u; RelicCount = 0; bRelicPending = false;
+    PoisonTime = 0.f; BurnTime = 0.f; StatusTick = 0.f; DashCooldown = 0.f;
     AttackCooldown = 0.f; KnifeCooldown = 0.f; SpinCooldown = 0.f; DashTime = 0.f;
     Invulnerability = 0.f; ScreenShake = 0.f;
     Combo = 0; ComboTime = 0.f; Toast.Empty(); ToastTime = 0.f;
@@ -153,10 +156,16 @@ void AAVGameMode::GenerateFloor()
     FlowDistances.Init(-1, MapW * MapH);
     LastVisionX = -1; LastVisionY = -1; FlowRefreshTime = 0.f;
     Enemies.Reset(); Pickups.Reset(); Bolts.Reset(); Effects.Reset(); Traps.Reset(); Chests.Reset();
+    Hazards.Reset(); Props.Reset();
+    bMerchantSpawned = false;
+    for (int32 I = 0; I < 3; ++I) ShopPurchased[I] = false;
+    PoisonTime = 0.f; BurnTime = 0.f; StatusTick = 0.f;
+    AttackCooldown = 0.f; KnifeCooldown = 0.f; SpinCooldown = 0.f;
+    DashTime = 0.f; DashCooldown = 0.f;
     bShrineUsed = false;
     struct FRoom { int32 X, Y, W, H; FVector2D Center() const { return FVector2D(X + W / 2.f, Y + H / 2.f); } };
     TArray<FRoom> Rooms;
-    const int32 TargetCount = 9 + Floor * 2;
+    const int32 TargetCount = FMath::Min(17, 9 + Floor * 2);
     for (int32 Attempt = 0; Attempt < 220 && Rooms.Num() < TargetCount; ++Attempt)
     {
         const int32 W = RNG.RandRange(5, 11);
@@ -203,12 +212,19 @@ void AAVGameMode::GenerateFloor()
         Hero = FVector2D(9.5f, 8.5f);
         Exit = FVector2D(13.5f, 8.5f);
         Shrine = FVector2D(6.5f, 8.5f);
+        Merchant = FVector2D(15.5f, 8.5f);
+        bMerchantSpawned = true;
         RefreshAwareness(0.f, true);
         return;
     }
     Hero = Rooms[0].Center();
     Exit = Rooms.Last().Center();
     Shrine = Rooms[Rooms.Num() / 2].Center();
+    if (Rooms.Num() >= 3)
+    {
+        Merchant = Rooms[1].Center();
+        bMerchantSpawned = true;
+    }
     // Rooms remain connected by the carved corridors. Keep traps away from
     // spawn, stairs and the shrine, so none of the interactions become blocked.
     for (int32 I = 1; I < Rooms.Num(); ++I)
@@ -222,7 +238,8 @@ void AAVGameMode::GenerateFloor()
                 RNG.RandRange(R.Y + 1, R.Y + R.H - 2) + 0.5f);
             if (FVector2D::Distance(Candidate, Hero) < 4.f ||
                 FVector2D::Distance(Candidate, Exit) < 2.2f ||
-                FVector2D::Distance(Candidate, Shrine) < 2.2f)
+                FVector2D::Distance(Candidate, Shrine) < 2.2f ||
+                (bMerchantSpawned && FVector2D::Distance(Candidate, Merchant) < 2.2f))
                 continue;
             FAVTrap Trap;
             Trap.Pos = Candidate;
@@ -238,7 +255,8 @@ void AAVGameMode::GenerateFloor()
         FAVChest Chest;
         Chest.Pos = FVector2D(R.X + 1.5f, R.Y + 1.5f);
         if (FVector2D::Distance(Chest.Pos, Shrine) < 2.5f ||
-            FVector2D::Distance(Chest.Pos, Exit) < 2.5f)
+            FVector2D::Distance(Chest.Pos, Exit) < 2.5f ||
+            (bMerchantSpawned && FVector2D::Distance(Chest.Pos, Merchant) < 2.5f))
             Chest.Pos = FVector2D(R.X + R.W - 1.5f, R.Y + R.H - 1.5f);
         bool bBlocked = false;
         for (const FAVTrap& Trap : Traps)
@@ -258,20 +276,25 @@ void AAVGameMode::GenerateFloor()
             FAVEnemy Enemy;
             Enemy.Pos = FVector2D(RNG.FRandRange(R.X + 1.f, R.X + R.W - 1.f),
                                   RNG.FRandRange(R.Y + 1.f, R.Y + R.H - 1.f));
-            Enemy.Type = RNG.RandRange(0, 2);
-            Enemy.MaxHP = (Enemy.Type == 1 ? 46.f : (Enemy.Type == 2 ? 22.f : 29.f)) * (1.f + 0.28f * (Floor - 1));
-            Enemy.bElite = RNG.FRand() < (0.12f + 0.03f * Floor);
+            Enemy.Type = FAVContent::EnemyRoll(Floor, RNG.RandRange(0, 99));
+            Enemy.MaxHP = FAVContent::Enemy(Enemy.Type, Floor).Health;
+            Enemy.bElite = RNG.FRand() < FMath::Min(0.26f, 0.10f + 0.025f * Floor);
             if (Enemy.bElite) Enemy.MaxHP *= 1.65f;
             Enemy.HP = Enemy.MaxHP;
             Enemy.Cooldown = RNG.FRandRange(0.3f, 1.6f);
+            if (bMerchantSpawned && FVector2D::Distance(Enemy.Pos, Merchant) < 2.f)
+                Enemy.Pos = FVector2D(R.X + 1.2f, R.Y + 1.2f);
             Enemy.Id = NextId++;
             Enemies.Add(Enemy);
         }
     }
-    if (Floor == FinalFloor)
+    const int32 BossType = FAVContent::Boss(Floor);
+    if (BossType >= 0)
     {
         FAVEnemy Boss;
-        Boss.Pos = Exit; Boss.Type = 3; Boss.HP = 360.f; Boss.MaxHP = 360.f;
+        Boss.Pos = Exit; Boss.Type = BossType;
+        Boss.MaxHP = FAVContent::Enemy(BossType, Floor).Health;
+        Boss.HP = Boss.MaxHP;
         Boss.Cooldown = 1.f; Boss.Id = NextId++;
         Enemies.Add(Boss);
     }
@@ -283,6 +306,35 @@ void AAVGameMode::GenerateFloor()
         Pickup.Type = (I % 2 == 0) ? 1 : 2;
         Pickup.Amount = 22;
         Pickups.Add(Pickup);
+    }
+    if (Floor >= 3)
+    {
+        for (int32 I = 2; I < Rooms.Num() - 1; I += 2)
+        {
+            const FRoom& R = Rooms[I];
+            FAVHazard Hazard;
+            Hazard.Type = Floor >= 5 ? 1 : 0;
+            Hazard.Pos = FVector2D(R.X + R.W * 0.5f, R.Y + R.H * 0.5f);
+            if (FVector2D::Distance(Hazard.Pos, Shrine) > 2.f &&
+                FVector2D::Distance(Hazard.Pos, Exit) > 2.f &&
+                (!bMerchantSpawned || FVector2D::Distance(Hazard.Pos, Merchant) > 2.f))
+                Hazards.Add(Hazard);
+        }
+    }
+    for (int32 I = 1; I < Rooms.Num(); ++I)
+    {
+        const FRoom& R = Rooms[I];
+        FAVProp Prop;
+        Prop.Type = Floor >= 5 ? 1 : 0;
+        Prop.Pos = FVector2D(R.X + R.W - 1.5f, R.Y + 1.5f);
+        if (FVector2D::Distance(Prop.Pos, Shrine) < 2.f ||
+            FVector2D::Distance(Prop.Pos, Exit) < 2.f ||
+            (bMerchantSpawned && FVector2D::Distance(Prop.Pos, Merchant) < 2.f))
+            continue;
+        bool bNearChest = false;
+        for (const FAVChest& Chest : Chests)
+            bNearChest |= FVector2D::Distance(Prop.Pos, Chest.Pos) < 1.1f;
+        if (!bNearChest) Props.Add(Prop);
     }
     RefreshAwareness(0.f, true);
 }

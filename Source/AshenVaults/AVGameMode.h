@@ -5,7 +5,7 @@
 #include "AVGameMode.generated.h"
 
 UENUM()
-enum class EAVPhase : uint8 { Playing, Upgrade, Paused, Dead, Victory };
+enum class EAVPhase : uint8 { Playing, Upgrade, Relic, Shop, Paused, Dead, Victory };
 
 USTRUCT()
 struct FAVEnemy
@@ -43,6 +43,7 @@ struct FAVBolt
     float Time = 2.f;
     int32 Damage = 10;
     bool bFriendly = false;
+    int32 Status = 0; // poison=1, burn=2
 };
 
 USTRUCT()
@@ -75,6 +76,24 @@ struct FAVChest
     bool bMimic = false;
 };
 
+USTRUCT()
+struct FAVHazard
+{
+    GENERATED_BODY()
+    FVector2D Pos = FVector2D::ZeroVector;
+    int32 Type = 0;
+    float Cooldown = 0.f;
+};
+
+USTRUCT()
+struct FAVProp
+{
+    GENERATED_BODY()
+    FVector2D Pos = FVector2D::ZeroVector;
+    float HP = 25.f;
+    int32 Type = 0;
+};
+
 UCLASS()
 class ASHENVAULTS_API AAVGameMode : public AGameModeBase
 {
@@ -85,7 +104,7 @@ public:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaSeconds) override;
 
-    static constexpr int32 FinalFloor = 3;
+    static constexpr int32 FinalFloor = 6;
     static constexpr int32 MapW = 52;
     static constexpr int32 MapH = 38;
     static constexpr float TilePixels = 24.f;
@@ -100,6 +119,7 @@ public:
     UPROPERTY(BlueprintReadOnly) int32 RunSeed = 0;
     UPROPERTY(BlueprintReadOnly) int32 Combo = 0;
     UPROPERTY(BlueprintReadOnly) int32 Potions = 2;
+    UPROPERTY(BlueprintReadOnly) int32 RelicCount = 0;
     UPROPERTY(BlueprintReadOnly) float HP = 100.f;
     UPROPERTY(BlueprintReadOnly) float MaxHP = 100.f;
     UPROPERTY(BlueprintReadOnly) float Stamina = 100.f;
@@ -113,6 +133,16 @@ public:
     FVector2D Exit = FVector2D(8.f, 8.f);
     FVector2D Shrine = FVector2D(8.f, 8.f);
     bool bShrineUsed = false;
+    FVector2D Merchant = FVector2D::ZeroVector;
+    bool bMerchantSpawned = false;
+    bool ShopPurchased[3] = {false, false, false};
+    int32 RelicChoices[3] = {0, 1, 2};
+    uint32 RelicMask = 0;
+    bool bRelicPending = false;
+    float PoisonTime = 0.f;
+    float BurnTime = 0.f;
+    float StatusTick = 0.f;
+    float DashCooldown = 0.f;
     float ComboTime = 0.f;
     FString Toast;
     float ToastTime = 0.f;
@@ -127,6 +157,8 @@ public:
     TArray<FAVBolt> Bolts;
     TArray<FAVTrap> Traps;
     TArray<FAVChest> Chests;
+    TArray<FAVHazard> Hazards;
+    TArray<FAVProp> Props;
     TArray<FAVEffect> Effects;
     float AttackCooldown = 0.f;
     float KnifeCooldown = 0.f;
@@ -148,6 +180,9 @@ public:
     int32 EnemiesRemaining() const { return Enemies.Num(); }
     int32 NextXP() const { return 8 + Level * 7; }
     bool IsExitReady() const { return Enemies.Num() == 0; }
+    bool HasRelic(int32 Index) const { return Index >= 0 && Index < 6 && (RelicMask & (1u << Index)) != 0; }
+    int32 CurrentBiome() const { return Floor <= 2 ? 0 : Floor <= 4 ? 1 : 2; }
+    int32 ShopPrice(int32 Slot) const;
     void NewRun(bool bSameSeed = false);
 
 private:
@@ -171,6 +206,10 @@ private:
     void UpdateCombat(float DeltaSeconds);
     void RefreshAwareness(float DeltaSeconds, bool bForce = false);
     void ThrowKnife();
+    void OfferRelic();
+    void ChooseRelic(int32 Choice);
+    void BuyFromMerchant(int32 Slot);
+    void StrikeProps(bool bSpin, float Damage);
     bool OpenNearbyChest();
     void DamageHero(float Damage, const FVector2D& Source);
     void Strike(bool bSpin);
