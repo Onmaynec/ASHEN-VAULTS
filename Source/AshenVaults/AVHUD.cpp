@@ -556,10 +556,22 @@ void AAVHUD::DrawLighting(const AAVGameMode& Game)
                         (Effect.Life / FMath::Max(0.01f, Effect.Duration));
                 }
             }
-            // Quantization to discrete illumination levels matches pixel art
-            // and avoids an inconsistent smooth glow over nearest-neighbour art.
-            Brightness = FMath::FloorToFloat(
-                FMath::Clamp(Brightness + WarmLight, 0.f, 0.65f) * 9.f) / 9.f;
+            // Hazards and hostile projectiles illuminate the immediate floor
+            // while remaining subject to fog and the visible-cell mask.
+            if (Game.VisualQuality == 2)
+            {
+                for (const FAVHazard& Hazard : Game.Hazards)
+                    if (FVector2D::Distance(Hazard.Pos, Cell) < 3.1f)
+                        WarmLight += 0.18f * FAVArt::LightFalloff(
+                            FVector2D::Distance(Hazard.Pos, Cell), 3.1f);
+                for (const FAVBolt& Bolt : Game.Bolts)
+                    if (FVector2D::Distance(Bolt.Pos, Cell) < 2.6f)
+                        WarmLight += 0.16f * FAVArt::LightFalloff(
+                            FVector2D::Distance(Bolt.Pos, Cell), 2.6f);
+            }
+            // Quantized illumination levels match nearest-neighbour pixel art.
+            Brightness = static_cast<float>(FMath::FloorToInt(
+                FMath::Clamp(Brightness + WarmLight, 0.f, 0.65f) * 9.f)) / 9.f;
             if (Brightness <= 0.f) continue;
             const float SX = Origin.X + X * T, SY = Origin.Y + Y * T;
             Rect(SX, SY, T + 0.5f, T + 0.5f,
@@ -593,6 +605,21 @@ void AAVHUD::DrawAtmosphere(const AAVGameMode& Game)
         const float Size = ((H >> 7) % 4u == 0u ? 2.f : 1.f) * Scale;
         if (Y < 38.f * Scale) continue;
         Rect(X, Y, Size, Size, Palette);
+    }
+
+    // Subtle screen-space vignette masks the harsh edges of the procedural
+    // viewport without blurring texels or covering the UI panel.
+    const float FrameWidth = 7.f * Scale;
+    for (int32 Band = 0; Band < 7; ++Band)
+    {
+        const float A = 0.045f * (7.f - Band) / 7.f;
+        const FLinearColor Shade(0.f, 0.01f, 0.025f, A);
+        Rect(Band * FrameWidth, 38.f * Scale,
+             FrameWidth, Canvas->SizeY - 110.f * Scale, Shade);
+        Rect(Canvas->SizeX - (Band + 1) * FrameWidth, 38.f * Scale,
+             FrameWidth, Canvas->SizeY - 110.f * Scale, Shade);
+        Rect(0.f, 38.f * Scale + Band * FrameWidth,
+             Canvas->SizeX, FrameWidth, Shade);
     }
 }
 
@@ -1127,6 +1154,16 @@ void AAVHUD::DrawHUD()
     if (Game->Invulnerability > 0.5f)
         Rect(0.f, 0.f, Canvas->SizeX, Canvas->SizeY,
              FLinearColor(0.33f, 0.025f, 0.036f, 0.10f));
+    if (Game->VisualQuality > 0 && (Game->PoisonTime > 0.f || Game->BurnTime > 0.f))
+    {
+        const FLinearColor Tint = Game->BurnTime > 0.f ?
+            FLinearColor(0.9f, 0.23f, 0.06f, 0.17f) :
+            FLinearColor(0.24f, 0.8f, 0.29f, 0.15f);
+        Rect(0.f, 37.f * Scale, 8.f * Scale,
+             Canvas->SizeY - 112.f * Scale, Tint);
+        Rect(Canvas->SizeX - 8.f * Scale, 37.f * Scale,
+             8.f * Scale, Canvas->SizeY - 112.f * Scale, Tint);
+    }
     DrawInterface(*Game);
     DrawOverlay(*Game);
 }
