@@ -41,3 +41,12 @@
 ## Следующий технический этап
 
 **Перевод на Paper2D/UMG с реально исполняемыми GPU-материалами**, нормалями, light maps и Flipbook. Задачи: #6, #7, #10, #15, #16.
+
+## Независимые автоматические проверки
+
+Добавлен `.github/workflows/cpp-smoke.yml` на бесплатном GitHub Actions runner для публичного репозитория: `run.sh`, `run_content.sh`, `run_art.sh`. При первом прогоне новый визуальный тест выявил несовместимость `SetNumUninitialized` со standalone-shim; вместо этого установлен `Pixels.Init(FColor(), N * N)`. Следующий запуск **успешно выполнил все три проверки**:
+
+- [Run #42425669769 (PASS)](https://github.com/Onmaynec/ASHEN-VAULTS/actions/runs/42425669769)
+- [Первый запуск, где была обнаружена ошибка тестового окружения](https://github.com/Onmaynec/ASHEN-VAULTS/actions/runs/42425545390)
+
+Это подтверждает **C++14 сборку независимых модулей**, но не означает, что Unreal Engine 4.27, UHT, HUD или игровая Windows-сборка прошли тестирование.

@@ -57,7 +57,7 @@ bash Tests/Standalone/run.sh
 bash Tests/Standalone/run_content.sh
 bash Tests/Standalone/run_art.sh
 ```
-Тесты контента и навигации ранее проходили при `-std=c++14 -Wall -Wextra -Werror -pedantic`. Для новых графических изменений добавлен `run_art.sh`; пока его запуск не подтверждён, он служит воспроизводимым сценарием проверки. Все эти автономные тесты **не подтверждают сборку полного модуля UE4**.
+Все три автономных C++-теста прошли в GitHub Actions при `-std=c++14 -Wall -Wextra -Werror -pedantic`. Новый графический тест `run_art.sh` уже пройден вместе с проверками навигации и контента в GitHub Actions [run #42425669769](https://github.com/Onmaynec/ASHEN-VAULTS/actions/runs/42425669769): реальный `AVArt.cpp` был собран под C++14 с mock `UTexture2D`, проверены все 36 текстур и световая кривая. Все эти автономные тесты **не подтверждают сборку полного модуля UE4**.
 
 ## Управление
 

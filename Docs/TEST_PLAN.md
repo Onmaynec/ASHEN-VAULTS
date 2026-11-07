@@ -116,7 +116,7 @@
 - [ ] Убедиться, что transient-текстуры создаются один раз на HUD и удерживаются GC через `UPROPERTY`.
 
 ### Самостоятельная проверка без UE4
-- [ ] `bash Tests/Standalone/run_art.sh` — компиляция оригинального `AVArt.cpp` с mock UTexture2D, проверка цветов 36 тайлов и математического затухания.
-- [ ] `bash Tests/Standalone/run.sh` — навигация, LOS, туман.
-- [ ] `bash Tests/Standalone/run_content.sh` — наборы врагов и боссы.
+- [x] `bash Tests/Standalone/run_art.sh` — компиляция оригинального `AVArt.cpp` с mock UTexture2D, проверка цветов 36 тайлов и математического затухания. PASS: Actions run #42425669769.
+- [x] `bash Tests/Standalone/run.sh` — навигация, LOS, туман. PASS: Actions run #42425669769.
+- [x] `bash Tests/Standalone/run_content.sh` — наборы врагов и боссы. PASS: Actions run #42425669769.
 - [ ] Полная `Development Editor | Win64` сборка с UHT и реальный Standalone; на момент публикации **не выполнено**.
