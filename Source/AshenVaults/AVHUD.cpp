@@ -528,7 +528,8 @@ void AAVHUD::DrawLighting(const AAVGameMode& Game)
             {
                 for (const FAVDecor& Decor : Game.Decorations)
                 {
-                    if (Decor.Type % 3 != 1 || !Game.IsVisibleAt(Decor.Pos)) continue;
+                    if ((Decor.Type != 1 && Decor.Type != 4 && Decor.Type != 6) ||
+                        !Game.IsVisibleAt(Decor.Pos)) continue;
                     const float Distance = FVector2D::Distance(Cell, Decor.Pos);
                     if (Distance > 5.0f) continue;
                     if (Game.VisualQuality == 2 &&
@@ -673,7 +674,7 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         if (!Game.IsVisibleAt(Decor.Pos)) continue;
         const FVector2D Pt = Screen(Decor.Pos);
         const float S = Scale;
-        const bool bLuminous = Decor.Type % 3 == 1;
+        const bool bLuminous = Decor.Type == 1 || Decor.Type == 4 || Decor.Type == 6;
         const bool bEcho = Decor.Type % 3 == 2;
         const float PulseIntensity = 0.5f + 0.5f *
             FMath::Sin(Game.RunTime * 5.5f + Decor.Phase);
