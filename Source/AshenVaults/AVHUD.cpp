@@ -1,5 +1,7 @@
 #include "AVHUD.h"
 #include "AVGameMode.h"
+#include "AVArt.h"
+#include "AVDungeonNavigation.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/Texture2D.h"
@@ -60,10 +62,10 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
     const FColor Rust = PixelColor(125, 62, 62);
     const FColor Fire = PixelColor(249, 162, 79);
 
-    if (Type <= 4)
+    if (Type <= 4 || Type == 35)
     {
-        // All character sprites share a consistent 16px silhouette.
-        const bool Hero = Type == 0;
+        // Shared silhouette, second walking pose for animation.
+        const bool Hero = Type == 0 || Type == 35;
         const bool Knight = Type == 2;
         const bool Seer = Type == 3;
         const bool Boss = Type == 4;
@@ -92,6 +94,13 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
             Box(4, 2, 11, 3, Outline); Box(5, 2, 10, 2, Light);
             Box(12, 7, 12, 11, Metal); Box(12, 5, 12, 6, White);
             Put(12, 4, White); Put(13, 8, GoldColor.ToFColor(true));
+            if (Type == 35)
+            {
+                Box(5, 11, 7, 13, Outline);
+                Box(8, 12, 10, 14, DarkMetal);
+                Put(10, 11, Light);
+                Put(4, 7, Light);
+            }
         }
         else if (Seer)
         {
@@ -301,6 +310,93 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
         }
     }
 
+    else if (Type >= 26 && Type <= 34) // unique 3-biome layered props
+    {
+        const int32 Object = Type - 26;
+        if (Object == 0) // crypt tombstone
+        {
+            Box(4, 4, 11, 13, Outline);
+            Box(5, 3, 10, 12, Metal);
+            Box(6, 5, 9, 11, DarkMetal);
+            Put(7, 6, White); Put(8, 6, White);
+            Box(2, 13, 13, 14, Shadow);
+        }
+        else if (Object == 1) // crypt candelabra
+        {
+            Box(7, 5, 8, 13, Metal); Box(5, 13, 10, 14, DarkMetal);
+            Box(3, 8, 12, 9, Metal);
+            for (int32 X = 4; X <= 12; X += 4)
+            {
+                Put(X, 6, Fire); Put(X, 5, White);
+                Put(X, 7, GoldColor.ToFColor(true));
+            }
+        }
+        else if (Object == 2) // crypt rune monolith
+        {
+            Box(3, 12, 12, 14, Shadow);
+            Box(5, 3, 10, 12, DarkMetal);
+            Box(6, 2, 9, 11, PixelColor(74, 91, 110));
+            Box(7, 5, 8, 7, PixelColor(114, 225, 222));
+            Put(6, 8, White); Put(9, 8, White);
+        }
+        else if (Object == 3) // giant mushroom cluster
+        {
+            Box(6, 7, 9, 13, PixelColor(192, 172, 138));
+            Box(3, 4, 12, 8, PixelColor(72, 130, 95));
+            Box(5, 2, 10, 5, PixelColor(128, 207, 122));
+            Put(5, 5, White); Put(10, 5, White);
+            Box(11, 10, 14, 13, PixelColor(77, 133, 81));
+            Put(13, 9, PixelColor(173, 228, 112));
+        }
+        else if (Object == 4) // bioluminescent flower
+        {
+            Box(7, 7, 8, 14, PixelColor(73, 133, 77));
+            Box(4, 4, 11, 9, PixelColor(42, 104, 83));
+            Box(6, 3, 9, 8, PixelColor(111, 234, 181));
+            Box(7, 5, 8, 6, White);
+            Put(3, 7, PixelColor(159, 255, 202));
+            Put(12, 7, PixelColor(159, 255, 202));
+        }
+        else if (Object == 5) // echo root stone
+        {
+            Box(2, 12, 13, 14, Shadow);
+            Box(4, 4, 11, 12, PixelColor(58, 86, 72));
+            Box(5, 2, 10, 4, PixelColor(104, 147, 104));
+            Box(7, 5, 8, 10, PixelColor(184, 234, 98));
+            Put(6, 7, White); Put(9, 7, White);
+            Put(3, 10, PixelColor(113, 197, 84));
+            Put(12, 11, PixelColor(113, 197, 84));
+        }
+        else if (Object == 6) // forge brazier
+        {
+            Box(5, 10, 10, 13, DarkMetal);
+            Box(3, 8, 12, 11, Metal);
+            Box(4, 7, 11, 9, PixelColor(147, 63, 43));
+            Box(6, 3, 9, 8, Fire);
+            Box(7, 2, 8, 6, White);
+            Put(5, 5, PixelColor(233, 107, 45));
+            Put(10, 5, PixelColor(233, 107, 45));
+        }
+        else if (Object == 7) // anvil with iron base
+        {
+            Box(5, 10, 10, 14, DarkMetal);
+            Box(3, 6, 12, 10, Metal);
+            Box(2, 5, 13, 7, PixelColor(134, 126, 128));
+            Box(3, 4, 7, 5, White);
+            Put(2, 8, Shadow); Put(13, 8, Shadow);
+        }
+        else // forge echo core
+        {
+            Box(3, 12, 12, 14, Shadow);
+            Box(5, 4, 10, 12, PixelColor(104, 62, 71));
+            Box(6, 3, 9, 11, PixelColor(174, 90, 62));
+            Box(7, 5, 8, 8, Fire);
+            Put(7, 4, White); Put(8, 4, White);
+            Put(5, 2, PixelColor(255, 191, 87));
+            Put(10, 2, PixelColor(255, 191, 87));
+        }
+    }
+
     UTexture2D* Texture = UTexture2D::CreateTransient(N, N, PF_B8G8R8A8);
     if (!Texture) return nullptr;
     Texture->Filter = TF_Nearest;
@@ -326,7 +422,10 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
 void AAVHUD::InitSprites()
 {
     if (Sprites.Num() > 0) return;
-    for (int32 I = 0; I <= 25; ++I) Sprites.Add(MakeSprite(I));
+    for (int32 I = 0; I <= 35; ++I) Sprites.Add(MakeSprite(I));
+    for (int32 Biome = 0; Biome < 3; ++Biome)
+        for (int32 Variant = 0; Variant < FAVArt::VariantsPerBiome; ++Variant)
+            BiomeTiles.Add(FAVArt::BuildTile(Biome, Variant));
 }
 
 void AAVHUD::Sprite(int32 Type, const FVector2D& Pos, float Size, float Alpha)
@@ -345,83 +444,155 @@ void AAVHUD::Sprite(int32 Type, const FVector2D& Pos, float Size, float Alpha)
 void AAVHUD::DrawDungeon(const AAVGameMode& Game)
 {
     const float T = AAVGameMode::TilePixels * Scale;
-    const int32 MinX = FMath::Max(0, FMath::FloorToInt((-Origin.X) / T) - 1);
-    const int32 MaxX = FMath::Min(AAVGameMode::MapW - 1, FMath::CeilToInt((Canvas->SizeX - Origin.X) / T) + 1);
-    const int32 MinY = FMath::Max(0, FMath::FloorToInt((-Origin.Y) / T) - 1);
-    const int32 MaxY = FMath::Min(AAVGameMode::MapH - 1, FMath::CeilToInt((Canvas->SizeY - Origin.Y) / T) + 1);
+    const int32 MinX = FMath::Max(0, FMath::FloorToInt(-Origin.X / T) - 1);
+    const int32 MaxX = FMath::Min(AAVGameMode::MapW - 1,
+        FMath::CeilToInt((Canvas->SizeX - Origin.X) / T) + 1);
+    const int32 MinY = FMath::Max(0, FMath::FloorToInt(-Origin.Y / T) - 1);
+    const int32 MaxY = FMath::Min(AAVGameMode::MapH - 1,
+        FMath::CeilToInt((Canvas->SizeY - Origin.Y) / T) + 1);
+    const int32 Biome = Game.CurrentBiome();
     for (int32 Y = MinY; Y <= MaxY; ++Y)
     {
         for (int32 X = MinX; X <= MaxX; ++X)
         {
             const float SX = Origin.X + X * T, SY = Origin.Y + Y * T;
+            const uint32 Hash = FAVArt::Hash(X, Y, static_cast<uint32>(Game.RunSeed));
             if (Game.IsFloor(X, Y))
             {
                 if (!Game.IsExploredCell(X, Y)) continue;
-                const bool bVisible = Game.IsVisibleCell(X, Y);
-                const int32 Hash = (X * 1777 + Y * 6511 + X * Y * 17) & 15;
-                const float Variation = Hash / 255.f;
-                Rect(SX, SY, T + 0.5f, T + 0.5f,
-                     Game.CurrentBiome() == 0 ?
-                         FLinearColor(0.105f + Variation, 0.126f + Variation, 0.148f + Variation, 1.f) :
-                     Game.CurrentBiome() == 1 ?
-                         FLinearColor(0.085f + Variation, 0.153f + Variation, 0.122f + Variation, 1.f) :
-                         FLinearColor(0.181f + Variation, 0.097f + Variation, 0.095f + Variation, 1.f));
-                Rect(SX + 1.f * Scale, SY + 1.f * Scale, T - 2.f * Scale, 1.f * Scale,
-                     FLinearColor(0.155f, 0.17f, 0.19f, 0.7f));
-                if ((Hash % 3) == 0)
-                {
-                    Rect(SX + 5.f * Scale, SY + 15.f * Scale, 6.f * Scale, Scale,
-                         FLinearColor(0.21f, 0.225f, 0.23f, 0.7f));
-                    Rect(SX + 12.f * Scale, SY + 6.f * Scale, Scale, 4.f * Scale,
-                         FLinearColor(0.075f, 0.095f, 0.12f, 0.8f));
-                }
-                if ((Hash % 7) == 0)
-                    Rect(SX + 17.f * Scale, SY + 11.f * Scale, 3.f * Scale, 2.f * Scale,
-                         FLinearColor(0.15f, 0.28f, 0.25f, 0.7f));
-                if (!bVisible)
-                {
+                const int32 Variant = static_cast<int32>(Hash % 8u);
+                const int32 Index = Biome * FAVArt::VariantsPerBiome + Variant;
+                if (BiomeTiles.IsValidIndex(Index) && BiomeTiles[Index])
+                    DrawTexture(BiomeTiles[Index], SX, SY, T + 0.5f, T + 0.5f,
+                                0.f, 0.f, 1.f, 1.f, FLinearColor::White,
+                                BLEND_Translucent, 1.f, false, 0.f,
+                                FVector2D::ZeroVector);
+                if (!Game.IsVisibleCell(X, Y))
                     Rect(SX, SY, T + 0.5f, T + 0.5f,
-                         FLinearColor(0.01f, 0.025f, 0.042f, 0.79f));
-                }
-                else if (((X * 47 + Y * 109 + X * Y * 5) ^ (X * 19)) % 47 == 0)
-                {
-                    const float Flicker = 0.5f + 0.5f * FMath::Sin(Game.RunTime * 8.5f + X);
-                    Rect(SX + T * 0.15f, SY + T * 0.05f, T * 0.7f, T * 0.8f,
-                         FLinearColor(0.66f, 0.31f, 0.085f, 0.08f + Flicker * 0.08f));
-                    Rect(SX + 10.f * Scale, SY + 9.f * Scale, 4.f * Scale, 6.f * Scale,
-                         FLinearColor(0.91f, 0.48f, 0.17f, 0.9f));
-                    Rect(SX + 11.f * Scale, SY + 8.f * Scale, 2.f * Scale, 4.f * Scale,
-                         GoldColor);
-                }
+                         FLinearColor(0.005f, 0.016f, 0.026f, 0.82f));
             }
             else
             {
-                bool bNearby = false;
-                bool bWallVisible = false;
+                bool bExploredNeighbour = false;
+                bool bVisibleNeighbour = false;
                 for (int32 DY = -1; DY <= 1; ++DY)
                     for (int32 DX = -1; DX <= 1; ++DX)
                     {
-                        bNearby |= Game.IsExploredCell(X + DX, Y + DY);
-                        bWallVisible |= Game.IsVisibleCell(X + DX, Y + DY);
+                        bExploredNeighbour |= Game.IsExploredCell(X + DX, Y + DY);
+                        bVisibleNeighbour |= Game.IsVisibleCell(X + DX, Y + DY);
                     }
-                if (!bNearby) continue;
-                Rect(SX, SY, T, T, FLinearColor(0.07f, 0.085f, 0.108f, 1.f));
-                Rect(SX, SY, T, 5.f * Scale, FLinearColor(0.19f, 0.22f, 0.25f, 1.f));
-                Rect(SX + 2.f * Scale, SY + 5.f * Scale, T - 3.f * Scale, 13.f * Scale,
-                     FLinearColor(0.125f, 0.148f, 0.177f, 1.f));
-                Rect(SX + 2.f * Scale, SY + 8.f * Scale, T - 3.f * Scale, Scale,
-                     FLinearColor(0.25f, 0.26f, 0.29f, 0.55f));
-                if (HashCombine(GetTypeHash(X), GetTypeHash(Y)) % 4 == 0)
-                    Rect(SX + 11.f * Scale, SY + 9.f * Scale, Scale, 9.f * Scale,
-                         FLinearColor(0.065f, 0.07f, 0.1f, 1.f));
+                if (!bExploredNeighbour) continue;
+                const int32 Variant = 8 + static_cast<int32>(Hash % 4u);
+                const int32 Index = Biome * FAVArt::VariantsPerBiome + Variant;
+                if (BiomeTiles.IsValidIndex(Index) && BiomeTiles[Index])
+                    DrawTexture(BiomeTiles[Index], SX, SY, T + 0.5f, T + 0.5f,
+                                0.f, 0.f, 1.f, 1.f, FLinearColor::White,
+                                BLEND_Translucent, 1.f, false, 0.f,
+                                FVector2D::ZeroVector);
+                // Contact shadow behind masonry ledge gives 2.5D wall height.
                 if (Game.IsFloor(X, Y + 1))
-                    Rect(SX, SY + 18.f * Scale, T, 6.f * Scale,
-                         FLinearColor(0.035f, 0.045f, 0.064f, 1.f));
-                if (!bWallVisible)
+                    Rect(SX, SY + 19.f * Scale, T, 5.f * Scale,
+                         FLinearColor(0.f, 0.006f, 0.01f, 0.40f));
+                if (!bVisibleNeighbour)
                     Rect(SX, SY, T + 0.5f, T + 0.5f,
-                         FLinearColor(0.01f, 0.02f, 0.032f, 0.89f));
+                         FLinearColor(0.f, 0.012f, 0.018f, 0.86f));
             }
         }
+    }
+}
+
+// Palette-quantized, wall-occluded lighting pass on the actual tile grid.
+// This is a lightweight Canvas lighting implementation (NOT a GPU HLSL
+// post-process). Sources never illuminate through solid dungeon walls.
+void AAVHUD::DrawLighting(const AAVGameMode& Game)
+{
+    if (Game.VisualQuality == 0) return;
+    const float T = AAVGameMode::TilePixels * Scale;
+    const FLinearColor Color = FAVArt::LightColor(Game.CurrentBiome());
+    const int32 MinX = FMath::Max(0, FMath::FloorToInt(-Origin.X / T) - 1);
+    const int32 MaxX = FMath::Min(AAVGameMode::MapW - 1,
+        FMath::CeilToInt((Canvas->SizeX - Origin.X) / T) + 1);
+    const int32 MinY = FMath::Max(0, FMath::FloorToInt(-Origin.Y / T) - 1);
+    const int32 MaxY = FMath::Min(AAVGameMode::MapH - 1,
+        FMath::CeilToInt((Canvas->SizeY - Origin.Y) / T) + 1);
+    for (int32 Y = MinY; Y <= MaxY; ++Y)
+    {
+        for (int32 X = MinX; X <= MaxX; ++X)
+        {
+            if (!Game.IsFloor(X, Y) || !Game.IsVisibleCell(X, Y)) continue;
+            const FVector2D Cell(X + 0.5f, Y + 0.5f);
+            const float HeroDistance = FVector2D::Distance(Cell, Game.Hero);
+            float Brightness = 0.12f + 0.16f * FAVArt::LightFalloff(HeroDistance, 8.f);
+            float WarmLight = 0.f;
+            if (Game.VisualQuality >= 1)
+            {
+                for (const FAVDecor& Decor : Game.Decorations)
+                {
+                    if (Decor.Type % 3 != 1 || !Game.IsVisibleAt(Decor.Pos)) continue;
+                    const float Distance = FVector2D::Distance(Cell, Decor.Pos);
+                    if (Distance > 5.0f) continue;
+                    if (Game.VisualQuality == 2 &&
+                        !FAVDungeonNavigation::LineOfSight(
+                             Game.Tiles, AAVGameMode::MapW, AAVGameMode::MapH,
+                             Decor.Pos, Cell))
+                        continue;
+                    const float Flicker = 0.85f + 0.15f *
+                        FMath::Sin(Game.RunTime * 7.2f + Decor.Phase);
+                    WarmLight += 0.33f * FAVArt::LightFalloff(Distance, 5.f) * Flicker;
+                }
+            }
+            // Combat effects briefly illuminate nearby tilework.
+            if (Game.VisualQuality == 2)
+            {
+                for (const FAVEffect& Effect : Game.Effects)
+                {
+                    if (FVector2D::Distance(Effect.Pos, Cell) > 3.0f) continue;
+                    if (!FAVDungeonNavigation::LineOfSight(
+                          Game.Tiles, AAVGameMode::MapW, AAVGameMode::MapH,
+                          Effect.Pos, Cell))
+                        continue;
+                    Brightness += 0.20f * FAVArt::LightFalloff(
+                        FVector2D::Distance(Effect.Pos, Cell), 3.f) *
+                        (Effect.Life / FMath::Max(0.01f, Effect.Duration));
+                }
+            }
+            // Quantization to discrete illumination levels matches pixel art
+            // and avoids an inconsistent smooth glow over nearest-neighbour art.
+            Brightness = FMath::FloorToFloat(
+                FMath::Clamp(Brightness + WarmLight, 0.f, 0.65f) * 9.f) / 9.f;
+            if (Brightness <= 0.f) continue;
+            const float SX = Origin.X + X * T, SY = Origin.Y + Y * T;
+            Rect(SX, SY, T + 0.5f, T + 0.5f,
+                 FLinearColor(Color.R, Color.G, Color.B, Brightness * 0.44f));
+        }
+    }
+}
+
+// Tiny parallax ash/spore/ember flecks use only a fixed number of draw calls.
+// Deterministic positions from the run seed; no UObject particle allocations.
+void AAVHUD::DrawAtmosphere(const AAVGameMode& Game)
+{
+    if (Game.VisualQuality == 0) return;
+    const int32 Count = Game.VisualQuality == 2 ? 58 : 24;
+    const int32 Biome = Game.CurrentBiome();
+    const FLinearColor Palette = Biome == 0 ?
+        FLinearColor(0.66f, 0.68f, 0.74f, 0.38f) :
+        Biome == 1 ? FLinearColor(0.44f, 0.93f, 0.52f, 0.48f) :
+                     FLinearColor(1.f, 0.58f, 0.26f, 0.55f);
+    for (int32 I = 0; I < Count; ++I)
+    {
+        const uint32 H = FAVArt::Hash(I, Game.Floor, static_cast<uint32>(Game.RunSeed));
+        const float W = Canvas->SizeX, Ht = Canvas->SizeY - 120.f * Scale;
+        if (Ht <= 0.f || W <= 0.f) return;
+        const float Speed = Biome == 2 ? -14.f : Biome == 1 ? 7.f : 3.5f;
+        const float X = FMath::Fmod(static_cast<float>(H % 4096u) / 4096.f * W +
+            Game.RunTime * (I % 3 == 0 ? Speed * 1.5f : Speed) + W * 8.f, W);
+        const float Y = FMath::Fmod(static_cast<float>((H >> 12) % 4096u) /
+            4096.f * Ht + Game.RunTime *
+            (Biome == 2 ? -23.f : Biome == 1 ? -8.f : 10.f) + Ht * 8.f, Ht);
+        const float Size = ((H >> 7) % 4u == 0u ? 2.f : 1.f) * Scale;
+        if (Y < 38.f * Scale) continue;
+        Rect(X, Y, Size, Size, Palette);
     }
 }
 
@@ -866,7 +1037,9 @@ void AAVHUD::DrawHUD()
              Shake * (Game->ScreenShake * 11.f * Scale);
     Rect(0.f, 0.f, Canvas->SizeX, Canvas->SizeY, Ink);
     DrawDungeon(*Game);
+    DrawLighting(*Game);
     DrawActors(*Game);
+    DrawAtmosphere(*Game);
     if (Game->Invulnerability > 0.5f)
         Rect(0.f, 0.f, Canvas->SizeX, Canvas->SizeY,
              FLinearColor(0.33f, 0.025f, 0.036f, 0.10f));

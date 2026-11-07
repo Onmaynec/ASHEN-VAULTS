@@ -23,6 +23,9 @@ private:
     UPROPERTY(Transient)
     TArray<UTexture2D*> Sprites;
 
+    UPROPERTY(Transient)
+    TArray<UTexture2D*> BiomeTiles; // 3 biomes x 12 floor/wall variants
+
     float Scale = 1.f;
     FVector2D Center = FVector2D::ZeroVector;
     FVector2D Origin = FVector2D::ZeroVector;
@@ -34,6 +37,8 @@ private:
     void Sprite(int32 Type, const FVector2D& Pos, float Size = 1.f, float Alpha = 1.f);
     FVector2D Screen(const FVector2D& World) const;
     void DrawDungeon(const AAVGameMode& Game);
+    void DrawLighting(const AAVGameMode& Game);
+    void DrawAtmosphere(const AAVGameMode& Game);
     void DrawActors(const AAVGameMode& Game);
     void DrawInterface(const AAVGameMode& Game);
     void Bar(float X, float Y, float W, float H, float Fraction,
