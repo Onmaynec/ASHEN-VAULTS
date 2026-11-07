@@ -348,42 +348,140 @@ void AAVGameMode::AddEffect(const FVector2D& Pos, int32 Kind, float Radius, floa
     Effects.Add(Effect);
 }
 
+int32 AAVGameMode::ShopPrice(int32 Slot) const
+{
+    return FAVContent::ShopPrice(Slot, Floor);
+}
+
+void AAVGameMode::OfferRelic()
+{
+    // At most three bosses, so there are always new relics to choose from.
+    TArray<int32> Available;
+    for (int32 Relic = 0; Relic < FAVContent::RelicCount; ++Relic)
+        if (!HasRelic(Relic)) Available.Add(Relic);
+    for (int32 I = Available.Num() - 1; I > 0; --I)
+        Available.Swap(I, RNG.RandRange(0, I));
+    if (Available.Num() == 0)
+    {
+        bRelicPending = false;
+        Phase = XP >= NextXP() ? EAVPhase::Upgrade : EAVPhase::Playing;
+        return;
+    }
+    for (int32 I = 0; I < 3; ++I)
+        RelicChoices[I] = Available[I % Available.Num()];
+    bRelicPending = true;
+    Phase = EAVPhase::Relic;
+}
+
+void AAVGameMode::ChooseRelic(int32 Choice)
+{
+    if (Phase != EAVPhase::Relic || Choice < 0 || Choice > 2) return;
+    const int32 Relic = RelicChoices[Choice];
+    if (!HasRelic(Relic))
+    {
+        RelicMask |= 1u << Relic;
+        ++RelicCount;
+        if (Relic == 4) MaxStamina += 20.f;
+        if (Relic == 0) { MaxHP += 15.f; HP = FMath::Min(MaxHP, HP + 35.f); }
+        if (Relic == 3) AttackPower += 4.f;
+        Stamina = MaxStamina;
+    }
+    bRelicPending = false;
+    Toast = TEXT("ANCIENT RELIC ACQUIRED");
+    ToastTime = 2.7f;
+    Phase = XP >= NextXP() ? EAVPhase::Upgrade : EAVPhase::Playing;
+}
+
+void AAVGameMode::BuyFromMerchant(int32 Slot)
+{
+    if (Phase != EAVPhase::Shop || Slot < 0 || Slot >= 3) return;
+    if (ShopPurchased[Slot])
+    {
+        Toast = TEXT("SOLD OUT"); ToastTime = 1.4f;
+        return;
+    }
+    const int32 Price = ShopPrice(Slot);
+    if (Gold < Price)
+    {
+        Toast = TEXT("NOT ENOUGH GOLD"); ToastTime = 1.4f;
+        return;
+    }
+    Gold -= Price;
+    ShopPurchased[Slot] = true;
+    switch (Slot)
+    {
+    case 0: HP = FMath::Min(MaxHP, HP + 45.f); break;
+    case 1: AttackPower += 5.f; break;
+    case 2: ++Potions; break;
+    default: break;
+    }
+    Toast = TEXT("PURCHASE COMPLETE"); ToastTime = 1.5f;
+}
+
+void AAVGameMode::StrikeProps(bool bSpin, float Damage)
+{
+    const float Range = bSpin ? 2.2f : 1.9f;
+    for (int32 I = Props.Num() - 1; I >= 0; --I)
+    {
+        FAVProp& Prop = Props[I];
+        const FVector2D Delta = Prop.Pos - Hero;
+        if (Delta.Size() > Range ||
+            (!bSpin && FVector2D::DotProduct(SafeDirection(Delta), Aim) < 0.1f) ||
+            !FAVDungeonNavigation::LineOfSight(Tiles, MapW, MapH, Hero, Prop.Pos))
+            continue;
+        Prop.HP -= Damage;
+        AddEffect(Prop.Pos, 2, 0.5f);
+        if (Prop.HP > 0.f) continue;
+        const FVector2D Site = Prop.Pos;
+        Props.RemoveAtSwap(I);
+        AddEffect(Site, 3, 0.7f);
+        FAVPickup Drop;
+        Drop.Pos = Site;
+        Drop.Type = RNG.FRand() < 0.20f ? 1 : 0;
+        Drop.Amount = Drop.Type == 1 ? 20 : RNG.RandRange(3, 10);
+        Pickups.Add(Drop);
+    }
+}
+
 void AAVGameMode::Strike(bool bSpin)
 {
-    const float Cost = bSpin ? 32.f : 0.f;
+    const float Cost = bSpin ? (HasRelic(3) ? 24.f : 32.f) : 0.f;
     if (Stamina < Cost || (bSpin ? SpinCooldown > 0.f : AttackCooldown > 0.f)) return;
     Stamina -= Cost;
     if (bSpin) SpinCooldown = 1.65f;
     else AttackCooldown = 0.33f;
     AddEffect(Hero, bSpin ? 1 : 0, bSpin ? 2.2f : 1.75f, FMath::Atan2(Aim.Y, Aim.X));
     const float Range = bSpin ? 2.25f : 1.92f;
-    const float Damage = AttackPower * (bSpin ? 1.65f : 1.f);
+    const float Damage = AttackPower * (bSpin ? (HasRelic(3) ? 2.f : 1.65f) : 1.f);
     for (int32 I = Enemies.Num() - 1; I >= 0; --I)
     {
         FAVEnemy& Enemy = Enemies[I];
         FVector2D Delta = Enemy.Pos - Hero;
         const float Distance = Delta.Size();
-        if (Distance > Range + (Enemy.Type == 3 ? 0.3f : 0.f)) continue;
+        if (Distance > Range + (FAVContent::Enemy(Enemy.Type, Floor).Boss ? 0.45f : 0.f)) continue;
         if (!bSpin && FVector2D::DotProduct(SafeDirection(Delta), Aim) < 0.10f) continue;
+        // Fix: sword swings can no longer hit actors through solid stone walls.
+        if (!FAVDungeonNavigation::LineOfSight(Tiles, MapW, MapH, Hero, Enemy.Pos)) continue;
         Enemy.HP -= Damage;
         Enemy.Flash = 0.16f;
         Enemy.Knockback += SafeDirection(Delta) * (Enemy.Type == 3 ? 1.f : 5.f);
         AddEffect(Enemy.Pos, 2, 0.55f);
         if (Enemy.HP <= 0.f) KillEnemy(I);
     }
+    StrikeProps(bSpin, Damage);
 }
 
 void AAVGameMode::ThrowKnife()
 {
     if (KnifeCooldown > 0.f || Stamina < 18.f || Aim.IsNearlyZero()) return;
     Stamina -= 18.f;
-    KnifeCooldown = 0.65f;
+    KnifeCooldown = HasRelic(2) ? 0.43f : 0.65f;
     FAVBolt Blade;
     Blade.bFriendly = true;
     Blade.Pos = Hero + Aim * 0.52f;
     Blade.Velocity = Aim * 11.f;
     Blade.Time = 1.1f;
-    Blade.Damage = FMath::RoundToInt(AttackPower * 0.83f);
+    Blade.Damage = FMath::RoundToInt(AttackPower * (HasRelic(2) ? 1.12f : 0.83f));
     Bolts.Add(Blade);
     AddEffect(Hero, 0, 0.5f, FMath::Atan2(Aim.Y, Aim.X));
 }
@@ -426,7 +524,8 @@ bool AAVGameMode::OpenNearbyChest()
 void AAVGameMode::DamageHero(float Damage, const FVector2D& Source)
 {
     if (Invulnerability > 0.f || Phase != EAVPhase::Playing) return;
-    HP = FMath::Max(0.f, HP - Damage);
+    const float AdjustedDamage = HasRelic(1) ? Damage * 0.80f : Damage;
+    HP = FMath::Max(0.f, HP - AdjustedDamage);
     Invulnerability = 0.72f;
     ScreenShake = 0.26f;
     Hero = MoveWithCollision(Hero, SafeDirection(Hero - Source) * 2.8f, 0.10f, 0.27f);
@@ -447,7 +546,8 @@ void AAVGameMode::DropLoot(const FVector2D& Pos, bool bBoss)
         Pickup.Pos = Pos + FVector2D(RNG.FRandRange(-0.8f, 0.8f), RNG.FRandRange(-0.8f, 0.8f));
         if (!CanMove(Pickup.Pos, 0.1f)) Pickup.Pos = Pos;
         Pickup.Type = 0;
-        Pickup.Amount = bBoss ? RNG.RandRange(8, 15) : RNG.RandRange(1, 5);
+        Pickup.Amount = bBoss ? RNG.RandRange(12, 20) : RNG.RandRange(2, 7);
+        if (HasRelic(5)) Pickup.Amount = FMath::CeilToInt(Pickup.Amount * 1.5f);
         Pickups.Add(Pickup);
     }
     if (RNG.FRand() < (bBoss ? 1.f : 0.10f))
@@ -462,9 +562,10 @@ void AAVGameMode::KillEnemy(int32 Index)
 {
     if (!Enemies.IsValidIndex(Index)) return;
     const FAVEnemy Dead = Enemies[Index];
-    const bool bBoss = Dead.Type == 3;
+    const bool bBoss = FAVContent::Enemy(Dead.Type, Floor).Boss;
     Enemies.RemoveAtSwap(Index);
     ++Kills;
+    if (HasRelic(0)) HP = FMath::Min(MaxHP, HP + 3.f);
     Combo = ComboTime > 0.f ? Combo + 1 : 1;
     ComboTime = 4.5f;
     if (Combo % 5 == 0)
@@ -473,7 +574,7 @@ void AAVGameMode::KillEnemy(int32 Index)
         Toast = TEXT("COMBO BONUS  +5 GOLD");
         ToastTime = 1.5f;
     }
-    GrantExperience(bBoss ? 35 : (3 + Floor) * (Dead.bElite ? 2 : 1));
+    GrantExperience(bBoss ? 22 + Floor * 5 : (3 + Floor) * (Dead.bElite ? 2 : 1));
     AddEffect(Dead.Pos, 3, bBoss ? 2.2f : 0.9f);
     DropLoot(Dead.Pos, bBoss);
     if (Dead.bElite)
@@ -484,6 +585,8 @@ void AAVGameMode::KillEnemy(int32 Index)
         Shard.Amount = 2;
         Pickups.Add(Shard);
     }
+    if (bBoss)
+        OfferRelic();
 }
 
 void AAVGameMode::GrantExperience(int32 Amount)
