@@ -172,7 +172,7 @@ void AAVGameMode::GenerateFloor()
     bShrineUsed = false;
     struct FRoom { int32 X, Y, W, H; FVector2D Center() const { return FVector2D(X + W / 2.f, Y + H / 2.f); } };
     TArray<FRoom> Rooms;
-    const int32 TargetCount = FMath::Min(20, 9 + Floor * 2);
+    const int32 TargetCount = FMath::Min(20, 9 + BiomeDepth() * 2);
     for (int32 Attempt = 0; Attempt < 220 && Rooms.Num() < TargetCount; ++Attempt)
     {
         const int32 W = RNG.RandRange(5, 11);
@@ -411,7 +411,7 @@ void AAVGameMode::GenerateFloor()
         Mini.Id = NextId++;
         Enemies.Add(Mini);
     }
-    const int32 BossType = FAVContent::Boss(Floor);
+    const int32 BossType = IsGuardianFloor() ? (CurrentBiome() == 0 ? 8 : CurrentBiome() == 1 ? 9 : 3) : -1;
     if (BossType >= 0)
     {
         FAVEnemy Boss;
@@ -438,7 +438,7 @@ void AAVGameMode::GenerateFloor()
         {
             const FRoom& R = Rooms[I];
             FAVHazard Hazard;
-            Hazard.Type = Floor >= 5 ? 1 : 0;
+            Hazard.Type = CurrentBiome() == 2 ? 1 : 0;
             Hazard.Pos = FVector2D(R.X + 1.5f, R.Y + R.H - 1.5f);
             if (FVector2D::Distance(Hazard.Pos, Shrine) > 2.f &&
                 FVector2D::Distance(Hazard.Pos, Exit) > 2.f &&
@@ -450,7 +450,7 @@ void AAVGameMode::GenerateFloor()
     {
         const FRoom& R = Rooms[I];
         FAVProp Prop;
-        Prop.Type = Floor >= 5 ? 1 : 0;
+        Prop.Type = CurrentBiome() == 2 ? 1 : 0;
         Prop.Pos = FVector2D(R.X + R.W - 1.5f, R.Y + 1.5f);
         if (FVector2D::Distance(Prop.Pos, Shrine) < 2.f ||
             FVector2D::Distance(Prop.Pos, Exit) < 2.f ||
@@ -989,8 +989,6 @@ void AAVGameMode::PollInput(float DeltaSeconds)
     }
     else if (bUse && IsExitReady() && FVector2D::Distance(Hero, Exit) < 1.7f)
     {
-        if (Floor >= FinalFloor) { Phase = EAVPhase::Victory; RecordRun(); }
-        else
         {
             ++Floor;
             HP = FMath::Min(MaxHP, HP + 22.f);
