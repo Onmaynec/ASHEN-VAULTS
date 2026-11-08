@@ -121,6 +121,24 @@ struct FAVDecor
     float Phase = 0.f;
 };
 
+struct FAVWorldSnapshot
+{
+    TArray<uint8> Tiles, Visible, Explored;
+    TArray<int32> FlowDistances;
+    TArray<FAVEnemy> Enemies;
+    TArray<FAVPickup> Pickups;
+    TArray<FAVBolt> Bolts;
+    TArray<FAVTrap> Traps;
+    TArray<FAVChest> Chests;
+    TArray<FAVHazard> Hazards;
+    TArray<FAVProp> Props;
+    TArray<FAVDecor> Decorations;
+    TArray<FAVEffect> Effects;
+    TArray<FVector2D> CampDoors, CampWalls;
+    FVector2D Hero, Exit, Shrine, Merchant, BanditCampCenter;
+    bool bMerchantSpawned = false, bBanditCamp = false, bShrineUsed = false;
+};
+
 UCLASS()
 class ASHENVAULTS_API AAVGameMode : public AGameModeBase
 {
@@ -189,6 +207,14 @@ public:
     TArray<int32> FlowDistances;
     TArray<FAVEnemy> Enemies;
     bool bBanditCamp = false;
+    bool bInSafeCamp = false, bInLobby = false, bInBossArena = false;
+    bool bGuardianDefeated = false, bHasSafeCampDoor = false;
+    FVector2D SafeCampDoor = FVector2D::ZeroVector;
+    int32 PendingGuardian = -1;
+    int32 PackGold = 0, PackMaterials = 0;
+    int32 WeaponUpgrade = 0, ArmorUpgrade = 0;
+    FAVWorldSnapshot StoredWorld;
+    bool bWorldStored = false;
     TArray<FVector2D> CampDoors;
     TArray<FVector2D> CampWalls;
     FVector2D BanditCampCenter = FVector2D::ZeroVector;
@@ -247,6 +273,16 @@ private:
     float FlowRefreshTime = 0.f;
 
     void GenerateFloor();
+    void StoreDungeon();
+    void RestoreDungeon();
+    void EnterSafeCamp();
+    void EnterBossArena();
+    void EnterLobby();
+    void ResumeFromLobby();
+    void SaveCheckpoint();
+    void MakeSafeRoom(bool bLobby);
+    void ForgeUpgrade(int32 Slot);
+    void SellPack();
     void PollInput(float DeltaSeconds);
     void UpdateCombat(float DeltaSeconds);
     void RefreshAwareness(float DeltaSeconds, bool bForce = false);
