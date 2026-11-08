@@ -28,6 +28,7 @@ private:
     UPROPERTY(Transient)
     TArray<UTexture2D*> AuthoredAtlases; // 4 authored PNG atlases, 7x4 at 24px
     UPROPERTY(Transient) UTexture2D* HeroAtlas = nullptr;
+    UPROPERTY(Transient) UTexture2D* EquipmentAtlas = nullptr;
 
     float Scale = 1.f;
     FVector2D Center = FVector2D::ZeroVector;
@@ -50,4 +51,8 @@ private:
              const FLinearColor& Fill, const FString& Label);
     void DrawMiniMap(const AAVGameMode& Game);
     void DrawOverlay(const AAVGameMode& Game);
+    void DrawInventoryWindow(const AAVGameMode& Game);
+    void DrawTalentWindow(const AAVGameMode& Game);
+    void DrawEquipmentIcon(int32 ItemId, float X, float Y, float Size);
+    void DrawGothicPanel(float X,float Y,float Width,float Height);
 };
