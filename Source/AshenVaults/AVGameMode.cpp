@@ -1,6 +1,7 @@
 #include "AVGameMode.h"
 #include "AVEquipment.h"
 #include "AVSkills.h"
+#include "AVFortressLayout.h"
 #include "AVHUD.h"
 #include "AVSaveGame.h"
 #include "AVDungeonNavigation.h"
@@ -479,53 +480,12 @@ void AAVGameMode::GenerateFloor()
         FMath::Min(14, 10 + BiomeDepth()) : FMath::Min(20, 9 + BiomeDepth() * 2);
     if(CurrentBiome()==3)
     {
-        // Fortress-plan generator: three wings by three rows. Unlike the cave
-        // generator, space is built around a central keep and looped galleries.
-        // All 9 major chambers are connected by a guaranteed spanning graph.
-        const int32 AnchorX[3]={3,22,43};
-        const int32 AnchorY[3]={3,16,32};
-        for(int32 Row=0;Row<3;++Row)
-            for(int32 Col=0;Col<3;++Col)
-            {
-                const bool CenterRoom=Row==1 && Col==1;
-                const int32 W=CenterRoom?16:RNG.RandRange(10,14);
-                const int32 H=CenterRoom?12:RNG.RandRange(7,9);
-                const int32 X=AnchorX[Col]+(Col==1?0:RNG.RandRange(0,1));
-                const int32 Y=AnchorY[Row]+(Row==1?0:RNG.RandRange(0,1));
-                FRoom R={X,Y,W,H};
-                Rooms.Add(R);
-                for(int32 TY=Y;TY<Y+H;++TY)
-                    for(int32 TX=X;TX<X+W;++TX)
-                        Tiles[TY*MapW+TX]=1;
-            }
-        auto Gallery=[&](int32 A,int32 B)
-        {
-            FVector2D From=Rooms[A].Center(),To=Rooms[B].Center();
-            int32 X=FMath::FloorToInt(From.X),Y=FMath::FloorToInt(From.Y);
-            const int32 TX=FMath::FloorToInt(To.X),TY=FMath::FloorToInt(To.Y);
-            auto Dig=[&](int32 CX,int32 CY)
-            {
-                for(int32 O=-1;O<=1;++O) {
-                    if(CX+O>=2 && CX+O<MapW-2)
-                        Tiles[CY*MapW+CX+O]=1;
-                    if(CY+O>=2 && CY+O<MapH-2)
-                        Tiles[(CY+O)*MapW+CX]=1;
-                }
-            };
-            while(X!=TX) {Dig(X,Y);X+=TX>X?1:-1;}
-            while(Y!=TY) {Dig(X,Y);Y+=TY>Y?1:-1;}
-            Dig(TX,TY);
-        };
-        // Horizontal wings are always connected.
-        for(int32 Row=0;Row<3;++Row)
-            for(int32 Col=0;Col<2;++Col)
-                Gallery(Row*3+Col,Row*3+Col+1);
-        // Central keep connects the three levels. Side galleries form loops.
-        Gallery(1,4); Gallery(4,7);
-        for(int32 Col=0;Col<3;Col+=2)
-            for(int32 Row=0;Row<2;++Row)
-                if(RNG.FRand()<0.72f)
-                    Gallery(Row*3+Col,(Row+1)*3+Col);
+        TArray<FAVFortressRoom> Layout;
+        const int32 LayoutSeed=static_cast<int32>(static_cast<uint32>(RunSeed)^
+            (static_cast<uint32>(Floor)*0x9E3779B9u));
+        FAVFortressLayout::Build(LayoutSeed,Tiles,Layout);
+        for(const FAVFortressRoom& R:Layout)
+            Rooms.Add({R.X,R.Y,R.W,R.H});
     }
     else
     {
