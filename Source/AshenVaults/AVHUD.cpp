@@ -1045,12 +1045,36 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
             Rect(Pt.X - 3.f * Scale, Pt.Y - 5.f * Scale,
                  6.f * Scale, 10.f * Scale, TrapColor);
         }
-        else // dart mechanism
+        else if (Trap.Type == 2) // dart mechanism
         {
             Rect(Pt.X - 6.f * Scale, Pt.Y - 3.f * Scale,
                  12.f * Scale, 6.f * Scale, TrapColor);
             Rect(Pt.X - 2.f * Scale, Pt.Y - 7.f * Scale,
                  4.f * Scale, 14.f * Scale, FLinearColor(0.67f, 0.7f, 0.74f, 1.f));
+        }
+        else if (Trap.Type == 3) // collapsing stone press
+        {
+            Rect(Pt.X - 10.f * Scale, Pt.Y - 10.f * Scale,
+                 20.f * Scale, 20.f * Scale, TrapColor);
+            Rect(Pt.X - 6.f * Scale, Pt.Y - 6.f * Scale,
+                 12.f * Scale, 12.f * Scale, Ink);
+        }
+        else if (Trap.Type == 4) // swinging axe
+        {
+            Rect(Pt.X - 2.f * Scale, Pt.Y - 11.f * Scale, 4.f * Scale, 22.f * Scale, Metal);
+            Rect(Pt.X - 10.f * Scale, Pt.Y + 5.f * Scale, 20.f * Scale, 6.f * Scale, TrapColor);
+        }
+        else if (Trap.Type == 5) // collapsing flagstone
+        {
+            Rect(Pt.X - 10.f * Scale, Pt.Y - 9.f * Scale, 20.f * Scale, 18.f * Scale, TrapColor);
+            Rect(Pt.X - 2.f * Scale, Pt.Y - 7.f * Scale, 3.f * Scale, 14.f * Scale, Ink);
+            Rect(Pt.X - 7.f * Scale, Pt.Y + 1.f * Scale, 14.f * Scale, 2.f * Scale, Ink);
+        }
+        else if (Trap.Type == 6) // ceiling spear launcher
+        {
+            for (int32 K=-1; K<=1; ++K)
+                Rect(Pt.X + (K*6.f-1.f)*Scale,Pt.Y-9.f*Scale,
+                     3.f*Scale,18.f*Scale,TrapColor);
         }
         if (Armed)
         {
@@ -1117,6 +1141,9 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
             (E.Type == 10 ? 0.12f : 0.045f);
         Sprite(SpriteType, E.Pos + FVector2D(0.f, EnemyBob),
                Radius, E.Flash > 0.f ? 0.55f : 1.f);
+        // Secondary subclass mark is visually distinct and does not affect the enemy silhouette.
+        if (E.Type >= 34 && E.Type <= 51 && (E.Id & 1) != 0)
+            Rect(Pt.X - 2.f * Scale, Pt.Y - 14.f * Scale, 4.f * Scale, 3.f * Scale, GoldColor);
         if (E.PhaseShiftTime > 0.f)
         {
             const float TransformPulse = 0.4f + 0.6f * FMath::Sin(Game.RunTime * 28.f);
