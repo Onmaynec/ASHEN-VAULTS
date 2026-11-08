@@ -1176,6 +1176,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         const FAVEnemySpec Spec = FAVContent::Enemy(E.Type, Floor);
         E.Cooldown -= DeltaSeconds;
         E.AbilityCooldown -= DeltaSeconds;
+        E.PathRefresh -= DeltaSeconds;
         E.AlertTime = FMath::Max(0.f, E.AlertTime - DeltaSeconds);
         E.Flash = FMath::Max(0.f, E.Flash - DeltaSeconds);
         FVector2D Target = Hero;
@@ -1225,10 +1226,25 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 DesiredVelocity = -Direction * Speed;
             else if (Distance > (bCaster ? 5.3f :
                                  Spec.Ranged && !bMeleeBoss ? 4.9f : Reach * 0.8f))
-                DesiredVelocity = bTargetEnemy || !bSeesTarget ?
+            {
+                if (!bSeesTarget && E.MemoryTime > 0.f)
+                {
+                    if (E.PathRefresh <= 0.f)
+                    {
+                        TArray<int32> MemoryFlow;
+                        FAVDungeonNavigation::BuildFlow(Tiles, MapW, MapH,
+                                                         Pursuit, MemoryFlow);
+                        E.CachedPathDirection = FAVDungeonNavigation::FlowDirection(
+                            Tiles, MemoryFlow, MapW, MapH, E.Pos, Pursuit);
+                        E.PathRefresh = 0.65f + (E.Id % 5) * 0.09f;
+                    }
+                    DesiredVelocity = E.CachedPathDirection * Speed;
+                }
+                else DesiredVelocity = bTargetEnemy ?
                     SafeDirection(Pursuit - E.Pos) * Speed :
                     FAVDungeonNavigation::FlowDirection(
                         Tiles, FlowDistances, MapW, MapH, E.Pos, Hero) * Speed;
+            }
         }
         E.DodgeCooldown = FMath::Max(0.f, E.DodgeCooldown - DeltaSeconds);
         if (bSeesTarget && Distance < 4.f && E.DodgeCooldown <= 0.f &&
