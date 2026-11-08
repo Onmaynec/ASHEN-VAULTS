@@ -17,7 +17,7 @@ float FAVContent::LevelHealthMultiplier(int32 Level)
 }
 float FAVContent::LevelDamageMultiplier(int32 Level)
 {
-    return 1.f + 0.085f * (Level > 1 ? Level - 1 : 0);
+    return 1.f + 0.065f * (Level > 1 ? Level - 1 : 0);
 }
 
 float FAVContent::ScaledEnemyHealth(int32 Type, int32 Floor, int32 Level)
