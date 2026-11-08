@@ -1,0 +1,53 @@
+// ASHEN VAULTS 1.0 — pixel-art shader helper library for material custom nodes.
+// Editor material instances are built by Tools/Unreal/BuildVisualMaterials.py.
+#ifndef ASHEN_VAULTS_VFX_INCLUDED
+#define ASHEN_VAULTS_VFX_INCLUDED
+
+float AVSoftPixelLight(float2 uv,float2 source,float radius,float exponent)
+{
+    const float d=length(uv-source);
+    return pow(saturate(1.0-d/max(radius,0.001)),max(0.1,exponent));
+}
+float AVPixelatedRadius(float2 uv,float resolution,float2 origin)
+{
+    const float2 q=floor((uv-origin)*max(2.0,resolution)+0.5)/max(2.0,resolution)+origin;
+    return length(q-origin);
+}
+float AVBayer4(float2 uv,float2 dimensions)
+{
+    const int2 p=int2(floor(uv*dimensions))&3;
+    const float v[16]={
+        0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5
+    };
+    return v[p.x+p.y*4]/16.0;
+}
+float3 AVOrderedGrade(float3 color,float2 uv,float2 resolution,float steps)
+{
+    const float jitter=(AVBayer4(uv,resolution)-0.5)/max(2.0,steps);
+    return floor(saturate(color+jitter)*max(2.0,steps)+0.5)/max(2.0,steps);
+}
+float3 AVBiomeTint(float3 base,float3 tint,float strength)
+{
+    return lerp(base,base*tint,saturate(strength));
+}
+float AVTorchFlicker(float seconds,float seed)
+{
+    return saturate(0.82+0.09*sin(seconds*8.3+seed)+
+                    0.06*sin(seconds*13.2+seed*1.7));
+}
+float AVDissolveEdge(float noise,float threshold,float edgeWidth)
+{
+    return 1.0-smoothstep(threshold,threshold+max(0.001,edgeWidth),noise);
+}
+float3 AVHeatDistortion(float2 uv,float time,float amplitude)
+{
+    float wobble=sin(uv.y*61.0+time*3.7)*amplitude;
+    return float3(uv.x+wobble,uv.y,0.0);
+}
+float AVOutlineMask(float centerAlpha,float leftAlpha,float rightAlpha,
+                    float upAlpha,float downAlpha)
+{
+    const float neighbors=max(max(leftAlpha,rightAlpha),max(upAlpha,downAlpha));
+    return saturate(neighbors-centerAlpha);
+}
+#endif
