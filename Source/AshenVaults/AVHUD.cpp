@@ -838,7 +838,7 @@ void AAVHUD::DrawLighting(const AAVGameMode& Game)
             {
                 for (const FAVDecor& Decor : Game.Decorations)
                 {
-                    if ((Decor.Type != 1 && Decor.Type != 4 && Decor.Type != 6) ||
+                    if ((Decor.Type != 1 && Decor.Type != 4 && Decor.Type != 6 && Decor.Type != 10) ||
                         !Game.IsVisibleAt(Decor.Pos)) continue;
                     const float Distance = FVector2D::Distance(Cell, Decor.Pos);
                     if (Distance > 5.0f) continue;
@@ -880,13 +880,23 @@ void AAVHUD::DrawLighting(const AAVGameMode& Game)
                         WarmLight += 0.16f * FAVArt::LightFalloff(
                             FVector2D::Distance(Bolt.Pos, Cell), 2.6f);
             }
-            // Quantized illumination levels match nearest-neighbour pixel art.
-            Brightness = static_cast<float>(FMath::FloorToInt(
-                FMath::Clamp(Brightness + WarmLight, 0.f, 0.65f) * 9.f)) / 9.f;
-            if (Brightness <= 0.f) continue;
-            const float SX = Origin.X + X * T, SY = Origin.Y + Y * T;
-            Rect(SX, SY, T + 0.5f, T + 0.5f,
-                 FLinearColor(Color.R, Color.G, Color.B, Brightness * 0.44f));
+            // Pixel-quantized darkness preserves hard edges while animated
+            // light sources carve readable pools in every biome.
+            const float Total=FMath::Clamp(Brightness+WarmLight,0.f,0.92f);
+            Brightness=FMath::FloorToInt(Total*10.f)/10.f;
+            const float SX=Origin.X+X*T,SY=Origin.Y+Y*T;
+            const float Darkness=FMath::Clamp(0.64f-Brightness*1.05f,0.03f,0.64f);
+            Rect(SX,SY,T+0.5f,T+0.5f,
+                 FLinearColor(0.006f,0.01f,0.026f,Darkness));
+            if(Brightness>0.13f)
+                Rect(SX,SY,T+0.5f,T+0.5f,
+                    FLinearColor(Color.R,Color.G,Color.B,
+                                 FMath::Min(0.27f,Brightness*0.28f)));
+            // Tiny local highlight where the brightest lamps strike the floor.
+            if(WarmLight>0.18f && Game.VisualQuality==2)
+                Rect(SX+3.f*Scale,SY+3.f*Scale,T-6.f*Scale,T-6.f*Scale,
+                    FLinearColor(Color.R,Color.G,Color.B,
+                                 FMath::Min(0.12f,WarmLight*0.17f)));
         }
     }
 }
