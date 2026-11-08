@@ -256,7 +256,8 @@ void AAVGameMode::GenerateFloor()
             const FVector2D Candidate(
                 RNG.RandRange(R.X + 1, R.X + R.W - 2) + 0.5f,
                 RNG.RandRange(R.Y + 1, R.Y + R.H - 2) + 0.5f);
-            if (FVector2D::Distance(Candidate, Hero) < 4.f ||
+            if (!CanMove(Candidate, 0.3f) ||
+                FVector2D::Distance(Candidate, Hero) < 4.f ||
                 FVector2D::Distance(Candidate, Exit) < 2.2f ||
                 FVector2D::Distance(Candidate, Shrine) < 2.2f ||
                 (bMerchantSpawned && FVector2D::Distance(Candidate, Merchant) < 2.2f))
@@ -298,6 +299,7 @@ void AAVGameMode::GenerateFloor()
             FAVEnemy Enemy;
             Enemy.Pos = FVector2D(RNG.FRandRange(R.X + 1.f, R.X + R.W - 1.f),
                                   RNG.FRandRange(R.Y + 1.f, R.Y + R.H - 1.f));
+            if (!CanMove(Enemy.Pos, 0.3f)) Enemy.Pos = R.Center();
             Enemy.Type = FAVContent::EnemyRoll(Floor, RNG.RandRange(0, 99));
             Enemy.Level = FAVContent::EnemyLevel(Floor, RNG.RandRange(0, 99));
             Enemy.Equipment = RNG.FRand() < 0.085f ? RNG.RandRange(1, 3) : 0;
@@ -327,6 +329,7 @@ void AAVGameMode::GenerateFloor()
             FAVEnemy Bandit;
             Bandit.Pos = FVector2D(RNG.FRandRange(Camp.X + 1.f, Camp.X + Camp.W - 1.f),
                                    RNG.FRandRange(Camp.Y + 1.f, Camp.Y + Camp.H - 1.f));
+            if (!CanMove(Bandit.Pos, 0.3f)) Bandit.Pos = Camp.Center();
             Bandit.Type = I % 3 == 0 ? 25 : 33;
             Bandit.Faction = 1;
             Bandit.Level = FAVContent::EnemyLevel(Floor, RNG.RandRange(0, 99));
