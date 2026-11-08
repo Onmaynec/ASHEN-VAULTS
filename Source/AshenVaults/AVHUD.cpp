@@ -1,5 +1,7 @@
 #include "AVHUD.h"
 #include "AVGameMode.h"
+#include "AVEquipment.h"
+#include "AVSkills.h"
 #include "AVArt.h"
 #include "AVDungeonNavigation.h"
 #include "Engine/Canvas.h"
@@ -1407,9 +1409,10 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
          FString::Printf(TEXT("RELICS %d  AIM x%d"), Game.RelicCount, Game.ShotSeries) :
          FString::Printf(TEXT("RELICS %d   ECHOES %d"), Game.RelicCount, Game.Echoes),
          646.f * Scale, Y + 34.f * Scale, Pale, 0.83f);
-    Text(FString::Printf(TEXT("GEAR %d  ARMOR %.0f%%  RANGED +%.0f"),
-         Game.EquippedGear, Game.ArmorRating * 100.f, Game.RangedBonus),
+    Text(FString::Printf(TEXT("ARMOR %.0f%%  GEAR %d  SKILLS %d"),
+         Game.ArmorRating * 100.f,Game.InventoryItems.Num(),Game.SkillPoints),
          280.f * Scale, Y + 53.f * Scale, GoldColor, 0.73f);
+    Text(TEXT("I  GEAR   K  SKILLS"),645.f*Scale,Y+53.f*Scale,Mint,0.73f);
     Text(FString::Printf(TEXT("F3  FX %s"), Game.VisualQuality == 2 ?
          TEXT("HIGH") : Game.VisualQuality == 1 ? TEXT("MED") : TEXT("LOW")),
          816.f * Scale, Y + 53.f * Scale, Aether, 0.73f);
@@ -1451,7 +1454,124 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
 void AAVHUD::DrawOverlay(const AAVGameMode& Game)
 {
     if (Game.Phase == EAVPhase::Playing) return;
-    Rect(0.f, 0.f, Canvas->SizeX, Canvas->SizeY, FLinearColor(0.01f, 0.015f, 0.025f, 0.77f));
+    Rect(0.f,0.f,Canvas->SizeX,Canvas->SizeY,
+         FLinearColor(0.01f,0.015f,0.025f,0.84f));
+    if(Game.Phase == EAVPhase::Inventory || Game.Phase == EAVPhase::Skills)
+    {
+        const float Left=Canvas->SizeX*0.5f-370.f*Scale;
+        const float Top=Canvas->SizeY*0.5f-207.f*Scale;
+        Rect(Left,Top,740.f*Scale,414.f*Scale,
+             FLinearColor(0.065f,0.078f,0.11f,0.98f));
+        Rect(Left,Top,740.f*Scale,4.f*Scale,GoldColor);
+        if(Game.Phase == EAVPhase::Inventory)
+        {
+            const TCHAR* Slots[8]={
+                TEXT("1 WEAPON"),TEXT("2 HEAD"),TEXT("3 CHEST"),
+                TEXT("4 HANDS"),TEXT("5 LEGS"),TEXT("6 BOOTS"),
+                TEXT("7 TRINKET"),TEXT("8 TRINKET")
+            };
+            Text(TEXT("EQUIPMENT"),Left+28.f*Scale,Top+20.f*Scale,GoldColor,1.2f);
+            Text(FString::Printf(TEXT("BAG %d / 48"),Game.InventoryItems.Num()),
+                 Left+420.f*Scale,Top+20.f*Scale,Mint,1.0f);
+            for(int32 Slot=0;Slot<8;++Slot)
+            {
+                const int32 Id=Game.EquipmentSlots.IsValidIndex(Slot)?
+                    Game.EquipmentSlots[Slot]:-1;
+                const float Y=Top+(61.f+Slot*34.f)*Scale;
+                Rect(Left+24.f*Scale,Y-2.f*Scale,318.f*Scale,29.f*Scale,
+                     FLinearColor(0.10f,0.12f,0.16f,0.90f));
+                Text(Slots[Slot],Left+31.f*Scale,Y+3.f*Scale,Aether,0.80f);
+                Text(Game.GearName(Id).Left(24),Left+112.f*Scale,
+                     Y+3.f*Scale,Id<0?Pale:GoldColor,0.74f);
+            }
+            const int32 Visible=9;
+            const int32 First=FMath::Max(0,Game.GearSelection-Visible/2);
+            for(int32 J=0;J<Visible && J+First<Game.InventoryItems.Num();++J)
+            {
+                const int32 Index=J+First;
+                const int32 ItemId=Game.InventoryItems[Index];
+                const FAVEquipmentSpec* S=FAVEquipment::Find(ItemId);
+                if(!S)continue;
+                const bool Selected=Index==Game.GearSelection;
+                const float Y=Top+(59.f+J*32.f)*Scale;
+                Rect(Left+374.f*Scale,Y,344.f*Scale,29.f*Scale,
+                     Selected?FLinearColor(0.18f,0.24f,0.28f,1.f):
+                              FLinearColor(0.10f,0.12f,0.16f,0.90f));
+                Text(Game.GearName(ItemId).Left(27),Left+382.f*Scale,
+                     Y+6.f*Scale,Selected?Mint:Pale,0.76f);
+                Text(FString::Printf(TEXT("R%d"),S->Rarity),
+                     Left+673.f*Scale,Y+6.f*Scale,GoldColor,0.70f);
+            }
+            if(Game.InventoryItems.IsValidIndex(Game.GearSelection))
+            {
+                const FAVEquipmentSpec* S=FAVEquipment::Find(
+                    Game.InventoryItems[Game.GearSelection]);
+                if(S)
+                    Text(FString::Printf(TEXT("BONUSES: %d +%.1f / %d +%.1f"),
+                         S->StatA,S->ValueA,S->StatB,S->ValueB),
+                         Left+379.f*Scale,Top+357.f*Scale,Pale,0.77f);
+            }
+            Text(TEXT("UP/DOWN SELECT   ENTER EQUIP   1-8 UNEQUIP   I/TAB EXIT"),
+                 Left+96.f*Scale,Top+390.f*Scale,Mint,0.85f);
+        }
+        else
+        {
+            Text(TEXT("CHARACTER TALENTS"),Left+28.f*Scale,Top+18.f*Scale,GoldColor,1.2f);
+            Text(FString::Printf(TEXT("LEVEL %d   AVAILABLE POINTS %d"),
+                 Game.Level,Game.SkillPoints),Left+359.f*Scale,
+                 Top+21.f*Scale,Mint,0.95f);
+            const int32 First=FMath::Max(0,Game.SkillSelection-5);
+            for(int32 J=0;J<11 && J+First<21;++J)
+            {
+                const int32 Selection=J+First;
+                const int32 Id=Game.SkillIdAt(Selection);
+                const FAVSkillSpec* S=FAVSkills::Find(Id);
+                if(!S)continue;
+                const bool Selected=Selection==Game.SkillSelection;
+                FString Name=FString(UTF8_TO_TCHAR(S->CodeName));
+                Name.ReplaceInline(TEXT("_"),TEXT(" "));
+                Name=Name.ToUpper();
+                const float Y=Top+(55.f+J*28.f)*Scale;
+                Rect(Left+24.f*Scale,Y,420.f*Scale,26.f*Scale,
+                     Selected?FLinearColor(0.19f,0.23f,0.30f,1.f):
+                              FLinearColor(0.10f,0.12f,0.16f,0.92f));
+                Text(Name.Left(29),Left+32.f*Scale,Y+5.f*Scale,
+                     Selected?Mint:Pale,0.87f);
+                Text(FString::Printf(TEXT("%d/%d"),Game.SkillRank(Id),S->MaxRank),
+                     Left+386.f*Scale,Y+5.f*Scale,
+                     Game.SkillRank(Id)>0?GoldColor:Aether,0.82f);
+            }
+            const int32 Id=Game.SkillIdAt(Game.SkillSelection);
+            const FAVSkillSpec* S=FAVSkills::Find(Id);
+            if(S)
+            {
+                Rect(Left+461.f*Scale,Top+55.f*Scale,254.f*Scale,303.f*Scale,
+                     FLinearColor(0.09f,0.11f,0.15f,1.f));
+                FString Name=FString(UTF8_TO_TCHAR(S->CodeName));
+                Name.ReplaceInline(TEXT("_"),TEXT(" "));
+                Text(Name.ToUpper().Left(25),Left+472.f*Scale,
+                     Top+70.f*Scale,GoldColor,0.94f);
+                Text(FString::Printf(TEXT("RANK %d / %d"),Game.SkillRank(Id),S->MaxRank),
+                     Left+472.f*Scale,Top+111.f*Scale,Pale,0.9f);
+                Text(FString::Printf(TEXT("UNLOCK LEVEL %d"),S->MinLevel),
+                     Left+472.f*Scale,Top+145.f*Scale,Aether,0.85f);
+                Text(FString::Printf(TEXT("EFFECT %d   +%.2f / RANK"),
+                     S->EffectId,S->ValuePerRank),
+                     Left+472.f*Scale,Top+183.f*Scale,Pale,0.82f);
+                Text(S->PrerequisiteId>=0?
+                     FString::Printf(TEXT("REQUIRES SKILL %d"),S->PrerequisiteId):
+                     TEXT("NO PREREQUISITE"),
+                     Left+472.f*Scale,Top+221.f*Scale,Pale,0.8f);
+                Text(FAVSkills::CanLearn(Id,Game.HeroClass,Game.Level,
+                     Game.LearnedSkills.GetData(),Game.LearnedSkills.Num(),Game.SkillPoints)?
+                     TEXT("READY TO LEARN"):TEXT("LOCKED"),
+                     Left+472.f*Scale,Top+275.f*Scale,Mint,0.9f);
+            }
+            Text(TEXT("UP/DOWN NAVIGATE   ENTER LEARN   BACKSPACE RESPEC IN CAMP   K EXIT"),
+                 Left+51.f*Scale,Top+389.f*Scale,Mint,0.77f);
+        }
+        return;
+    }
     const float Left = Canvas->SizeX * 0.5f - 260.f * Scale;
     const float Top = Canvas->SizeY * 0.5f - 112.f * Scale;
     Rect(Left, Top, 520.f * Scale, 230.f * Scale, FLinearColor(0.07f, 0.085f, 0.12f, 0.97f));
