@@ -1682,6 +1682,39 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         else if (bReplay) NewRun(true);
         return;
     }
+    // Inventory and skill tree intentionally pause the game, including enemy AI.
+    const bool bInventoryKey = PC->WasInputKeyJustPressed(EKeys::I) ||
+                               PC->WasInputKeyJustPressed(EKeys::Tab);
+    const bool bSkillsKey = PC->WasInputKeyJustPressed(EKeys::K);
+    if (Phase == EAVPhase::Inventory)
+    {
+        if (bInventoryKey || bPause) { Phase=EAVPhase::Playing; return; }
+        if (PC->WasInputKeyJustPressed(EKeys::Up) && InventoryItems.Num()>0)
+            GearSelection=(GearSelection+InventoryItems.Num()-1)%InventoryItems.Num();
+        if (PC->WasInputKeyJustPressed(EKeys::Down) && InventoryItems.Num()>0)
+            GearSelection=(GearSelection+1)%InventoryItems.Num();
+        if (bRestart || bUse) EquipInventoryItem(GearSelection);
+        const FKey Slots[8]={EKeys::One,EKeys::Two,EKeys::Three,EKeys::Four,
+                             EKeys::Five,EKeys::Six,EKeys::Seven,EKeys::Eight};
+        for(int32 I=0;I<8;++I)
+            if(PC->WasInputKeyJustPressed(Slots[I])) { UnequipSlot(I); break; }
+        return;
+    }
+    if (Phase == EAVPhase::Skills)
+    {
+        if (bSkillsKey || bPause) { Phase=EAVPhase::Playing; return; }
+        if (PC->WasInputKeyJustPressed(EKeys::Up))
+            SkillSelection=(SkillSelection+20)%21;
+        if (PC->WasInputKeyJustPressed(EKeys::Down))
+            SkillSelection=(SkillSelection+1)%21;
+        if (bRestart || bUse) LearnSkill(SkillSelection);
+        if (PC->WasInputKeyJustPressed(EKeys::BackSpace)) ResetSkills();
+        return;
+    }
+    if (Phase == EAVPhase::Playing && bInventoryKey)
+    { Phase=EAVPhase::Inventory; GearSelection=0; return; }
+    if (Phase == EAVPhase::Playing && bSkillsKey)
+    { Phase=EAVPhase::Skills; SkillSelection=0; return; }
     if (Phase == EAVPhase::Shop)
     {
         if (bPause || bUse) { Phase = EAVPhase::Playing; return; }
