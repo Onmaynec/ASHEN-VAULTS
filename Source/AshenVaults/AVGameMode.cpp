@@ -643,6 +643,7 @@ void AAVGameMode::GenerateFloor()
                                   RNG.FRandRange(R.Y + 1.f, R.Y + R.H - 1.f));
             if (!CanMove(Enemy.Pos, 0.3f)) Enemy.Pos = R.Center();
             Enemy.Type = FAVContent::EnemyRoll(Floor, RNG.RandRange(0, 99));
+            if (Enemy.Type >= 34 && Enemy.Type <= 51) Enemy.Subclass = RNG.RandRange(0, 1);
             Enemy.Level = FAVContent::EnemyLevel(Floor, RNG.RandRange(0, 99));
             Enemy.Equipment = RNG.FRand() < 0.085f ? RNG.RandRange(1, 3) : 0;
             // Bow zombies keep their own appearance and fire projectiles.
@@ -1495,7 +1496,7 @@ void AAVGameMode::SaveCheckpoint()
             E.AttackWindup, E.LockedTarget.X, E.LockedTarget.Y, float(E.AttackPattern),
             E.bMiniBoss ? 1.f : 0.f, E.HP, E.MaxHP, E.Cooldown, E.Flash,
             E.Wander, E.Telegraph, E.bElite ? 1.f : 0.f, float(E.Id),
-            E.PhaseShiftTime, E.bPhaseShifted ? 1.f : 0.f};
+            E.PhaseShiftTime, E.bPhaseShifted ? 1.f : 0.f, float(E.Subclass)};
         for (float F : V) Save->CheckpointEnemyData.Add(F);
     }
     Save->CheckpointPickupData.Reset();
@@ -1582,7 +1583,8 @@ void AAVGameMode::LoadCheckpointWorld()
     ShopPurchased[2] = Save->bCheckpointShopPurchased2;
     Enemies.Reset();
     const TArray<float>& ED = Save->CheckpointEnemyData;
-    for (int32 I = 0; I + 29 < ED.Num(); I += 30)
+    const int32 EnemyStride = Save->bCheckpointV09Data ? 31 : 30;
+    for (int32 I = 0; I + EnemyStride - 1 < ED.Num(); I += EnemyStride)
     {
         FAVEnemy E;
         E.Pos = FVector2D(ED[I], ED[I + 1]); E.Type = int32(ED[I + 2]);
@@ -1601,6 +1603,7 @@ void AAVGameMode::LoadCheckpointWorld()
         E.Telegraph = ED[I + 25]; E.bElite = ED[I + 26] != 0.f;
         E.Id = int32(ED[I + 27]); E.PhaseShiftTime = ED[I + 28];
         E.bPhaseShifted = ED[I + 29] != 0.f;
+        if (EnemyStride == 31) E.Subclass = FMath::Clamp(int32(ED[I + 30]),0,1);
         Enemies.Add(E);
     }
     Pickups.Reset();
@@ -2048,7 +2051,7 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
     }
     else if (Pattern >= 34 && Pattern <= 51) // Bastion normal enemies: 18 types, two variants by stable enemy id
     {
-        const bool Variant = (E.Id & 1) != 0;
+        const bool Variant = E.Subclass != 0;
         // Every variant changes the ability and cadence, not just HP or tint.
         switch (Pattern)
         {
@@ -2257,7 +2260,7 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
             Enemies.Add(Skeleton);
         }
     }
-    if (Pattern == 47 && (E.Id & 1) != 0 && Enemies.Num() < 100)
+    if (Pattern == 47 && E.Subclass != 0 && Enemies.Num() < 100)
     {
         // Summon only after the caster's effects are complete (TArray may reallocate).
         const FVector2D Spawn = E.Pos + Side * (E.AttackPattern % 2 == 0 ? 1.2f : -1.2f);
