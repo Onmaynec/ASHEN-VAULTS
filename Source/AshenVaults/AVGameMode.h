@@ -20,6 +20,11 @@ struct FAVEnemy
     FVector2D LastSeenHero = FVector2D::ZeroVector;
     float MemoryTime = 0.f;
     float DodgeCooldown = 0.f;
+    float AbilityCooldown = 0.f;
+    float AlertTime = 0.f;
+    float AttackWindup = 0.f;
+    FVector2D LockedTarget = FVector2D::ZeroVector;
+    int32 AttackPattern = 0;
     bool bMiniBoss = false;
     float HP = 10.f;
     float MaxHP = 10.f;
@@ -51,6 +56,7 @@ struct FAVBolt
     int32 Damage = 10;
     bool bFriendly = false;
     int32 Status = 0; // poison=1, burn=2
+    int32 Faction = 0; // 0 dungeon, 1 bandits; hero projectiles use bFriendly
 };
 
 USTRUCT()
@@ -176,6 +182,8 @@ public:
     TArray<int32> FlowDistances;
     TArray<FAVEnemy> Enemies;
     bool bBanditCamp = false;
+    TArray<FVector2D> CampDoors;
+    TArray<FVector2D> CampWalls;
     FVector2D BanditCampCenter = FVector2D::ZeroVector;
     TArray<FAVPickup> Pickups;
     TArray<FAVBolt> Bolts;
@@ -246,6 +254,9 @@ private:
     void SelectUpgrade(int32 Choice);
     void AddEffect(const FVector2D& Pos, int32 Kind, float Radius = 1.f, float Angle = 0.f);
     void DropLoot(const FVector2D& Pos, bool bBoss);
+    void CastEnemyAbility(int32 Index, const FVector2D& Target);
+    void SpawnEnemyBolt(const FAVEnemy& Enemy, const FVector2D& Direction,
+                        float Speed, float DamageScale, int32 Status = 0);
     void RecordRun();
     FVector2D MoveWithCollision(const FVector2D& From, const FVector2D& Velocity, float DeltaSeconds, float Radius) const;
 };
