@@ -55,6 +55,27 @@ const FAVEquipmentSpec Items[FAVEquipment::Count] = {
     {41,"commandant_seal",AVAccessory,-1,AVLegendary,0,AVNoStat,0,AVNoStat,0,9}
 };
 }
+const char* FAVEquipment::StatName(int32 StatId)
+{
+    static const char* Names[] = {
+        "-", "Attack", "Armor %", "HP", "Stamina", "Move %", "Attack speed %",
+        "Crit %", "Melee damage %", "Ranged damage %", "Skill damage %",
+        "Stamina regen %", "Dash cooldown %", "Projectile speed %",
+        "Knockback resist %", "Status resist %", "Boss damage %",
+        "Cooldown %"
+    };
+    return StatId>=0 && StatId<18 ? Names[StatId] : "Unknown";
+}
+const char* FAVEquipment::PerkName(int32 PerkId)
+{
+    static const char* Names[] = {
+        "-", "Heavy stagger", "Execution bonus", "Heal on fifth hit",
+        "Faster arrows", "Pierce every fourth bolt", "Heal 2 HP on kill",
+        "Every fourth magic throw echoes", "Execute at low enemy HP",
+        "+10% damage after elite kill"
+    };
+    return PerkId>=0 && PerkId<10 ? Names[PerkId] : "Unknown";
+}
 const FAVEquipmentSpec* FAVEquipment::Find(int32 Id)
 {
     return Id>=0 && Id<Count ? &Items[Id] : nullptr;
