@@ -791,7 +791,6 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
             Text(TEXT("TRAVELER: HOME [E]"), Traveler.X - 69.f * Scale,
                  Traveler.Y - 31.f * Scale, Mint, 0.72f);
         }
-        return;
     }
     if (Game.bHasSafeCampDoor && Game.IsVisibleAt(Game.SafeCampDoor))
     {
