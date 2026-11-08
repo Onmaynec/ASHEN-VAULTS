@@ -290,11 +290,26 @@ float AAVGameMode::ModifiedAttackDamage(float Damage, const FAVEnemy& Target,
     if (!bAbility && (++BasicAttackSequence % 4) == 0) Percent += 7.f * SkillRank(7);
     if(HeroClass==1 && DashBonusTime>0.f) Percent+=3.f*SkillRank(21);
     if(HeroClass==1 && LastKillBoostTime>0.f) Percent+=6.f*SkillRank(24);
-    if(HeroClass==3 && SkillRank(38)>0 && ShotSeries>=4 &&
-       bRanged && !bAbility) Percent+=50.f;
-    const float CritChance = FMath::Clamp(0.05f + GearStat(AVCriticalPercent)*0.01f +
-        0.03f*SkillRank(6), 0.f, 0.40f);
-    if (RNG.FRand() < CritChance) Percent += 50.f;
+    const bool GuaranteedCrit=HeroClass==3 && SkillRank(38)>0 &&
+        ShotSeries>=4 && bRanged && !bAbility;
+    if(GuaranteedCrit) ShotSeries=0;
+    const float CritChance=FMath::Clamp(0.05f+
+        GearStat(AVCriticalPercent)*0.01f+0.03f*SkillRank(6)+
+        (HeroClass==1 && DashBonusTime>0.f ? 0.03f*SkillRank(21):0.f),
+        0.f,0.40f);
+    const bool bCritical=GuaranteedCrit || RNG.FRand()<CritChance;
+    if(bCritical) Percent+=50.f;
+    if(bCritical && HeroClass==2 && SkillRank(31)>0 && ChainCooldown<=0.f) {
+        int32 JumpCount=0;
+        for(FAVEnemy& Other:Enemies)
+            if(Other.Id!=Target.Id && Other.HP>0.f &&
+               FVector2D::Distance(Other.Pos,Target.Pos)<3.f) {
+                Other.HP-=FMath::Max(1.f,Damage*0.28f);
+                Other.Flash=0.15f;
+                if(++JumpCount>=2)break;
+            }
+        ChainCooldown=1.5f;
+    }
     return FMath::Max(1.f, Damage * (1.f + Percent * 0.01f));
 }
 
@@ -930,8 +945,15 @@ void AAVGameMode::Strike(bool bSpin)
     const float Cost = bSpin ? (HasRelic(3) ? 24.f : 32.f) : 0.f;
     if (Stamina < Cost || (bSpin ? SpinCooldown > 0.f : AttackCooldown > 0.f)) return;
     Stamina -= Cost;
-    if (bSpin) SpinCooldown = 1.65f;
-    else AttackCooldown=BasicAttackInterval();
+    if (bSpin) {
+        SpinCooldown=1.65f*FMath::Max(0.5f,
+            1.f+GearStat(AVCooldownPercent)*0.01f);
+        if(HeroClass==0 && SkillRank(17)>0) GuardWhirlTime=1.6f;
+    }
+    else {
+        AttackCooldown=BasicAttackInterval();
+        ++MeleeSwingCount;
+    }
     AddEffect(Hero, bSpin ? 1 : 0, bSpin ? 2.2f : 1.75f, FMath::Atan2(Aim.Y, Aim.X));
     const float Range = bSpin ? 2.25f : 1.92f;
     const float Damage=AttackPower*(bSpin?(HasRelic(3)?2.f:1.65f):1.f);
@@ -950,16 +972,21 @@ void AAVGameMode::Strike(bool bSpin)
         const bool bFacing = FVector2D::DotProduct(SafeDirection(Hero - Enemy.Pos),
                                                    SafeDirection(Enemy.LastSeenHero - Enemy.Pos)) > 0.25f;
         float HitDamage=ModifiedAttackDamage(Damage,Enemy,false,bSpin);
+        if(HeroClass==1 && !bSpin && SkillRank(25)>0 &&
+            (MeleeSwingCount%3)==0) HitDamage*=1.5f;
         if(bShield && bFacing) HitDamage*=0.58f;
         Enemy.HP-=HitDamage;
         Enemy.Flash = 0.16f;
         Enemy.Knockback += SafeDirection(Delta) *
-            (Enemy.Type == 3 ? 1.f : 5.f + (HasGearPerk(1) ? 2.f : 0.f));
-        AddEffect(Enemy.Pos, 2, 0.55f);
-        if (Enemy.HP <= 0.f) KillEnemy(I);
+            (Enemy.Type == 3 ? 1.f : 5.f + (HasGearPerk(1)?2.f:0.f) +
+             (HeroClass==0 ? 0.5f*SkillRank(16) : 0.f));
+        AddEffect(Enemy.Pos,2,0.55f);
+        if(HasGearPerk(3) && (++BlooddrinkerHitCount%5)==0)
+            HP=FMath::Min(MaxHP,HP+3.f);
+        if(Enemy.HP<=0.f) KillEnemy(I);
     }
     if(HeroClass==0 && SkillRank(20)>0 && !bSpin &&
-       (BasicAttackSequence%3)==0)
+       (MeleeSwingCount%3)==0)
         for(int32 I=0;I<8;++I) {
             const float A=6.2831853f*I/8.f;
             FAVBolt Wave;
@@ -969,6 +996,16 @@ void AAVGameMode::Strike(bool bSpin)
             Wave.Damage=FMath::RoundToInt(AttackPower*0.5f);
             Bolts.Add(Wave);
         }
+    if(HeroClass==2 && bSpin && SkillRank(30)>0) {
+        const int32 Count=SkillRank(30)>=2?12:8;
+        for(int32 I=0;I<Count;++I) {
+            const float A=6.2831853f*I/Count;
+            FAVBolt Wave; Wave.bFriendly=true; Wave.Pos=Hero;
+            Wave.Velocity=FVector2D(FMath::Cos(A),FMath::Sin(A))*6.f;
+            Wave.Time=0.55f; Wave.Damage=FMath::RoundToInt(AttackPower*0.35f);
+            Bolts.Add(Wave);
+        }
+    }
     if(Phase==EAVPhase::Playing) StrikeProps(bSpin,Damage);
 }
 
@@ -1056,7 +1093,12 @@ void AAVGameMode::ThrowKnife()
     Blade.Pos = Hero + Aim * 0.52f;
     Blade.Velocity=Aim*(11.f*ProjectileSpeedMultiplier());
     Blade.Time=1.1f/ProjectileSpeedMultiplier();
-    Blade.Damage = FMath::RoundToInt(AttackPower * (HasRelic(2) ? 1.12f : 0.83f) + RangedBonus);
+    Blade.Damage=FMath::RoundToInt(AttackPower*
+        (HasRelic(2)?1.12f:0.83f)+RangedBonus);
+    if(HeroClass==2 && SkillRank(29)>0) {
+        Blade.Visual=4; Blade.Damage=FMath::RoundToInt(
+            Blade.Damage*(1.f+0.12f*SkillRank(29)));
+    }
     Bolts.Add(Blade);
     if(HeroClass==2 && HasGearPerk(7) && (++BasicAttackSequence%4)==0) {
         FAVBolt Bonus=Blade;
