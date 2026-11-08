@@ -1000,7 +1000,8 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         if (E.Cooldown > 0.f || Distance > 8.3f || !bSeesTarget) continue;
 
         const bool bRangedAttack = (Spec.Ranged && Distance >= Reach) ||
-                                   (bMeleeBoss && Distance >= 2.2f);
+                                   (bMeleeBoss && Distance >= 2.2f) ||
+                                   (E.bMiniBoss && Distance >= 2.3f);
         if (bRangedAttack)
         {
             // Fix: ranged enemies require actual line of sight, not distance alone.
@@ -1036,7 +1037,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 for (int32 Sign = -1; Sign <= 1; Sign += 2)
                 {
                     FAVBolt Spread = Bolt;
-                    Spread.Velocity = SafeDirection(Direction + Side * (0.33f * Sign)) * 7.4f;
+                    Spread.Velocity = SafeDirection(Direction + Side * ((E.bMiniBoss ? 0.18f + (E.Type - 26) * 0.075f : 0.33f) * Sign)) * 7.4f;
                     Bolts.Add(Spread);
                     if (bFurious)
                     {
@@ -1045,7 +1046,9 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                         Bolts.Add(Far);
                     }
                 }
-                E.Cooldown = bFurious ? (E.Type == 9 ? 0.85f : 0.96f) : 1.35f;
+                // Minibosses use seven distinct spread widths and cadence profiles.
+                E.Cooldown = E.bMiniBoss ? (0.85f + (E.Type - 26) * 0.13f) :
+                    bFurious ? (E.Type == 9 ? 0.85f : 0.96f) : 1.35f;
             }
             else E.Cooldown = E.Type == 10 ? 1.40f : E.Type == 6 ? 1.75f : 2.1f;
         }
