@@ -62,6 +62,6 @@ struct FMath
     static int32 CeilToInt(float Value) { return static_cast<int32>(std::ceil(Value)); }
     template<typename T> static T Abs(T A) { return std::abs(A); }
     template<typename T> static T Clamp(T V, T Lo, T Hi) { return std::min(std::max(V, Lo), Hi); }
-    static int32 Min(int32 A, int32 B) { return std::min(A, B); }
-    static int32 Max(int32 A, int32 B) { return std::max(A, B); }
+    template<typename T> static T Min(T A, T B) { return std::min(A, B); }
+    template<typename T> static T Max(T A, T B) { return std::max(A, B); }
 };
