@@ -51,6 +51,28 @@ void AAVGameMode::BeginPlay()
         }
     }
     NewRun();
+    if (UAVSaveGame* Save = Cast<UAVSaveGame>(
+        UGameplayStatics::LoadGameFromSlot(TEXT("AshenVaultsRecord"), 0)))
+    {
+        if (Save->bHasCheckpoint)
+        {
+            Floor = FMath::Max(1, Save->CheckpointFloor);
+            RunSeed = Save->CheckpointSeed;
+            HeroClass = Save->CheckpointHeroClass;
+            Level = Save->CheckpointLevel; XP = Save->CheckpointXP;
+            Gold = Save->CheckpointGold; Kills = Save->CheckpointKills;
+            Potions = Save->CheckpointPotions; EquippedGear = Save->CheckpointGear;
+            WeaponUpgrade = Save->CheckpointWeaponUpgrade;
+            ArmorUpgrade = Save->CheckpointArmorUpgrade;
+            RelicMask = Save->CheckpointRelics;
+            RelicCount = FMath::CountBits(RelicMask);
+            HP = Save->CheckpointHP; MaxHP = Save->CheckpointMaxHP;
+            Stamina = Save->CheckpointStamina; MaxStamina = Save->CheckpointMaxStamina;
+            AttackPower = Save->CheckpointAttack; MoveSpeed = Save->CheckpointSpeed;
+            ArmorRating = Save->CheckpointArmor; RangedBonus = Save->CheckpointRanged;
+            EnterLobby();
+        }
+    }
 }
 
 bool AAVGameMode::IsFloor(int32 X, int32 Y) const
@@ -135,6 +157,9 @@ void AAVGameMode::NewRun(bool bSameSeed)
     AttackPower = FAVContent::HeroAttack(HeroClass);
     MoveSpeed = FAVContent::HeroSpeed(HeroClass); RunTime = 0.f;
     ArmorRating = 0.f; RangedBonus = 0.f; EquippedGear = 0;
+    bInSafeCamp = false; bInLobby = false; bInBossArena = false;
+    bWorldStored = false; PackGold = 0; PackMaterials = 0;
+    WeaponUpgrade = 0; ArmorUpgrade = 0;
     RelicMask = 0u; RelicCount = 0; Echoes = 0; bRelicPending = false;
     HeroVelocity = FVector2D::ZeroVector;
     PoisonTime = 0.f; BurnTime = 0.f; StatusTick = 0.f; DashCooldown = 0.f;
@@ -164,6 +189,8 @@ void AAVGameMode::GenerateFloor()
     HeroVelocity = FVector2D::ZeroVector;
     bMerchantSpawned = false;
     bBanditCamp = false;
+    bGuardianDefeated = false; bHasSafeCampDoor = false;
+    PendingGuardian = -1;
     CampDoors.Reset(); CampWalls.Reset();
     for (int32 I = 0; I < 3; ++I) ShopPurchased[I] = false;
     PoisonTime = 0.f; BurnTime = 0.f; StatusTick = 0.f;
@@ -248,7 +275,7 @@ void AAVGameMode::GenerateFloor()
     if (Rooms.Num() >= 3)
     {
         Merchant = Rooms[1].Center();
-        bMerchantSpawned = true;
+        bMerchantSpawned = false; // Merchant relocated to peaceful camp.
     }
     // Sparse interior stone pillars create cover and alternate routes.
     // Keep spawn, merchant, exit and shrine chambers unobstructed.
@@ -314,7 +341,7 @@ void AAVGameMode::GenerateFloor()
         // The merchant's chamber is a safe retreat, not an accidental arena.
         if (bMerchantSpawned && I == 1) continue;
         const FRoom& R = Rooms[I];
-        const int32 Count = RNG.RandRange(2 + Floor / 3, FMath::Min(8, 3 + Floor));
+        const int32 Count = RNG.RandRange(2 + BiomeDepth() / 3, FMath::Min(8, 3 + BiomeDepth()));
         for (int32 E = 0; E < Count; ++E)
         {
             FAVEnemy Enemy;
@@ -411,17 +438,14 @@ void AAVGameMode::GenerateFloor()
         Mini.Id = NextId++;
         Enemies.Add(Mini);
     }
-    const int32 BossType = IsGuardianFloor() ? (CurrentBiome() == 0 ? 8 : CurrentBiome() == 1 ? 9 : 3) : -1;
-    if (BossType >= 0)
+    PendingGuardian = IsGuardianFloor() ?
+        (CurrentBiome() == 0 ? 8 : CurrentBiome() == 1 ? 9 : 3) : -1;
+    // The guardian is spawned in a separate arena when its portal is used.
+    if (Rooms.Num() > 2 && RNG.FRand() < 0.36f)
     {
-        FAVEnemy Boss;
-        Boss.Pos = Exit; Boss.Type = BossType;
-        Boss.Level = FAVContent::EnemyLevel(Floor, 99);
-        Boss.MaxHP = FAVContent::Enemy(BossType, Floor).Health *
-            FAVContent::LevelHealthMultiplier(Boss.Level);
-        Boss.HP = Boss.MaxHP;
-        Boss.Cooldown = 1.f; Boss.Id = NextId++;
-        Enemies.Add(Boss);
+        const FRoom& Approach = Rooms[1];
+        SafeCampDoor = FVector2D(Approach.X + 0.5f, Approach.Y + Approach.H * 0.5f);
+        bHasSafeCampDoor = CanMove(SafeCampDoor, 0.2f);
     }
     // Add a couple of guaranteed recovery pickups away from the spawn.
     for (int32 I = 1; I < Rooms.Num(); I += 3)
