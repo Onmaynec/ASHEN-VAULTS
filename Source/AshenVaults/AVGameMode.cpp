@@ -398,7 +398,8 @@ void AAVGameMode::NewRun(bool bSameSeed)
     EquipmentAppliedHP=0.f; EquipmentAppliedStamina=0.f;
     EquipmentAppliedAttack=0.f; EquipmentAppliedSpeed=0.f; EquipmentAppliedArmor=0.f;
     RewardDamageTime=0.f; DashBonusTime=0.f; RevengeTime=0.f;
-    BasicAttackSequence=0; TemporaryShield=0.f;
+    BasicAttackSequence=0; MeleeSwingCount=0; BlooddrinkerHitCount=0;
+    ChainCooldown=0.f; GuardWhirlTime=0.f; TemporaryShield=0.f;
     LastKillBoostTime=0.f; MarkedHitTime=0.f;
     MapW = 52; MapH = 38; ShotSeries = 0; ShotTargetId = -1;
     ShotCounter = 0; LastConnectedShotId = 0; VolleyCounter = 0;
@@ -431,7 +432,8 @@ void AAVGameMode::GenerateFloor()
     // Dimensions belong to the biome and never reshape previously generated floors.
     ShotSeries=0; ShotTargetId=-1; LastShotHitTime=-100.f;
     bLastStandUsed=false; RewardDamageTime=0.f;
-    TemporaryShield=0.f; LastKillBoostTime=0.f;
+    TemporaryShield=0.f; LastKillBoostTime=0.f; ChainCooldown=0.f;
+    GuardWhirlTime=0.f;
     MapW = CurrentBiome() == 3 ? 60 : 52;
     MapH = CurrentBiome() == 3 ? 44 : 38;
     // Floor layouts are independent of combat loot RNG consumption.
@@ -1152,7 +1154,7 @@ void AAVGameMode::DamageHero(float Damage, const FVector2D& Source)
     float AdjustedDamage=Damage*(HasRelic(1)?0.80f:1.f)*
         (1.f-FMath::Clamp(ArmorRating,0.f,0.45f));
     if(HP<MaxHP*0.3f) AdjustedDamage*=1.f-0.08f*SkillRank(3);
-    if(HeroClass==0 && DashBonusTime>0.f)
+    if(HeroClass==0 && GuardWhirlTime>0.f)
         AdjustedDamage*=1.f-0.08f*SkillRank(17);
     if(TemporaryShield>0.f) {
         const float Absorbed=FMath::Min(TemporaryShield,AdjustedDamage);
@@ -1171,7 +1173,10 @@ void AAVGameMode::DamageHero(float Damage, const FVector2D& Source)
     }
     Invulnerability = 0.72f;
     ScreenShake = 0.26f;
-    Hero = MoveWithCollision(Hero, SafeDirection(Hero - Source) * 2.8f, 0.10f, 0.27f);
+    const float KnockbackScale=FMath::Clamp(1.f-
+        GearStat(AVKnockbackResistPercent)*0.01f,0.2f,1.f);
+    Hero=MoveWithCollision(Hero,SafeDirection(Hero-Source)*
+         2.8f*KnockbackScale,0.10f,0.27f);
     AddEffect(Hero, 2, 0.8f);
     if (HP <= 0.f)
     {
@@ -2796,6 +2801,8 @@ void AAVGameMode::Tick(float DeltaSeconds)
         DashBonusTime=FMath::Max(0.f,DashBonusTime-DT);
         RevengeTime=FMath::Max(0.f,RevengeTime-DT);
         LastKillBoostTime=FMath::Max(0.f,LastKillBoostTime-DT);
+        GuardWhirlTime=FMath::Max(0.f,GuardWhirlTime-DT);
+        ChainCooldown=FMath::Max(0.f,ChainCooldown-DT);
         ComboTime = FMath::Max(0.f, ComboTime - DT);
         if (ComboTime <= 0.f) Combo = 0;
         ToastTime = FMath::Max(0.f, ToastTime - DT);
