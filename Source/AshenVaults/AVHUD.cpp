@@ -964,30 +964,21 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
             Rect(Pt.X - 11.f * Scale, Pt.Y - 15.f * Scale, 22.f * Scale, 2.f * Scale, GoldColor);
             Rect(Pt.X - 13.f * Scale, Pt.Y - 13.f * Scale, 2.f * Scale, 22.f * Scale, GoldColor);
         }
-        if (E.AttackWindup > 0.f)
+        // Telegraphs belong to the creature silhouette, not UI progress bars.
+        // A crouch, pulse and raised casting hands are drawn in the actor space.
+        const bool bCasting = E.AttackWindup > 0.f || E.Telegraph > 0.f;
+        const bool bTransformed = bBoss && E.HP < E.MaxHP * 0.45f;
+        const float CastPulse = 0.5f + 0.5f * FMath::Sin(Game.RunTime * 24.f);
+        if (bCasting)
         {
-            const float Pulse = 0.55f + 0.45f * FMath::Sin(Game.RunTime * 20.f);
-            const FLinearColor Danger(1.f, 0.25f + 0.3f * Pulse, 0.12f, 0.8f);
-            Rect(Pt.X - 14.f * Scale, Pt.Y + 12.f * Scale,
-                 28.f * Scale * FMath::Clamp(E.AttackWindup / 0.85f, 0.f, 1.f),
-                 3.f * Scale, Danger);
-            const FVector2D Aim = (E.LockedTarget - E.Pos).GetSafeNormal();
-            const FVector2D Marker = Pt + Aim * 17.f * Scale;
-            Rect(Marker.X - 3.f * Scale, Marker.Y - 3.f * Scale,
-                 6.f * Scale, 6.f * Scale, Danger);
-        }
-        if (E.Telegraph > 0.f)
-        {
-            const FLinearColor Warning = FMath::Sin(Game.RunTime * 30.f) > 0.f ? Blood : GoldColor;
-            Rect(Pt.X - 12.f * Scale, Pt.Y + 13.f * Scale,
-                 24.f * Scale, 2.f * Scale, Warning);
-            Rect(Pt.X - 12.f * Scale, Pt.Y + 10.f * Scale,
-                 24.f * Scale * (E.Type == 3 ? E.Telegraph / 0.47f :
-                       E.Type == 1 ? E.Telegraph / 0.44f :
-                       E.Type == 4 ? E.Telegraph / 0.26f :
-                       bBoss ? E.Telegraph / 0.53f :
-                       E.Type == 7 ? E.Telegraph / 0.54f : E.Telegraph / 0.31f),
-                 2.f * Scale, Warning);
+            const FLinearColor CastColor = bTransformed ?
+                FLinearColor(1.f, 0.12f, 0.10f, 0.9f) :
+                FLinearColor(0.95f, 0.55f, 0.18f, 0.85f);
+            const float Lift = (4.f + 3.f * CastPulse) * Scale * Radius;
+            Rect(Pt.X - 12.f * Scale * Radius, Pt.Y - Lift,
+                 5.f * Scale * Radius, 7.f * Scale * Radius, CastColor);
+            Rect(Pt.X + 7.f * Scale * Radius, Pt.Y - Lift,
+                 5.f * Scale * Radius, 7.f * Scale * Radius, CastColor);
         }
         const int32 SpriteType = E.Type >= 11 ?
             ((FMath::FloorToInt(Game.RunTime * (E.Type == 15 ? 10.f : 6.f) + E.Id) % 2) == 0 ?
@@ -1000,6 +991,15 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
             (E.Type == 10 ? 0.12f : 0.045f);
         Sprite(SpriteType, E.Pos + FVector2D(0.f, EnemyBob),
                Radius, E.Flash > 0.f ? 0.55f : 1.f);
+        if (bTransformed)
+        {
+            // Visible phase mutation: glowing red eyes and additional limbs.
+            const FLinearColor Eyes(1.f, 0.08f + 0.12f * CastPulse, 0.04f, 1.f);
+            Rect(Pt.X - 6.f * Scale, Pt.Y - 5.f * Scale, 3.f * Scale, 3.f * Scale, Eyes);
+            Rect(Pt.X + 3.f * Scale, Pt.Y - 5.f * Scale, 3.f * Scale, 3.f * Scale, Eyes);
+            Rect(Pt.X - 18.f * Scale, Pt.Y + 1.f * Scale, 5.f * Scale, 12.f * Scale, Blood);
+            Rect(Pt.X + 13.f * Scale, Pt.Y + 1.f * Scale, 5.f * Scale, 12.f * Scale, Blood);
+        }
         // Readable placeholders until dedicated Paper2D sprites are authored.
         const FLinearColor Marker = E.Faction == 1 ? FLinearColor(0.9f, 0.25f, 0.22f, 1.f) :
             E.Type == 23 ? FLinearColor(0.48f, 0.51f, 0.56f, 1.f) :
