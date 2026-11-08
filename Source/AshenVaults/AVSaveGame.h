@@ -29,6 +29,7 @@ public:
     UPROPERTY(SaveGame) int32 CheckpointKills = 0;
     UPROPERTY(SaveGame) int32 CheckpointPotions = 2;
     UPROPERTY(SaveGame) int32 CheckpointGear = 0;
+    UPROPERTY(SaveGame) int32 CheckpointEquippedMask = 0;
     UPROPERTY(SaveGame) int32 CheckpointWeaponUpgrade = 0;
     UPROPERTY(SaveGame) int32 CheckpointArmorUpgrade = 0;
     UPROPERTY(SaveGame) uint32 CheckpointRelics = 0;
