@@ -769,12 +769,12 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
     {
         if (!Game.IsVisibleAt(E.Pos)) continue;
         const FVector2D Pt = Screen(E.Pos);
-        const bool bBoss = E.Type == 3 || E.Type == 8 || E.Type == 9;
-        const float Radius = bBoss ? 1.65f : E.Type == 7 ? 1.2f : 1.f;
+        const bool bBoss = E.Type == 3 || E.Type == 8 || E.Type == 9 || E.bMiniBoss;
+        const float Radius = bBoss ? 1.65f : (E.Type == 7 || E.Type == 23 || E.Type == 24) ? 1.3f : 1.f;
         Rect(Pt.X - 9.f * Scale * Radius, Pt.Y + 7.f * Scale * Radius,
              18.f * Scale * Radius, 3.f * Scale,
              FLinearColor(0.f, 0.f, 0.f, 0.34f));
-        if (E.bElite)
+        if (E.bElite || E.bMiniBoss)
         {
             Rect(Pt.X - 11.f * Scale, Pt.Y - 15.f * Scale, 22.f * Scale, 2.f * Scale, GoldColor);
             Rect(Pt.X - 13.f * Scale, Pt.Y - 13.f * Scale, 2.f * Scale, 22.f * Scale, GoldColor);
@@ -801,6 +801,21 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
             (E.Type == 10 ? 0.12f : 0.045f);
         Sprite(SpriteType, E.Pos + FVector2D(0.f, EnemyBob),
                Radius, E.Flash > 0.f ? 0.55f : 1.f);
+        // Readable placeholders until dedicated Paper2D sprites are authored.
+        const FLinearColor Marker = E.Faction == 1 ? FLinearColor(0.9f, 0.25f, 0.22f, 1.f) :
+            E.Type == 23 ? FLinearColor(0.48f, 0.51f, 0.56f, 1.f) :
+            E.Type == 24 ? FLinearColor(0.75f, 0.72f, 0.62f, 1.f) :
+            E.Type >= 26 ? FLinearColor(0.88f, 0.43f, 0.14f, 1.f) :
+            FLinearColor(0.33f, 0.75f, 0.65f, 1.f);
+        if (E.Type >= 15)
+            Rect(Pt.X - 8.f * Scale, Pt.Y - 13.f * Scale,
+                 16.f * Scale, 2.f * Scale, Marker);
+        if (E.Equipment != 0)
+            Rect(Pt.X + 7.f * Scale, Pt.Y - 12.f * Scale,
+                 4.f * Scale, 7.f * Scale,
+                 E.Equipment == 1 ? FLinearColor(0.65f, 0.69f, 0.75f, 1.f) : GoldColor);
+        Text(FString::Printf(TEXT("Lv.%d"), E.Level),
+             Pt.X - 12.f * Scale, Pt.Y - (bBoss ? 37.f : 29.f) * Scale, Pale, 0.68f);
         if (E.HP < E.MaxHP || bBoss || E.bElite)
         {
             const float W = (bBoss ? 45.f : 23.f) * Scale;
