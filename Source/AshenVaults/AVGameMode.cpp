@@ -955,15 +955,16 @@ void AAVGameMode::Strike(bool bSpin)
 void AAVGameMode::ShootArrow()
 {
     if (HeroClass != 3 || AttackCooldown > 0.f || Aim.IsNearlyZero()) return;
-    AttackCooldown = 0.52f;
+    AttackCooldown=BasicAttackInterval();
     FAVBolt Arrow;
     Arrow.bFriendly = true;
     Arrow.Pos = Hero + Aim * 0.52f;
-    Arrow.Velocity = Aim * 13.f;
-    Arrow.Time = 8.5f / 13.f;
+    Arrow.Velocity=Aim*(13.f*ProjectileSpeedMultiplier());
+    Arrow.Time=8.5f/(13.f*ProjectileSpeedMultiplier());
     Arrow.Damage = FMath::RoundToInt(AttackPower + RangedBonus);
     Arrow.Visual = 1;
-    Arrow.ShotId = ++ShotCounter;
+    Arrow.ShotId=++ShotCounter;
+    if(HasGearPerk(5) && ShotCounter%4==0) Arrow.PierceRemaining=2;
     Bolts.Add(Arrow);
     AddEffect(Hero, 0, 0.5f, FMath::Atan2(Aim.Y, Aim.X));
 }
@@ -973,20 +974,21 @@ void AAVGameMode::FireVolley()
     const float Cost = HasRelic(3) ? 24.f : 30.f;
     if (HeroClass != 3 || Stamina < Cost || SpinCooldown > 0.f || Aim.IsNearlyZero()) return;
     Stamina -= Cost;
-    SpinCooldown = 3.4f;
-    const float Angle = FMath::Atan2(Aim.Y, Aim.X);
+    SpinCooldown=FMath::Max(1.4f,3.4f*(1.f+GearStat(AVCooldownPercent)*0.01f));
+    const float Angle=FMath::Atan2(Aim.Y,Aim.X);
     const int32 VolleyId = ++VolleyCounter;
-    for (int32 I = -1; I <= 1; ++I)
+    const int32 Spread=SkillRank(35)>=2?2:1;
+    for(int32 I=-Spread;I<=Spread;++I)
     {
-        const float A = Angle + I * (12.f * 3.14159265f / 180.f);
+        const float A=Angle+I*(12.f*3.14159265f/180.f);
         const FVector2D Direction(FMath::Cos(A), FMath::Sin(A));
         FAVBolt Arrow;
         Arrow.bFriendly = true;
         Arrow.Pos = Hero + Direction * 0.52f;
-        Arrow.Velocity = Direction * 13.f;
-        Arrow.Time = 8.5f / 13.f;
+        Arrow.Velocity=Direction*(13.f*ProjectileSpeedMultiplier());
+        Arrow.Time=8.5f/(13.f*ProjectileSpeedMultiplier());
         Arrow.Damage = FMath::RoundToInt((AttackPower + RangedBonus) *
-                           (HasRelic(3) ? 0.90f : 0.75f));
+                           (HasRelic(3)?0.90f:0.75f)*(1.f+0.1f*SkillRank(35)));
         Arrow.Visual = 2;
         Arrow.VolleyId = VolleyId;
         Bolts.Add(Arrow);
@@ -1002,29 +1004,48 @@ void AAVGameMode::PiercingShot()
     FAVBolt Arrow;
     Arrow.bFriendly = true;
     Arrow.Pos = Hero + Aim * 0.52f;
-    Arrow.Velocity = Aim * 17.f;
-    Arrow.Time = 10.f / 17.f;
-    Arrow.Damage = FMath::RoundToInt((AttackPower + RangedBonus) *
-                         (HasRelic(2) ? 1.736f : 1.55f));
+    Arrow.Velocity=Aim*(17.f*ProjectileSpeedMultiplier());
+    Arrow.Time=10.f/(17.f*ProjectileSpeedMultiplier());
+    Arrow.Damage=FMath::RoundToInt((AttackPower+RangedBonus)*
+        (HasRelic(2)?1.736f:1.55f)*(1.f+0.1f*SkillRank(36)));
     Arrow.Visual = 3;
     Arrow.PierceRemaining = 2;
     Bolts.Add(Arrow);
-    AddEffect(Hero, 0, 0.8f, FMath::Atan2(Aim.Y, Aim.X));
+    if(SkillRank(37)>0) {
+        const float A=FMath::Atan2(Aim.Y,Aim.X);
+        for(int32 S=-1;S<=1;S+=2) {
+            const float B=A+S*0.21f;
+            FAVBolt Extra=Arrow;
+            Extra.Velocity=FVector2D(FMath::Cos(B),FMath::Sin(B))*
+                (17.f*ProjectileSpeedMultiplier());
+            Extra.Damage=FMath::RoundToInt(Extra.Damage*0.62f);
+            Bolts.Add(Extra);
+        }
+    }
+    AddEffect(Hero,0,0.8f,FMath::Atan2(Aim.Y,Aim.X));
 }
 
 void AAVGameMode::ThrowKnife()
 {
     if (KnifeCooldown > 0.f || Stamina < 18.f || Aim.IsNearlyZero()) return;
     Stamina -= 18.f;
-    KnifeCooldown = HasRelic(2) ? 0.43f : 0.65f;
+    KnifeCooldown=(HasRelic(2)?0.43f:0.65f)*
+        FMath::Max(0.5f,1.f+GearStat(AVCooldownPercent)*0.01f);
     FAVBolt Blade;
     Blade.bFriendly = true;
     Blade.Pos = Hero + Aim * 0.52f;
-    Blade.Velocity = Aim * 11.f;
-    Blade.Time = 1.1f;
+    Blade.Velocity=Aim*(11.f*ProjectileSpeedMultiplier());
+    Blade.Time=1.1f/ProjectileSpeedMultiplier();
     Blade.Damage = FMath::RoundToInt(AttackPower * (HasRelic(2) ? 1.12f : 0.83f) + RangedBonus);
     Bolts.Add(Blade);
-    AddEffect(Hero, 0, 0.5f, FMath::Atan2(Aim.Y, Aim.X));
+    if(HeroClass==2 && HasGearPerk(7) && (++BasicAttackSequence%4)==0) {
+        FAVBolt Bonus=Blade;
+        Bonus.Velocity=SafeDirection(Aim+FVector2D(-Aim.Y,Aim.X)*0.22f)*
+                       (11.f*ProjectileSpeedMultiplier());
+        Bonus.Damage=FMath::RoundToInt(Bonus.Damage*0.5f);
+        Bolts.Add(Bonus);
+    }
+    AddEffect(Hero,0,0.5f,FMath::Atan2(Aim.Y,Aim.X));
 }
 
 bool AAVGameMode::OpenNearbyCampDoor()
