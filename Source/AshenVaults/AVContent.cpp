@@ -5,6 +5,16 @@ float FAVContent::HeroStamina(int32 Id) { return Id == 1 ? 120.f : Id == 2 ? 135
 float FAVContent::HeroAttack(int32 Id) { return Id == 1 ? 22.f : Id == 2 ? 16.f : Id == 3 ? 19.f : 18.f; }
 float FAVContent::HeroSpeed(int32 Id) { return Id == 1 ? 5.7f : Id == 2 ? 4.6f : Id == 3 ? 5.1f : 4.8f; }
 
+float FAVContent::BasicAttackInterval(int32 HeroId, float AttackSpeedPercent)
+{
+    const float Speed = FMath::Clamp(1.f + AttackSpeedPercent * 0.01f, 0.45f, 2.f);
+    const float Base = HeroId == 3 ? 0.52f : 0.33f;
+    // Previous minimum was 0.33s for *every* hero, so bonuses to melee
+    // attack speed had no effect. Keep ranged attacks more deliberately paced.
+    return FMath::Max(HeroId == 3 ? 0.33f : 0.22f, Base / Speed);
+}
+
+
 int32 FAVContent::EnemyLevel(int32 Floor, int32 Roll)
 {
     const int32 Depth = Floor > 1 ? Floor - 1 : 0;
