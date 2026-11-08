@@ -925,6 +925,127 @@ void AAVGameMode::PollInput(float DeltaSeconds)
     }
 }
 
+void AAVGameMode::SpawnEnemyBolt(const FAVEnemy& Enemy, const FVector2D& Direction,
+                                  float Speed, float DamageScale, int32 Status)
+{
+    FAVBolt Bolt;
+    Bolt.Pos = Enemy.Pos + SafeDirection(Direction) * 0.35f;
+    Bolt.Velocity = SafeDirection(Direction) * Speed;
+    Bolt.Damage = FMath::Max(1, FMath::RoundToInt(
+        FAVContent::Enemy(Enemy.Type, Floor).Damage *
+        FAVContent::LevelDamageMultiplier(Enemy.Level) *
+        (Enemy.bElite ? 1.35f : 1.f) * DamageScale));
+    Bolt.Status = Status;
+    Bolt.Faction = Enemy.Faction;
+    Bolt.Time = 2.1f;
+    Bolts.Add(Bolt);
+}
+
+void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
+{
+    if (!Enemies.IsValidIndex(Index)) return;
+    FAVEnemy& E = Enemies[Index];
+    const FVector2D Dir = SafeDirection(Target - E.Pos);
+    const FVector2D Side(-Dir.Y, Dir.X);
+    const int32 Pattern = E.Type;
+    const bool bFrenzy = E.HP < E.MaxHP * 0.45f;
+    const float D = FVector2D::Distance(E.Pos, Target);
+    // Seven minibosses have separate, telegraphed spell patterns.
+    if (Pattern == 26) // Grave Butcher: short-range cleaving cone
+    {
+        if (D < 3.5f)
+            for (int32 K = -2; K <= 2; ++K)
+                SpawnEnemyBolt(E, Dir + Side * (0.25f * K), 6.5f, 0.62f);
+        E.AbilityCooldown = bFrenzy ? 3.1f : 4.5f;
+    }
+    else if (Pattern == 27) // Bone Archer: staggered triple arrow volley
+    {
+        for (int32 K = -1; K <= 1; ++K)
+            SpawnEnemyBolt(E, Dir + Side * (0.22f * K), 11.0f, 0.80f);
+        E.AbilityCooldown = bFrenzy ? 2.1f : 3.5f;
+    }
+    else if (Pattern == 28) // Rot Witch: poison fan
+    {
+        for (int32 K = -2; K <= 2; ++K)
+            SpawnEnemyBolt(E, Dir + Side * (0.29f * K), 5.7f, 0.54f, 1);
+        E.AbilityCooldown = bFrenzy ? 2.7f : 4.1f;
+    }
+    else if (Pattern == 29) // Stone Sentinel: radial shockwave
+    {
+        for (int32 K = 0; K < 12; ++K)
+        {
+            const float A = 6.2831853f * K / 12.f;
+            SpawnEnemyBolt(E, FVector2D(FMath::Cos(A), FMath::Sin(A)),
+                           5.1f, 0.58f);
+        }
+        E.AbilityCooldown = bFrenzy ? 3.2f : 5.f;
+    }
+    else if (Pattern == 30) // Blood Reaver: dash lunge plus bleeding blade fan
+    {
+        E.Pos = MoveWithCollision(E.Pos, Dir * 8.0f, 0.23f, 0.4f);
+        for (int32 K = -1; K <= 1; ++K)
+            SpawnEnemyBolt(E, Dir + Side * (K * 0.35f), 7.7f, 0.68f);
+        E.AbilityCooldown = bFrenzy ? 2.6f : 4.2f;
+    }
+    else if (Pattern == 31) // Cinder Shaman: burning cross burst
+    {
+        for (int32 K = 0; K < 8; ++K)
+        {
+            const float A = 6.2831853f * K / 8.f;
+            SpawnEnemyBolt(E, FVector2D(FMath::Cos(A), FMath::Sin(A)),
+                           6.8f, 0.72f, 2);
+        }
+        E.AbilityCooldown = bFrenzy ? 2.5f : 4.0f;
+    }
+    else if (Pattern == 32) // Iron Tyrant: narrow penetrating salvo
+    {
+        for (int32 K = -2; K <= 2; ++K)
+            SpawnEnemyBolt(E, Dir + Side * (K * 0.12f), 9.1f, 0.95f, 2);
+        E.AbilityCooldown = bFrenzy ? 3.0f : 4.8f;
+    }
+    else if (Pattern == 3 || Pattern == 8 || Pattern == 9) // existing bosses: new signature phase attack
+    {
+        const int32 Count = Pattern == 3 ? 12 : Pattern == 8 ? 8 : 10;
+        const int32 Status = Pattern == 9 ? 2 : 0;
+        for (int32 K = 0; K < Count; ++K)
+        {
+            const float A = 6.2831853f * K / Count + RunTime * 0.28f;
+            SpawnEnemyBolt(E, FVector2D(FMath::Cos(A), FMath::Sin(A)),
+                           Pattern == 8 ? 5.8f : 7.0f, 0.55f, Status);
+        }
+        E.AbilityCooldown = bFrenzy ? 3.3f : 5.6f;
+    }
+    else if (Pattern == 23 || Pattern == 24 || Pattern == 7) // golem ground slam
+    {
+        if (D < 3.5f)
+        {
+            for (int32 K = 0; K < 8; ++K)
+            {
+                const float A = 6.2831853f * K / 8.f;
+                SpawnEnemyBolt(E, FVector2D(FMath::Cos(A), FMath::Sin(A)),
+                               4.2f, 0.45f, Pattern == 7 ? 2 : 0);
+            }
+        }
+        E.AbilityCooldown = 5.2f;
+    }
+    else if (Pattern == 19 || Pattern == 12 || Pattern == 21 || Pattern == 6)
+    {
+        for (int32 K = -1; K <= 1; ++K)
+            SpawnEnemyBolt(E, Dir + Side * (K * 0.38f), 6.1f, 0.6f,
+                           Pattern == 6 || Pattern == 21 ? 1 : 0);
+        E.AbilityCooldown = 4.8f;
+    }
+    else if (Pattern == 18 || Pattern == 14) // ghost blink
+    {
+        const FVector2D Destination = E.Pos + Side * (E.Id % 2 ? 2.2f : -2.2f);
+        if (CanMove(Destination, 0.28f)) E.Pos = Destination;
+        E.AbilityCooldown = 3.4f;
+    }
+    else E.AbilityCooldown = 6.f;
+    E.AttackPattern++;
+    AddEffect(E.Pos, 1, E.bMiniBoss || FAVContent::Enemy(E.Type, Floor).Boss ? 2.f : 1.f);
+}
+
 void AAVGameMode::UpdateCombat(float DeltaSeconds)
 {
     for (int32 I = Enemies.Num() - 1; I >= 0; --I)
