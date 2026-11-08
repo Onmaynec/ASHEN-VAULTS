@@ -57,6 +57,8 @@ void AAVGameMode::BeginPlay()
         if (Save->bHasCheckpoint)
         {
             Floor = FMath::Max(1, Save->CheckpointFloor);
+            MapW = CurrentBiome() == 3 ? 60 : 52;
+            MapH = CurrentBiome() == 3 ? 44 : 38;
             RunSeed = Save->CheckpointSeed;
             HeroClass = Save->CheckpointHeroClass;
             Level = Save->CheckpointLevel; XP = Save->CheckpointXP;
@@ -159,6 +161,9 @@ FVector2D AAVGameMode::MoveWithCollision(const FVector2D& From, const FVector2D&
 void AAVGameMode::NewRun(bool bSameSeed)
 {
     Floor = 1; Level = 1; XP = 0; Gold = 0; Kills = 0; Potions = 2;
+    MapW = 52; MapH = 38; ShotSeries = 0; ShotTargetId = -1;
+    ShotCounter = 0; LastConnectedShotId = 0; VolleyCounter = 0;
+    LastShotHitTime = -100.f;
     MaxHP = FAVContent::HeroHealth(HeroClass); HP = MaxHP;
     MaxStamina = FAVContent::HeroStamina(HeroClass); Stamina = MaxStamina;
     AttackPower = FAVContent::HeroAttack(HeroClass);
@@ -184,6 +189,9 @@ void AAVGameMode::NewRun(bool bSameSeed)
 
 void AAVGameMode::GenerateFloor()
 {
+    // Dimensions belong to the biome and never reshape previously generated floors.
+    MapW = CurrentBiome() == 3 ? 60 : 52;
+    MapH = CurrentBiome() == 3 ? 44 : 38;
     // Floor layouts are independent of combat loot RNG consumption.
     // This makes the same run seed reproducible on every depth.
     RNG.Initialize(static_cast<int32>(static_cast<uint32>(RunSeed) ^
@@ -208,11 +216,14 @@ void AAVGameMode::GenerateFloor()
     bShrineUsed = false;
     struct FRoom { int32 X, Y, W, H; FVector2D Center() const { return FVector2D(X + W / 2.f, Y + H / 2.f); } };
     TArray<FRoom> Rooms;
-    const int32 TargetCount = FMath::Min(20, 9 + BiomeDepth() * 2);
+    const int32 TargetCount = CurrentBiome() == 3 ?
+        FMath::Min(14, 10 + BiomeDepth()) : FMath::Min(20, 9 + BiomeDepth() * 2);
     for (int32 Attempt = 0; Attempt < 220 && Rooms.Num() < TargetCount; ++Attempt)
     {
-        const int32 W = RNG.RandRange(5, 11);
-        const int32 H = RNG.RandRange(5, 9);
+        const bool bBastion = CurrentBiome() == 3;
+        // The Bastion has a guaranteed main battle hall, wings and broad galleries.
+        const int32 W = bBastion ? (Rooms.Num() == 0 ? 18 : RNG.RandRange(8, 14)) : RNG.RandRange(5, 11);
+        const int32 H = bBastion ? (Rooms.Num() == 0 ? 14 : RNG.RandRange(8, 12)) : RNG.RandRange(5, 9);
         FRoom R = { RNG.RandRange(2, MapW - W - 3), RNG.RandRange(2, MapH - H - 3), W, H };
         bool bOverlaps = false;
         for (const FRoom& Existing : Rooms)
@@ -248,6 +259,7 @@ void AAVGameMode::GenerateFloor()
                     bCarve = CornerX + CornerY >= 2 ||
                         (CornerX >= 1 && CornerY >= 1);
                 }
+                // Bastion keeps square fortified rooms rather than caves or clipped corners.
                 if (bCarve) Tiles[Y * MapW + X] = 1;
             }
         }
@@ -259,11 +271,19 @@ void AAVGameMode::GenerateFloor()
             const int32 BX = FMath::FloorToInt(B.X), BY = FMath::FloorToInt(B.Y);
             const bool bHorizontalFirst = RNG.RandRange(0, 1) == 0;
             auto DigX = [&]() {
-                while (AX != BX) { Tiles[AY * MapW + AX] = 1; AX += BX > AX ? 1 : -1; }
+                while (AX != BX) {
+                    Tiles[AY * MapW + AX] = 1;
+                    if (CurrentBiome() == 3 && AY + 1 < MapH - 1) Tiles[(AY + 1) * MapW + AX] = 1;
+                    AX += BX > AX ? 1 : -1;
+                }
                 Tiles[AY * MapW + AX] = 1;
             };
             auto DigY = [&]() {
-                while (AY != BY) { Tiles[AY * MapW + AX] = 1; AY += BY > AY ? 1 : -1; }
+                while (AY != BY) {
+                    Tiles[AY * MapW + AX] = 1;
+                    if (CurrentBiome() == 3 && AX + 1 < MapW - 1) Tiles[AY * MapW + AX + 1] = 1;
+                    AY += BY > AY ? 1 : -1;
+                }
                 Tiles[AY * MapW + AX] = 1;
             };
             if (bHorizontalFirst) { DigX(); DigY(); }
@@ -343,7 +363,7 @@ void AAVGameMode::GenerateFloor()
                 continue;
             FAVTrap Trap;
             Trap.Pos = Candidate;
-            Trap.Type = RNG.RandRange(0, 2);
+            Trap.Type = CurrentBiome() == 3 ? RNG.RandRange(3, 6) : RNG.RandRange(0, 2);
             Traps.Add(Trap);
             break;
         }
@@ -459,7 +479,7 @@ void AAVGameMode::GenerateFloor()
     {
         const FRoom& Arena = Rooms[RNG.RandRange(2, Rooms.Num() - 2)];
         FAVEnemy Mini;
-        Mini.Type = 26 + RNG.RandRange(0, 6);
+        Mini.Type = CurrentBiome() == 3 ? 52 + RNG.RandRange(0, 3) : 26 + RNG.RandRange(0, 6);
         Mini.bMiniBoss = true;
         Mini.Pos = Arena.Center();
         Mini.Level = FAVContent::EnemyLevel(Floor, 99);
@@ -470,8 +490,7 @@ void AAVGameMode::GenerateFloor()
         Mini.Id = NextId++;
         Enemies.Add(Mini);
     }
-    PendingGuardian = IsGuardianFloor() ?
-        (CurrentBiome() == 0 ? 8 : CurrentBiome() == 1 ? 9 : 3) : -1;
+    PendingGuardian = IsGuardianFloor() ? FAVContent::Boss(Floor) : -1;
     // The guardian is spawned in a separate arena when its portal is used.
     if (Rooms.Num() > 2 && RNG.FRand() < 0.36f)
     {
@@ -691,6 +710,66 @@ void AAVGameMode::Strike(bool bSpin)
         if (Enemy.HP <= 0.f) KillEnemy(I);
     }
     if (Phase == EAVPhase::Playing) StrikeProps(bSpin, Damage);
+}
+
+void AAVGameMode::ShootArrow()
+{
+    if (HeroClass != 3 || AttackCooldown > 0.f || Aim.IsNearlyZero()) return;
+    AttackCooldown = 0.52f;
+    FAVBolt Arrow;
+    Arrow.bFriendly = true;
+    Arrow.Pos = Hero + Aim * 0.52f;
+    Arrow.Velocity = Aim * 13.f;
+    Arrow.Time = 8.5f / 13.f;
+    Arrow.Damage = FMath::RoundToInt(AttackPower + RangedBonus);
+    Arrow.Visual = 1;
+    Arrow.ShotId = ++ShotCounter;
+    Bolts.Add(Arrow);
+    AddEffect(Hero, 0, 0.5f, FMath::Atan2(Aim.Y, Aim.X));
+}
+
+void AAVGameMode::FireVolley()
+{
+    const float Cost = HasRelic(3) ? 24.f : 30.f;
+    if (HeroClass != 3 || Stamina < Cost || SpinCooldown > 0.f || Aim.IsNearlyZero()) return;
+    Stamina -= Cost;
+    SpinCooldown = 3.4f;
+    const float Angle = FMath::Atan2(Aim.Y, Aim.X);
+    const int32 VolleyId = ++VolleyCounter;
+    for (int32 I = -1; I <= 1; ++I)
+    {
+        const float A = Angle + I * (12.f * 3.14159265f / 180.f);
+        const FVector2D Direction(FMath::Cos(A), FMath::Sin(A));
+        FAVBolt Arrow;
+        Arrow.bFriendly = true;
+        Arrow.Pos = Hero + Direction * 0.52f;
+        Arrow.Velocity = Direction * 13.f;
+        Arrow.Time = 8.5f / 13.f;
+        Arrow.Damage = FMath::RoundToInt((AttackPower + RangedBonus) *
+                           (HasRelic(3) ? 0.90f : 0.75f));
+        Arrow.Visual = 2;
+        Arrow.VolleyId = VolleyId;
+        Bolts.Add(Arrow);
+    }
+    AddEffect(Hero, 1, 0.75f, Angle);
+}
+
+void AAVGameMode::PiercingShot()
+{
+    if (HeroClass != 3 || KnifeCooldown > 0.f || Stamina < 20.f || Aim.IsNearlyZero()) return;
+    Stamina -= 20.f;
+    KnifeCooldown = 2.f;
+    FAVBolt Arrow;
+    Arrow.bFriendly = true;
+    Arrow.Pos = Hero + Aim * 0.52f;
+    Arrow.Velocity = Aim * 17.f;
+    Arrow.Time = 10.f / 17.f;
+    Arrow.Damage = FMath::RoundToInt((AttackPower + RangedBonus) *
+                         (HasRelic(2) ? 1.736f : 1.55f));
+    Arrow.Visual = 3;
+    Arrow.PierceRemaining = 2;
+    Bolts.Add(Arrow);
+    AddEffect(Hero, 0, 0.8f, FMath::Atan2(Aim.Y, Aim.X));
 }
 
 void AAVGameMode::ThrowKnife()
@@ -1305,7 +1384,8 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         HeroClass = (HeroClass + 1) % FAVContent::HeroCount;
         NewRun(); // Class changes restart the run; never mix stats mid-run.
         Toast = HeroClass == 0 ? TEXT("WARDEN SELECTED") :
-                HeroClass == 1 ? TEXT("DUELIST SELECTED") : TEXT("ARCANIST SELECTED");
+                HeroClass == 1 ? TEXT("DUELIST SELECTED") :
+                HeroClass == 2 ? TEXT("ARCANIST SELECTED") : TEXT("MARKSMAN SELECTED");
         ToastTime = 3.f;
         return;
     }
@@ -1399,13 +1479,13 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         Hero = MoveWithCollision(Hero, Direction * MoveSpeed, DeltaSeconds, 0.27f);
     HeroVelocity = (Hero - BeforeMovement) / FMath::Max(0.001f, DeltaSeconds);
 
-    if (bHit) Strike(false);
+    if (bHit) { if (HeroClass == 3) ShootArrow(); else Strike(false); }
     // A sword can defeat a guardian and open a relic selection instantly:
     // don't process another action in the same frame after phase changes.
     if (Phase != EAVPhase::Playing) return;
-    if (bSpin) Strike(true);
+    if (bSpin) { if (HeroClass == 3) FireVolley(); else Strike(true); }
     if (Phase != EAVPhase::Playing) return;
-    if (bReplay) ThrowKnife();
+    if (bReplay) { if (HeroClass == 3) PiercingShot(); else ThrowKnife(); }
     if (Phase != EAVPhase::Playing) return;
     if (bHeal && Potions > 0 && HP < MaxHP)
     {
