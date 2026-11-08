@@ -1055,6 +1055,8 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         FAVEnemy& E = Enemies[I];
         const FAVEnemySpec Spec = FAVContent::Enemy(E.Type, Floor);
         E.Cooldown -= DeltaSeconds;
+        E.AbilityCooldown -= DeltaSeconds;
+        E.AlertTime = FMath::Max(0.f, E.AlertTime - DeltaSeconds);
         E.Flash = FMath::Max(0.f, E.Flash - DeltaSeconds);
         FVector2D Target = Hero;
         bool bTargetEnemy = false;
@@ -1066,9 +1068,25 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             if (D < TargetDistance && D < 7.f)
             { Target = Enemies[J].Pos; TargetDistance = D; bTargetEnemy = true; }
         }
-        const bool bSeesTarget = FAVDungeonNavigation::LineOfSight(
+        const bool bSeesTarget = TargetDistance < 11.f && FAVDungeonNavigation::LineOfSight(
             Tiles, MapW, MapH, E.Pos, Target);
-        if (bSeesTarget) { E.LastSeenHero = Target; E.MemoryTime = 3.5f; }
+        if (bSeesTarget)
+        {
+            E.LastSeenHero = Target;
+            E.MemoryTime = 3.5f;
+            E.AlertTime = 5.f;
+            // Nearby allies receive the target position as a group alert.
+            for (int32 J = 0; J < Enemies.Num(); ++J)
+            {
+                if (J == I || Enemies[J].Faction != E.Faction ||
+                    FVector2D::Distance(E.Pos, Enemies[J].Pos) > 5.5f) continue;
+                if (Enemies[J].MemoryTime < 1.5f)
+                {
+                    Enemies[J].LastSeenHero = Target;
+                    Enemies[J].MemoryTime = 1.5f;
+                }
+            }
+        }
         else E.MemoryTime = FMath::Max(0.f, E.MemoryTime - DeltaSeconds);
         const FVector2D Pursuit = bSeesTarget ? Target :
             E.MemoryTime > 0.f ? E.LastSeenHero : E.Pos;
@@ -1111,6 +1129,27 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                                   DeltaSeconds, Spec.Boss ? 0.47f : 0.26f);
         E.Knockback = FMath::Lerp(E.Knockback, FVector2D::ZeroVector,
                                   FMath::Clamp(DeltaSeconds * 10.f, 0.f, 1.f));
+        if (E.AttackWindup > 0.f)
+        {
+            E.AttackWindup -= DeltaSeconds;
+            if (E.AttackWindup <= 0.f)
+            {
+                E.AttackWindup = 0.f;
+                if (FAVDungeonNavigation::LineOfSight(Tiles, MapW, MapH, E.Pos, E.LockedTarget))
+                    CastEnemyAbility(I, E.LockedTarget);
+                else E.AbilityCooldown = 1.f;
+            }
+            continue;
+        }
+        if (E.AbilityCooldown <= 0.f && bSeesTarget && Distance < 8.0f &&
+            (E.bMiniBoss || Spec.Boss || E.Type == 7 || E.Type == 23 ||
+             E.Type == 24 || E.Type == 19 || E.Type == 12 || E.Type == 21 ||
+             E.Type == 6 || E.Type == 18 || E.Type == 14))
+        {
+            E.LockedTarget = Target;
+            E.AttackWindup = E.bMiniBoss || Spec.Boss ? 0.85f : 0.55f;
+            continue;
+        }
         if (E.Telegraph > 0.f)
         {
             E.Telegraph -= DeltaSeconds;
@@ -1171,7 +1210,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             }
             Bolts.Add(Bolt);
 
-            if (Spec.Boss || E.bMiniBoss)
+            if (Spec.Boss)
             {
                 const FVector2D Side(-Direction.Y, Direction.X);
                 const bool bFurious = E.HP <= E.MaxHP * 0.5f;
