@@ -35,6 +35,8 @@ public:
     static constexpr int32 Count=WeaponCount+ArmorCount+AccessoryCount;
     static constexpr int32 InvalidId=-1;
     static const FAVEquipmentSpec* Find(int32 ItemId);
+    static const char* StatName(int32 StatId);
+    static const char* PerkName(int32 PerkId);
     static int32 RarityRoll(int32 Percentile);
     static bool CanEquip(int32 ItemId, int32 HeroClass);
     static float SetBonus(int32 SetId, int32 EquippedCount); // percent 3-piece bonus
