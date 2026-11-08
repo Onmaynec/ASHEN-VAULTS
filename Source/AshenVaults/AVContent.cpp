@@ -113,6 +113,39 @@ FAVEnemySpec FAVContent::Enemy(int32 Type, int32 Floor)
     return S;
 }
 
+const char* FAVContent::BastionVariantName(int32 Type,int32 Subclass)
+{
+    static const char* Names[18][2] = {
+        {"LINE BREAKER","ASH VETERAN"},
+        {"SPEAR GUARD","HOOK SOLDIER"},
+        {"IRON BULWARK","OATH SHIELD"},
+        {"DEADEYE","VOLLEY CROSSBOWMAN"},
+        {"WIDE CLEAVER","WHIRLWIND HALBERDIER"},
+        {"FRENZIED","RAVAGING"},
+        {"HUNTER HOUND","BLOOD HOUND"},
+        {"DIVING GARGOYLE","FLANKING GARGOYLE"},
+        {"EARTHSHAKER","SKULL CRUSHER"},
+        {"SHADOW CRAWLER","VENOM CRAWLER"},
+        {"CURSED KNIGHT","PIERCING KNIGHT"},
+        {"SHADOW HUNTER","VOLLEY HUNTER"},
+        {"SIGIL MAGE","RIFT MAGE"},
+        {"HEX CALLER","BONE CALLER"},
+        {"BRUTAL PUNISHER","WHIRLWIND PUNISHER"},
+        {"BLOOD HEALER","FIRE PRIEST"},
+        {"SEAL WARDEN","RUNE SLINGER"},
+        {"BLADE RAVAGER","FLURRY RAVAGER"}
+    };
+    if(Type>=34 && Type<=51)
+        return Names[Type-34][Subclass!=0?1:0];
+    switch(Type){
+        case 52:return "EXECUTIONER";
+        case 53:return "GUARD CAPTAIN";
+        case 54:return "SIEGE GOLEM";
+        case 55:return "INQUISITOR";
+        case 56:return "THE COMMANDANT";
+        default:return "UNKNOWN ENEMY";
+    }
+}
 int32 FAVContent::ShopPrice(int32 Slot, int32 Floor)
 {
     const int32 Tier = Floor > 1 ? Floor - 1 : 0;
