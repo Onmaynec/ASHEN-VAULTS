@@ -1016,6 +1016,99 @@ void AAVGameMode::SaveCheckpoint()
     Save->CheckpointStamina = Stamina; Save->CheckpointMaxStamina = MaxStamina;
     Save->CheckpointAttack = AttackPower; Save->CheckpointSpeed = MoveSpeed;
     Save->CheckpointArmor = ArmorRating; Save->CheckpointRanged = RangedBonus;
+    // Store the dungeon, not the peaceful camp or the lobby.
+    const FAVWorldSnapshot* World = bWorldStored ? &StoredWorld : nullptr;
+    const TArray<FAVEnemy>& SavedEnemies = World ? World->Enemies : Enemies;
+    const TArray<FAVPickup>& SavedPickups = World ? World->Pickups : Pickups;
+    const TArray<FAVChest>& SavedChests = World ? World->Chests : Chests;
+    const TArray<FAVTrap>& SavedTraps = World ? World->Traps : Traps;
+    const TArray<FAVHazard>& SavedHazards = World ? World->Hazards : Hazards;
+    const TArray<FAVProp>& SavedProps = World ? World->Props : Props;
+    const TArray<FAVDecor>& SavedDecor = World ? World->Decorations : Decorations;
+    Save->CheckpointTiles = World ? World->Tiles : Tiles;
+    Save->CheckpointExplored = World ? World->Explored : Explored;
+    Save->CheckpointHero = World ? World->Hero : Hero;
+    Save->CheckpointExit = World ? World->Exit : Exit;
+    Save->CheckpointShrine = World ? World->Shrine : Shrine;
+    Save->CheckpointMerchant = World ? World->Merchant : Merchant;
+    Save->CheckpointSafeCampDoor = SafeCampDoor;
+    Save->bCheckpointHasSafeCamp = bHasSafeCampDoor;
+    Save->bCheckpointShrineUsed = World ? World->bShrineUsed : bShrineUsed;
+    Save->bCheckpointBanditCamp = World ? World->bBanditCamp : bBanditCamp;
+    Save->bCheckpointGuardianDefeated = bGuardianDefeated;
+    Save->CheckpointGuardian = PendingGuardian;
+    Save->CheckpointPackMaterials = PackMaterials;
+    Save->CheckpointPackArmor = BackpackArmor;
+    Save->CheckpointPackBows = BackpackBows;
+    Save->CheckpointPackWeapons = BackpackWeapons;
+    Save->bCheckpointShopPurchased0 = ShopPurchased[0];
+    Save->bCheckpointShopPurchased1 = ShopPurchased[1];
+    Save->bCheckpointShopPurchased2 = ShopPurchased[2];
+    Save->CheckpointEnemyData.Reset();
+    for (const FAVEnemy& E : SavedEnemies)
+    {
+        const float V[] = {E.Pos.X, E.Pos.Y, float(E.Type), float(E.Level),
+            float(E.Equipment), float(E.Faction), E.LastSeenHero.X, E.LastSeenHero.Y,
+            E.MemoryTime, E.DodgeCooldown, E.AbilityCooldown, E.AlertTime,
+            E.PathRefresh, E.CachedPathDirection.X, E.CachedPathDirection.Y,
+            E.AttackWindup, E.LockedTarget.X, E.LockedTarget.Y, float(E.AttackPattern),
+            E.bMiniBoss ? 1.f : 0.f, E.HP, E.MaxHP, E.Cooldown, E.Flash,
+            E.Wander, E.Telegraph, E.bElite ? 1.f : 0.f, float(E.Id),
+            E.PhaseShiftTime, E.bPhaseShifted ? 1.f : 0.f};
+        for (float F : V) Save->CheckpointEnemyData.Add(F);
+    }
+    Save->CheckpointPickupData.Reset();
+    for (const FAVPickup& P : SavedPickups)
+    {
+        Save->CheckpointPickupData.Add(P.Pos.X); Save->CheckpointPickupData.Add(P.Pos.Y);
+        Save->CheckpointPickupData.Add(float(P.Type));
+        Save->CheckpointPickupData.Add(float(P.Amount));
+        Save->CheckpointPickupData.Add(P.Time);
+    }
+    Save->CheckpointChestData.Reset();
+    for (const FAVChest& C : SavedChests)
+    {
+        Save->CheckpointChestData.Add(C.Pos.X); Save->CheckpointChestData.Add(C.Pos.Y);
+        Save->CheckpointChestData.Add(C.bOpened ? 1.f : 0.f);
+        Save->CheckpointChestData.Add(C.bMimic ? 1.f : 0.f);
+    }
+    Save->CheckpointTrapData.Reset();
+    for (const FAVTrap& T : SavedTraps)
+    {
+        Save->CheckpointTrapData.Add(T.Pos.X); Save->CheckpointTrapData.Add(T.Pos.Y);
+        Save->CheckpointTrapData.Add(float(T.Type)); Save->CheckpointTrapData.Add(T.Windup);
+        Save->CheckpointTrapData.Add(T.Cooldown);
+    }
+    Save->CheckpointHazardData.Reset();
+    for (const FAVHazard& H : SavedHazards)
+    {
+        Save->CheckpointHazardData.Add(H.Pos.X); Save->CheckpointHazardData.Add(H.Pos.Y);
+        Save->CheckpointHazardData.Add(float(H.Type)); Save->CheckpointHazardData.Add(H.Cooldown);
+    }
+    Save->CheckpointPropData.Reset();
+    for (const FAVProp& P : SavedProps)
+    {
+        Save->CheckpointPropData.Add(P.Pos.X); Save->CheckpointPropData.Add(P.Pos.Y);
+        Save->CheckpointPropData.Add(P.HP); Save->CheckpointPropData.Add(float(P.Type));
+    }
+    Save->CheckpointDecorData.Reset();
+    for (const FAVDecor& D : SavedDecor)
+    {
+        Save->CheckpointDecorData.Add(D.Pos.X); Save->CheckpointDecorData.Add(D.Pos.Y);
+        Save->CheckpointDecorData.Add(float(D.Type));
+        Save->CheckpointDecorData.Add(D.bActivated ? 1.f : 0.f);
+        Save->CheckpointDecorData.Add(D.Phase);
+    }
+    Save->CheckpointCampDoorData.Reset();
+    for (const FVector2D& P : (World ? World->CampDoors : CampDoors))
+    {
+        Save->CheckpointCampDoorData.Add(P.X); Save->CheckpointCampDoorData.Add(P.Y);
+    }
+    Save->CheckpointCampWallData.Reset();
+    for (const FVector2D& P : (World ? World->CampWalls : CampWalls))
+    {
+        Save->CheckpointCampWallData.Add(P.X); Save->CheckpointCampWallData.Add(P.Y);
+    }
     UGameplayStatics::SaveGameToSlot(Save, TEXT("AshenVaultsRecord"), 0);
 }
 
