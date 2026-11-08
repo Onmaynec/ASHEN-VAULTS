@@ -30,6 +30,7 @@ private:
     UPROPERTY(Transient) UTexture2D* HeroAtlas = nullptr;
     UPROPERTY(Transient) UTexture2D* EquipmentAtlas = nullptr;
     UPROPERTY(Transient) UTexture2D* BossAtlas = nullptr;
+    UPROPERTY(Transient) UTexture2D* EnemyAtlas = nullptr;
 
     float Scale = 1.f;
     FVector2D Center = FVector2D::ZeroVector;
