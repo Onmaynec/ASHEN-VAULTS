@@ -65,7 +65,7 @@ void AAVGameMode::BeginPlay()
             WeaponUpgrade = Save->CheckpointWeaponUpgrade;
             ArmorUpgrade = Save->CheckpointArmorUpgrade;
             RelicMask = Save->CheckpointRelics;
-            RelicCount = FMath::CountBits(RelicMask);
+            RelicCount = 0; for (int32 I = 0; I < 6; ++I) if (HasRelic(I)) ++RelicCount;
             HP = Save->CheckpointHP; MaxHP = Save->CheckpointMaxHP;
             Stamina = Save->CheckpointStamina; MaxStamina = Save->CheckpointMaxStamina;
             AttackPower = Save->CheckpointAttack; MoveSpeed = Save->CheckpointSpeed;
@@ -851,6 +851,166 @@ void AAVGameMode::SelectUpgrade(int32 Choice)
     if (Choice == 1) AttackPower += 7.f;
     if (Choice == 2) { MoveSpeed += 0.55f; MaxStamina += 12.f; Stamina = MaxStamina; }
     Phase = XP >= NextXP() ? EAVPhase::Upgrade : EAVPhase::Playing;
+}
+
+
+void AAVGameMode::StoreDungeon()
+{
+    StoredWorld.Tiles = Tiles; StoredWorld.Visible = Visible; StoredWorld.Explored = Explored;
+    StoredWorld.FlowDistances = FlowDistances; StoredWorld.Enemies = Enemies;
+    StoredWorld.Pickups = Pickups; StoredWorld.Bolts = Bolts; StoredWorld.Traps = Traps;
+    StoredWorld.Chests = Chests; StoredWorld.Hazards = Hazards;
+    StoredWorld.Props = Props; StoredWorld.Decorations = Decorations;
+    StoredWorld.Effects = Effects; StoredWorld.CampDoors = CampDoors;
+    StoredWorld.CampWalls = CampWalls;
+    StoredWorld.Hero = Hero; StoredWorld.Exit = Exit;
+    StoredWorld.Shrine = Shrine; StoredWorld.Merchant = Merchant;
+    StoredWorld.BanditCampCenter = BanditCampCenter;
+    StoredWorld.bMerchantSpawned = bMerchantSpawned;
+    StoredWorld.bBanditCamp = bBanditCamp;
+    StoredWorld.bShrineUsed = bShrineUsed;
+    bWorldStored = true;
+}
+
+void AAVGameMode::RestoreDungeon()
+{
+    if (!bWorldStored) return;
+    Tiles = StoredWorld.Tiles; Visible = StoredWorld.Visible;
+    Explored = StoredWorld.Explored; FlowDistances = StoredWorld.FlowDistances;
+    Enemies = StoredWorld.Enemies; Pickups = StoredWorld.Pickups;
+    Bolts = StoredWorld.Bolts; Traps = StoredWorld.Traps;
+    Chests = StoredWorld.Chests; Hazards = StoredWorld.Hazards;
+    Props = StoredWorld.Props; Decorations = StoredWorld.Decorations;
+    Effects = StoredWorld.Effects; CampDoors = StoredWorld.CampDoors;
+    CampWalls = StoredWorld.CampWalls;
+    Hero = StoredWorld.Hero; Exit = StoredWorld.Exit;
+    Shrine = StoredWorld.Shrine; Merchant = StoredWorld.Merchant;
+    BanditCampCenter = StoredWorld.BanditCampCenter;
+    bMerchantSpawned = StoredWorld.bMerchantSpawned;
+    bBanditCamp = StoredWorld.bBanditCamp;
+    bShrineUsed = StoredWorld.bShrineUsed;
+    bWorldStored = false;
+    bInSafeCamp = false; bInBossArena = false;
+    LastVisionX = -1; LastVisionY = -1;
+    RefreshAwareness(0.f, true);
+}
+
+void AAVGameMode::MakeSafeRoom(bool bLobby)
+{
+    Tiles.Init(0, MapW * MapH);
+    for (int32 Y = 12; Y <= 26; ++Y)
+        for (int32 X = 14; X <= 38; ++X)
+            Tiles[Y * MapW + X] = 1;
+    Visible.Init(0, MapW * MapH); Explored.Init(0, MapW * MapH);
+    FlowDistances.Init(-1, MapW * MapH);
+    Enemies.Reset(); Bolts.Reset(); Traps.Reset(); Hazards.Reset();
+    Chests.Reset(); Pickups.Reset(); Props.Reset(); Decorations.Reset();
+    CampDoors.Reset(); CampWalls.Reset(); Effects.Reset();
+    bMerchantSpawned = !bLobby;
+    Merchant = FVector2D(20.5f, 17.5f);
+    Hero = FVector2D(26.5f, 22.5f);
+    Exit = FVector2D(26.5f, 25.5f);
+    Shrine = FVector2D(32.5f, 17.5f);
+    HeroVelocity = FVector2D::ZeroVector;
+    LastVisionX = -1; LastVisionY = -1;
+    RefreshAwareness(0.f, true);
+}
+
+void AAVGameMode::EnterSafeCamp()
+{
+    if (bInSafeCamp || bInBossArena || bInLobby) return;
+    StoreDungeon();
+    bInSafeCamp = true;
+    MakeSafeRoom(false);
+    Toast = TEXT("SAFE CAMP: MERCHANT / SMITH / TRAVELER");
+    ToastTime = 3.f;
+}
+
+void AAVGameMode::EnterBossArena()
+{
+    if (bInSafeCamp || bInBossArena || bInLobby || PendingGuardian < 0) return;
+    StoreDungeon();
+    bInBossArena = true;
+    MakeSafeRoom(true);
+    Hero = FVector2D(26.5f, 23.5f);
+    Exit = FVector2D(26.5f, 14.5f);
+    FAVEnemy Boss;
+    Boss.Type = PendingGuardian;
+    Boss.Level = FAVContent::EnemyLevel(Floor, 99);
+    Boss.Pos = FVector2D(26.5f, 17.5f);
+    Boss.MaxHP = FAVContent::Enemy(Boss.Type, Floor).Health *
+        FAVContent::LevelHealthMultiplier(Boss.Level);
+    Boss.HP = Boss.MaxHP;
+    Boss.Cooldown = 1.f;
+    Boss.Id = 900000 + Floor;
+    Enemies.Add(Boss);
+    LastVisionX = -1; LastVisionY = -1;
+    RefreshAwareness(0.f, true);
+}
+
+void AAVGameMode::SellPack()
+{
+    Gold += PackGold + PackMaterials * FMath::Max(1, 3 + Floor / 5);
+    PackGold = 0; PackMaterials = 0;
+}
+
+void AAVGameMode::ForgeUpgrade(int32 Slot)
+{
+    const int32 Price = 25 + 15 * (Slot == 0 ? WeaponUpgrade : ArmorUpgrade);
+    if (Gold < Price)
+    {
+        Toast = TEXT("NOT ENOUGH GOLD"); ToastTime = 2.f;
+        return;
+    }
+    Gold -= Price;
+    if (Slot == 0) { ++WeaponUpgrade; AttackPower += 3.f; }
+    else { ++ArmorUpgrade; ArmorRating = FMath::Min(0.45f, ArmorRating + 0.04f); }
+    Toast = TEXT("FORGE UPGRADE COMPLETE"); ToastTime = 2.f;
+}
+
+void AAVGameMode::SaveCheckpoint()
+{
+    UAVSaveGame* Save = Cast<UAVSaveGame>(
+        UGameplayStatics::CreateSaveGameObject(UAVSaveGame::StaticClass()));
+    if (!Save) return;
+    Save->BestFloor = FMath::Max(BestFloor, Floor);
+    Save->BestKills = FMath::Max(BestKills, Kills);
+    Save->TotalGold = LifetimeGold;
+    Save->bHasCheckpoint = true;
+    Save->CheckpointFloor = Floor; Save->CheckpointSeed = RunSeed;
+    Save->CheckpointHeroClass = HeroClass;
+    Save->CheckpointLevel = Level; Save->CheckpointXP = XP;
+    Save->CheckpointGold = Gold; Save->CheckpointKills = Kills;
+    Save->CheckpointPotions = Potions; Save->CheckpointGear = EquippedGear;
+    Save->CheckpointWeaponUpgrade = WeaponUpgrade;
+    Save->CheckpointArmorUpgrade = ArmorUpgrade;
+    Save->CheckpointRelics = RelicMask;
+    Save->CheckpointHP = HP; Save->CheckpointMaxHP = MaxHP;
+    Save->CheckpointStamina = Stamina; Save->CheckpointMaxStamina = MaxStamina;
+    Save->CheckpointAttack = AttackPower; Save->CheckpointSpeed = MoveSpeed;
+    Save->CheckpointArmor = ArmorRating; Save->CheckpointRanged = RangedBonus;
+    UGameplayStatics::SaveGameToSlot(Save, TEXT("AshenVaultsRecord"), 0);
+}
+
+void AAVGameMode::EnterLobby()
+{
+    if (bInBossArena) return;
+    if (bInSafeCamp) SellPack();
+    bInLobby = true; bInSafeCamp = false;
+    bWorldStored = false;
+    SaveCheckpoint();
+    MakeSafeRoom(true);
+    Toast = TEXT("HOME: PRESS E AT THE PORTAL TO RESUME");
+    ToastTime = 3.f;
+}
+
+void AAVGameMode::ResumeFromLobby()
+{
+    if (!bInLobby) return;
+    bInLobby = false;
+    GenerateFloor();
+    Toast = TEXT("DESCENT RESUMED");
+    ToastTime = 2.5f;
 }
 
 void AAVGameMode::RecordRun()
