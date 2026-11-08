@@ -26,7 +26,11 @@ public:
     static constexpr int32 RelicCount = 6;
     static constexpr int32 BiomeCount = 3;
     static constexpr int32 HeroCount = 3;
-    static constexpr int32 EnemyCount = 15;
+    static constexpr int32 EnemyCount = 34;
+    static constexpr int32 MiniBossCount = 7;
+    static int32 EnemyLevel(int32 Floor, int32 Roll);
+    static float LevelHealthMultiplier(int32 Level);
+    static float LevelDamageMultiplier(int32 Level);
     static constexpr int32 PickupCount = 8;
     // 0 Warden, 1 Duelist, 2 Arcanist. Pure data: safe in standalone tests.
     static float HeroHealth(int32 HeroId);
