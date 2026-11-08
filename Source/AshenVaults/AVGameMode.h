@@ -204,6 +204,9 @@ public:
     float EquipmentAppliedSpeed = 0.f;
     float EquipmentAppliedArmor = 0.f;
     float RewardDamageTime = 0.f;
+    float TemporaryShield = 0.f;
+    float LastKillBoostTime = 0.f;
+    float MarkedHitTime = 0.f;
     float DashBonusTime = 0.f;
     float RevengeTime = 0.f;
     int32 BasicAttackSequence = 0;
