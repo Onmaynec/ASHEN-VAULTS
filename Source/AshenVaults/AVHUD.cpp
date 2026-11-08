@@ -1144,7 +1144,7 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         Sprite(SpriteType, E.Pos + FVector2D(0.f, EnemyBob),
                Radius, E.Flash > 0.f ? 0.55f : 1.f);
         // Secondary subclass mark is visually distinct and does not affect the enemy silhouette.
-        if (E.Type >= 34 && E.Type <= 51 && (E.Id & 1) != 0)
+        if (E.Type >= 34 && E.Type <= 51 && E.Subclass != 0)
             Rect(Pt.X - 2.f * Scale, Pt.Y - 14.f * Scale, 4.f * Scale, 3.f * Scale, GoldColor);
         if (E.PhaseShiftTime > 0.f)
         {
