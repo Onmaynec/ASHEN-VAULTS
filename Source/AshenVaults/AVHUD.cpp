@@ -392,20 +392,24 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
             Put(12, 13, Highlight);
         }
     }
-    else if (Type >= 128 && Type <= 173) // Bastion 18 enemies + 4 mini-bosses + Commandant, two walk poses
+    else if ((Type >= 128 && Type <= 173) || (Type >= 182 && Type <= 227))
     {
-        const int32 Kind = 34 + (Type - 128) / 2;
-        const bool Walking = (Type & 1) != 0;
+        // Variant sprites have distinct armor tint and insignia, plus two walk poses.
+        const bool bSubclass=Type>=182;
+        const int32 Kind=34+(bSubclass?(Type-182):(Type-128))/2;
+        const bool Walking=(Type&1)!=0;
         const bool Giant = Kind == 42 || Kind == 48 || Kind == 54 || Kind == 56;
         const bool Armored = Kind == 34 || Kind == 35 || Kind == 36 || Kind == 38 ||
                              Kind == 44 || Kind == 48 || Kind == 50 || Kind == 53 || Kind == 56;
         const bool Beast = Kind == 40 || Kind == 41 || Kind == 43;
         const bool Mage = Kind == 46 || Kind == 47 || Kind == 49 || Kind == 50 || Kind == 55;
         const bool Mini = Kind >= 52 && Kind <= 55;
-        const FColor Base = Armored ? PixelColor(68, 71, 82) :
+        const FColor Base=bSubclass?PixelColor(97,55,65) :
+            Armored ? PixelColor(68, 71, 82) :
             Beast ? PixelColor(106, 75, 70) :
             Mage ? PixelColor(94, 54, 82) : PixelColor(100, 78, 77);
-        const FColor Trim = Armored ? PixelColor(169, 156, 144) :
+        const FColor Trim=bSubclass?PixelColor(196,125,103) :
+            Armored ? PixelColor(169, 156, 144) :
             Beast ? PixelColor(170, 91, 79) :
             Mage ? PixelColor(170, 88, 125) : PixelColor(174, 114, 103);
         const FColor Glow = PixelColor(232, 77, 72);
@@ -436,6 +440,30 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
             if (Kind == 39 || Kind == 51) { Put(4, 2, Glow); Put(11, 2, Glow); }
             if (Giant) { Box(1, 7, 3, 13, Trim); Box(12, 7, 14, 13, Trim); }
             if (Kind == 56) { Box(3, 2, 12, 3, Glow); Put(4, 0, White); Put(8, 0, White); Put(12, 0, White); }
+        }
+        if(Kind==47 || Kind==49) {
+            Box(13,4,14,13,DarkMetal); Put(13,3,Glow);
+            Box(5,11,10,13,Base);
+        }
+        if(Kind==46 || Kind==50) {
+            Box(12,7,14,9,Glow); Put(14,7,White);
+        }
+        if(Kind==48 || Kind==52) {
+            Box(13,2,15,12,Trim); Box(11,2,15,5,DarkMetal);
+        }
+        if(Kind==51) {
+            Box(2,6,3,13,Metal); Box(12,6,13,13,Metal);
+        }
+        if(Kind==41) {
+            Box(1,6,4,8,Trim); Box(11,6,14,8,Trim);
+        }
+        if(Kind==43) {
+            Box(1,10,14,13,Base); Put(12,10,Glow);
+        }
+        if(bSubclass) {
+            Put(2,3,Glow);Put(13,3,Glow);
+            Box(5,2,10,3,PixelColor(155,74,64));
+            Put(7,8,GoldColor.ToFColor(true));
         }
         if (Mini) { Put(3, 2, Glow); Put(12, 2, Glow); }
         if (Walking) { Put(3, 13, Trim); Put(12, 13, Trim); }
@@ -475,6 +503,13 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
             Box(3, 12, 12, 14, Shadow); Box(5, 3, 10, 12, DarkMetal);
             Box(6, 5, 9, 10, PixelColor(160, 53, 62)); Put(7, 4, White);
         }
+    }
+    else if (Type == 181) // magic sphere
+    {
+        Box(5,4,10,11,PixelColor(112,66,164));
+        Box(6,5,9,10,PixelColor(190,126,241));
+        Box(7,6,8,9,White);
+        Put(2,8,PixelColor(180,94,242)); Put(13,8,PixelColor(180,94,242));
     }
     else if (Type == 180) // equipment bag
     {
@@ -651,7 +686,7 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
 void AAVHUD::InitSprites()
 {
     if (Sprites.Num() > 0) return;
-    for (int32 I = 0; I <= 180; ++I) Sprites.Add(MakeSprite(I));
+    for (int32 I = 0; I <= 227; ++I) Sprites.Add(MakeSprite(I));
     for (int32 Biome = 0; Biome < 4; ++Biome)
         for (int32 Variant = 0; Variant < FAVArt::VariantsPerBiome; ++Variant)
             BiomeTiles.Add(FAVArt::BuildTile(Biome, Variant));
@@ -1097,8 +1132,8 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
     }
     for (const FAVBolt& Bolt : Game.Bolts)
         if (Game.IsVisibleAt(Bolt.Pos))
-            Sprite(Bolt.bFriendly ? (Bolt.Visual != 0 ? 176 : 15) : 10,
-                   Bolt.Pos, Bolt.bFriendly ? 0.7f : 0.55f);
+            Sprite(Bolt.bFriendly ? (Bolt.Visual==4?181:Bolt.Visual!=0?176:15) : 10,
+                   Bolt.Pos, Bolt.bFriendly?0.7f:0.55f);
 
     for (const FAVEnemy& E : Game.Enemies)
     {
@@ -1130,8 +1165,9 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
             Rect(Pt.X + 7.f * Scale * Radius, Pt.Y - Lift,
                  5.f * Scale * Radius, 7.f * Scale * Radius, CastColor);
         }
-        const int32 SpriteType = E.Type >= 34 ?
-            128 + (E.Type - 34) * 2 + (FMath::FloorToInt(Game.RunTime * 6.f + E.Id) % 2) :
+        const int32 SpriteType=E.Type>=34 ?
+            (E.Subclass!=0 && E.Type<=51 ? 182 : 128) +
+            (E.Type-34)*2 + (FMath::FloorToInt(Game.RunTime*6.f+E.Id)%2) :
             E.Type >= 11 ?
             ((FMath::FloorToInt(Game.RunTime * (E.Type == 15 ? 10.f : 6.f) + E.Id) % 2) == 0 ?
              36 + E.Type : 70 + E.Type) : E.Type == 0 ? 1 : E.Type == 1 ? 2 :
