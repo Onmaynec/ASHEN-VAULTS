@@ -6,6 +6,7 @@
 
 class AAVGameMode;
 class UTexture2D;
+class UMaterialInstanceDynamic;
 
 /**
  * Resolution-independent pixel art renderer.
@@ -31,6 +32,7 @@ private:
     UPROPERTY(Transient) UTexture2D* EquipmentAtlas = nullptr;
     UPROPERTY(Transient) UTexture2D* BossAtlas = nullptr;
     UPROPERTY(Transient) UTexture2D* EnemyAtlas = nullptr;
+    UPROPERTY(Transient) TArray<UMaterialInstanceDynamic*> TileMaterials;
 
     float Scale = 1.f;
     FVector2D Center = FVector2D::ZeroVector;
