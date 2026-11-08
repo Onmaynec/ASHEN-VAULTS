@@ -131,7 +131,8 @@ public:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaSeconds) override;
 
-    static constexpr int32 FinalFloor = 6;
+    static constexpr int32 FloorsPerBiome = 5;
+    // Unbounded descent; every fifth floor is a biome guardian floor.
     static constexpr int32 MapW = 52;
     static constexpr int32 MapH = 38;
     static constexpr float TilePixels = 24.f;
@@ -220,7 +221,10 @@ public:
     int32 NextXP() const { return 8 + Level * 7; }
     bool IsExitReady() const { return Enemies.Num() == 0; }
     bool HasRelic(int32 Index) const { return Index >= 0 && Index < 6 && (RelicMask & (1u << Index)) != 0; }
-    int32 CurrentBiome() const { return Floor <= 2 ? 0 : Floor <= 4 ? 1 : 2; }
+    int32 CurrentBiome() const { return ((Floor - 1) / FloorsPerBiome) % 3; }
+    int32 BiomeDepth() const { return (Floor - 1) % FloorsPerBiome + 1; }
+    int32 BiomeCycle() const { return (Floor - 1) / (FloorsPerBiome * 3); }
+    bool IsGuardianFloor() const { return BiomeDepth() == FloorsPerBiome; }
     int32 ShopPrice(int32 Slot) const;
     void NewRun(bool bSameSeed = false);
 
