@@ -24,7 +24,9 @@ private:
     TArray<UTexture2D*> Sprites;
 
     UPROPERTY(Transient)
-    TArray<UTexture2D*> BiomeTiles; // 3 biomes x 12 floor/wall variants
+    TArray<UTexture2D*> BiomeTiles; // fallback/generated variants
+    UPROPERTY(Transient)
+    TArray<UTexture2D*> AuthoredAtlases; // 4 authored PNG atlases, 7x4 at 24px
 
     float Scale = 1.f;
     FVector2D Center = FVector2D::ZeroVector;
