@@ -58,6 +58,18 @@ int main()
         assert(FAVContent::HeroSpeed(Hero) == ExpectedSpeed[Hero]);
     }
 
+    // Attack-speed gear must affect the melee strike interval.
+    // The old 0.33s minimum made all positive melee bonuses inert.
+    for (int32 Hero = 0; Hero < FAVContent::HeroCount; ++Hero)
+    {
+        const float Base = FAVContent::BasicAttackInterval(Hero, 0.f);
+        assert(std::fabs(Base - (Hero == 3 ? 0.52f : 0.33f)) < 0.0001f);
+        assert(FAVContent::BasicAttackInterval(Hero, 20.f) < Base);
+        assert(FAVContent::BasicAttackInterval(Hero, -20.f) > Base);
+        assert(FAVContent::BasicAttackInterval(Hero, 200.f) >=
+               (Hero == 3 ? 0.33f : 0.22f));
+    }
+
     // Three general branches and a class-only branch. The final pairs
     // cannot be equipped at the same time.
     for (int32 Hero = 0; Hero < 4; ++Hero)
