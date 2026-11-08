@@ -395,7 +395,8 @@ void AAVGameMode::NewRun(bool bSameSeed)
     EquipmentAppliedHP=0.f; EquipmentAppliedStamina=0.f;
     EquipmentAppliedAttack=0.f; EquipmentAppliedSpeed=0.f; EquipmentAppliedArmor=0.f;
     RewardDamageTime=0.f; DashBonusTime=0.f; RevengeTime=0.f;
-    BasicAttackSequence=0;
+    BasicAttackSequence=0; TemporaryShield=0.f;
+    LastKillBoostTime=0.f; MarkedHitTime=0.f;
     MapW = 52; MapH = 38; ShotSeries = 0; ShotTargetId = -1;
     ShotCounter = 0; LastConnectedShotId = 0; VolleyCounter = 0;
     LastShotHitTime = -100.f;
@@ -427,6 +428,7 @@ void AAVGameMode::GenerateFloor()
     // Dimensions belong to the biome and never reshape previously generated floors.
     ShotSeries=0; ShotTargetId=-1; LastShotHitTime=-100.f;
     bLastStandUsed=false; RewardDamageTime=0.f;
+    TemporaryShield=0.f; LastKillBoostTime=0.f;
     MapW = CurrentBiome() == 3 ? 60 : 52;
     MapH = CurrentBiome() == 3 ? 44 : 38;
     // Floor layouts are independent of combat loot RNG consumption.
@@ -1108,9 +1110,26 @@ bool AAVGameMode::ActivateNearbyEcho()
 void AAVGameMode::DamageHero(float Damage, const FVector2D& Source)
 {
     if (Invulnerability > 0.f || Phase != EAVPhase::Playing || bInSafeCamp || bInLobby) return;
-    const float AdjustedDamage = Damage * (HasRelic(1) ? 0.80f : 1.f) *
-        (1.f - FMath::Clamp(ArmorRating, 0.f, 0.45f));
-    HP = FMath::Max(0.f, HP - AdjustedDamage);
+    float AdjustedDamage=Damage*(HasRelic(1)?0.80f:1.f)*
+        (1.f-FMath::Clamp(ArmorRating,0.f,0.45f));
+    if(HP<MaxHP*0.3f) AdjustedDamage*=1.f-0.08f*SkillRank(3);
+    if(HeroClass==0 && DashBonusTime>0.f)
+        AdjustedDamage*=1.f-0.08f*SkillRank(17);
+    if(TemporaryShield>0.f) {
+        const float Absorbed=FMath::Min(TemporaryShield,AdjustedDamage);
+        TemporaryShield-=Absorbed;
+        AdjustedDamage-=Absorbed;
+    }
+    if(AdjustedDamage>0.f) RevengeTime=3.f;
+    HP=FMath::Max(0.f,HP-AdjustedDamage);
+    if(HP<=0.f && SkillRank(4)>0 && !bLastStandUsed) {
+        bLastStandUsed=true; HP=1.f;
+        Invulnerability=FMath::Max(Invulnerability,0.7f);
+    }
+    if(HP<MaxHP*0.25f && HeroClass==2 && SkillRank(32)>0 &&
+       TemporaryShield<=0.f && !bLastStandUsed) {
+        TemporaryShield=MaxHP*0.18f; bLastStandUsed=true;
+    }
     Invulnerability = 0.72f;
     ScreenShake = 0.26f;
     Hero = MoveWithCollision(Hero, SafeDirection(Hero - Source) * 2.8f, 0.10f, 0.27f);
@@ -1176,6 +1195,7 @@ void AAVGameMode::KillEnemy(int32 Index)
         (!Dead.bMiniBoss && !Dead.bElite && RNG.FRand()<0.075f))
         SpawnGearDrop(Dead.Pos,bBoss || Dead.bMiniBoss ? AVRare : AVUncommon);
     if(HasGearPerk(6)) HP=FMath::Min(MaxHP,HP+2.f);
+    if(SkillRank(24)>0 && HeroClass==1) LastKillBoostTime=3.f;
     if(Dead.bElite && HasGearPerk(9)) RewardDamageTime=8.f;
     if(SkillRank(9)>0) {
         SpinCooldown=FMath::Max(0.f,SpinCooldown-0.5f);
@@ -1758,15 +1778,18 @@ void AAVGameMode::PollInput(float DeltaSeconds)
     if (PC->IsInputKeyDown(EKeys::A)) Direction.X -= 1.f;
     if (PC->IsInputKeyDown(EKeys::D)) Direction.X += 1.f;
     Direction = SafeDirection(Direction);
-    const float DashCost = HasRelic(4) ? 16.f : 23.f;
+    const float DashCost=(HasRelic(4)?16.f:23.f)*(1.f-0.1f*SkillRank(13));
     if (bDash && Stamina >= DashCost && DashCooldown <= 0.f && DashTime <= 0.f)
     {
         Stamina -= DashCost;
         DashCooldown = HasRelic(4) ? 0.47f : 0.7f;
         DashDirection = Direction.IsNearlyZero() ? Aim : Direction;
         DashTime = 0.17f;
-        Invulnerability = FMath::Max(Invulnerability, 0.25f);
-        AddEffect(Hero, 1, 0.7f);
+        Invulnerability=FMath::Max(Invulnerability,0.25f+0.07f*SkillRank(14));
+        DashBonusTime=3.f;
+        if(HeroClass==0 && SkillRank(19)>0)
+            TemporaryShield=FMath::Max(TemporaryShield,MaxHP*0.25f);
+        AddEffect(Hero,1,0.7f);
     }
     const FVector2D BeforeMovement = Hero;
     if (DashTime > 0.f)
@@ -1792,7 +1815,7 @@ void AAVGameMode::PollInput(float DeltaSeconds)
     if (Phase != EAVPhase::Playing) return;
     if (bHeal && Potions > 0 && HP < MaxHP)
     {
-        --Potions; HP = FMath::Min(MaxHP, HP + 42.f);
+        --Potions; HP = FMath::Min(MaxHP, HP + 42.f + 8.f*SkillRank(2));
         PoisonTime = 0.f; BurnTime = 0.f;
         AddEffect(Hero, 2, 1.f);
     }
@@ -2719,7 +2742,13 @@ void AAVGameMode::Tick(float DeltaSeconds)
         DashCooldown = FMath::Max(0.f, DashCooldown - DT);
         Invulnerability = FMath::Max(0.f, Invulnerability - DT);
         ScreenShake = FMath::Max(0.f, ScreenShake - DT);
-        Stamina = FMath::Min(MaxStamina, Stamina + 14.5f * DT);
+        Stamina=FMath::Min(MaxStamina,Stamina+
+            14.5f*(1.f+(GearStat(AVStaminaRegenPercent)+
+            6.f*SkillRank(12))*0.01f)*DT);
+        RewardDamageTime=FMath::Max(0.f,RewardDamageTime-DT);
+        DashBonusTime=FMath::Max(0.f,DashBonusTime-DT);
+        RevengeTime=FMath::Max(0.f,RevengeTime-DT);
+        LastKillBoostTime=FMath::Max(0.f,LastKillBoostTime-DT);
         ComboTime = FMath::Max(0.f, ComboTime - DT);
         if (ComboTime <= 0.f) Combo = 0;
         ToastTime = FMath::Max(0.f, ToastTime - DT);
