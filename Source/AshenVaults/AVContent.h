@@ -39,5 +39,6 @@ public:
     static int32 Boss(int32 Floor);
     static int32 EnemyRoll(int32 Floor, int32 Percentile);
     static FAVEnemySpec Enemy(int32 Type, int32 Floor);
+    static const char* BastionVariantName(int32 Type, int32 Subclass);
     static int32 ShopPrice(int32 Slot, int32 Floor);
 };
