@@ -768,6 +768,39 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
     const float Pulse = 0.5f + 0.5f * FMath::Sin(Game.RunTime * 4.5f);
 
     // Objects remain hidden behind walls until line-of-sight reaches them.
+    if (Game.bInSafeCamp || Game.bInLobby)
+    {
+        const FVector2D Gate = Screen(Game.Exit);
+        Rect(Gate.X - 16.f * Scale, Gate.Y - 20.f * Scale,
+             32.f * Scale, 40.f * Scale, Mint);
+        Text(Game.bInLobby ? TEXT("RESUME [E]") : TEXT("EXIT [E]"),
+             Gate.X - 34.f * Scale, Gate.Y - 38.f * Scale, Pale, 0.72f);
+        if (Game.bInSafeCamp)
+        {
+            const FVector2D Trader = Screen(Game.Merchant);
+            Sprite(23, Game.Merchant, 1.15f);
+            Text(TEXT("MERCHANT [E]"), Trader.X - 44.f * Scale,
+                 Trader.Y - 29.f * Scale, GoldColor, 0.72f);
+            const FVector2D Smith = Screen(FVector2D(32.5f, 22.5f));
+            Rect(Smith.X - 11.f * Scale, Smith.Y - 16.f * Scale,
+                 22.f * Scale, 29.f * Scale, GoldColor);
+            Text(TEXT("SMITH [E] / SHIFT+E"), Smith.X - 75.f * Scale,
+                 Smith.Y - 34.f * Scale, Pale, 0.72f);
+            const FVector2D Traveler = Screen(Game.Shrine);
+            Sprite(23, Game.Shrine, 1.1f);
+            Text(TEXT("TRAVELER: HOME [E]"), Traveler.X - 69.f * Scale,
+                 Traveler.Y - 31.f * Scale, Mint, 0.72f);
+        }
+        return;
+    }
+    if (Game.bHasSafeCampDoor && Game.IsVisibleAt(Game.SafeCampDoor))
+    {
+        const FVector2D Door = Screen(Game.SafeCampDoor);
+        Rect(Door.X - 12.f * Scale, Door.Y - 17.f * Scale,
+             24.f * Scale, 33.f * Scale, GoldColor);
+        Text(TEXT("SAFE CAMP [E]"), Door.X - 40.f * Scale,
+             Door.Y - 31.f * Scale, Pale, 0.75f);
+    }
     if (Game.IsVisibleAt(Game.Exit))
     {
         const FVector2D Stair = Screen(Game.Exit);
@@ -1335,7 +1368,7 @@ void AAVHUD::DrawOverlay(const AAVGameMode& Game)
                  FString::Printf(TEXT("%d GOLD"), Game.ShopPrice(I)),
                  Left + 345.f * Scale, Y, Sold ? Aether : GoldColor, 0.9f);
         }
-        Text(TEXT("1 / 2 / 3 BUY    F / ESC LEAVE"),
+        Text(Game.bInSafeCamp ? TEXT("1/2/3 BUY   4 SELL PACK   E/ESC EXIT") : TEXT("1/2/3 BUY   E/ESC EXIT"),
              Left + 126.f * Scale, Top + 206.f * Scale, Mint, 0.89f);
         if (Game.ToastTime > 0.f)
             Text(Game.Toast, Left + 185.f * Scale, Top + 178.f * Scale, Blood, 0.84f);
