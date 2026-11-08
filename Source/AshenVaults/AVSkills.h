@@ -18,6 +18,7 @@ class FAVSkills
 public:
     static constexpr int32 Count=39;
     static const FAVSkillSpec* Find(int32 Id);
+    static const char* Description(int32 Id);
     static bool CanLearn(int32 Id,int32 Hero,int32 Level,const uint8* Ranks,int32 RankCount,int32 Points);
     static int32 AwardedPointsAtLevel(int32 Level); // levels 2 through 30, max 29
 };
