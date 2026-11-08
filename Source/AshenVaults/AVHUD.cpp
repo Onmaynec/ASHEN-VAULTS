@@ -1147,7 +1147,7 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         Text(TEXT("E  VISIT THE MERCHANT"),
              Hp.X - 77.f * Scale, Hp.Y - 49.f * Scale, GoldColor, 0.85f);
     else if (!Game.bShrineUsed && FVector2D::Distance(Game.Hero, Game.Shrine) < 2.1f)
-        Text(TEXT("F  PRAY  +HP / +DAMAGE"),
+        Text(TEXT("E  PRAY  +HP / +DAMAGE"),
              Hp.X - 69.f * Scale, Hp.Y - 49.f * Scale, Mint, 0.88f);
     else if ([&Game]()
     {
@@ -1166,10 +1166,10 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
                 return true;
         return false;
     }())
-        Text(TEXT("F  RECLAIM AN ECHO"),
+        Text(TEXT("E  RECLAIM AN ECHO"),
              Hp.X - 69.f * Scale, Hp.Y - 49.f * Scale, Aether, 0.88f);
     else if (Game.IsExitReady() && FVector2D::Distance(Game.Hero, Game.Exit) < 2.1f)
-        Text(TEXT("F  ENTER THE DEPTHS"),
+        Text(TEXT("E  ENTER THE DEPTHS"),
              Hp.X - 57.f * Scale, Hp.Y - 49.f * Scale, Mint, 0.88f);
 }
 
@@ -1276,7 +1276,7 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
          Game.KnifeCooldown <= 0.f && Game.Stamina >= 18.f ? Mint : Pale, 0.95f);
     Text(FString::Printf(TEXT("F   POTION x%d"), Game.Potions),
          447.f * Scale, Y + 34.f * Scale, Game.Potions > 0 ? GoldColor : Pale, 0.95f);
-    Text(Game.IsExitReady() ? TEXT("F   EXIT READY") :
+    Text(Game.IsExitReady() ? TEXT("E   EXIT READY") :
          FString::Printf(TEXT("FOES %d  |  CACHE %d"),
              Game.EnemiesRemaining(), Game.UnopenedChests()),
          646.f * Scale, Y + 11.f * Scale, Game.IsExitReady() ? Mint : Blood, 0.95f);
