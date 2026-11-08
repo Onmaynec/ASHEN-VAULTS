@@ -8,6 +8,8 @@
   ],
   "Plugins": [
     { "Name": "Paper2D", "Enabled": true },
-    { "Name": "Niagara", "Enabled": true }
+    { "Name": "Niagara", "Enabled": true },
+    { "Name": "PythonScriptPlugin", "Enabled": true },
+    { "Name": "EditorScriptingUtilities", "Enabled": true }
   ]
 }
