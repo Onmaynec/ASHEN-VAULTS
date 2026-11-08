@@ -61,8 +61,8 @@ UTexture2D* FAVArt::BuildTile(int32 Biome, int32 TileVariant)
         TileVariant >= VariantsPerBiome)
         return nullptr;
 
-    const bool bWall = TileVariant >= 8;
-    const int32 Variant = bWall ? TileVariant - 8 : TileVariant;
+    const bool bWall = TileVariant >= FloorVariants;
+    const int32 Variant = bWall ? TileVariant - FloorVariants : TileVariant;
     const int32 N = TextureSize;
     const FColor Base = Biome == 0 ? RGB(49, 61, 76) :
                         Biome == 1 ? RGB(42, 75, 62) : Biome == 2 ? RGB(83, 56, 53) : RGB(49, 50, 54);
@@ -105,6 +105,18 @@ UTexture2D* FAVArt::BuildTile(int32 Biome, int32 TileVariant)
                         C = Shift(Light, -34 + Grain);
                     else if (X >= 20)
                         C = Shift(Edge, 10 + Grain);
+                }
+                // Relief decorations for deeper wall profiles.
+                if(Variant>=4 && Y>=8 && Y<=21) {
+                    const int32 Joint=((X+(Y/7)*6)%12);
+                    if(Variant==4 && Y>12 && X>5 && X<18 &&
+                       (Y-X/3)%7==0) C=Shift(Edge,-7); // eroded face
+                    if(Variant==5 && Y>9 && (X-11)*(X-11)+(Y-14)*(Y-14)<13)
+                        C=Shift(Accent,-47); // carved heraldry
+                    if(Variant==6 && Y>10 && Joint>=2 && Joint<=4)
+                        C=Shift(Light,-38); // pillar shaft
+                    if(Variant==7 && Y>10 && X>8 && X<16 && (Y%4)==0)
+                        C=Shift(Accent,-22); // faint seams
                 }
                 if (Variant == 1 && Y > 8 && Y < 21 && ((X + Y / 3) % 11 == 0))
                     C = Edge; // fractured masonry
@@ -166,6 +178,42 @@ UTexture2D* FAVArt::BuildTile(int32 Biome, int32 TileVariant)
                         ((X + Y) % 3 == 0)) C = Shift(Light, -42);
                     if (Biome == 0 && X >= 11 && X <= 12 && Y >= 9 && Y <= 15)
                         C = Accent;
+                }
+                // v1.0 additional floor decals: rock, burial carving, moss,
+                // molten hairline fractures, brickwear, rust and impact chips.
+                else if(Variant>=8)
+                {
+                    const int32 Kind=Variant-8;
+                    const int32 DistX=FMath::Abs(X-12);
+                    const int32 DistY=FMath::Abs(Y-12);
+                    if(Kind==0 && (X+Y*3)%11<2 && X>3 && Y>3)
+                        C=Shift(Edge,8); // shattered sandstone
+                    else if(Kind==1 && X>6 && X<18 && Y>6 && Y<18 &&
+                            (DistX==DistY || DistX+DistY==8))
+                        C=Shift(Light,-47); // circular sigil
+                    else if(Kind==2 && H%17u<3u)
+                        C=Shift(Accent,-75); // ash, rust or spores
+                    else if(Kind==3 && (X==3 || X==20 || Y==3 || Y==20))
+                        C=Shift(Light,-65); // small inset flagstone
+                    else if(Kind==4 && ((X+Y)%9==0 || (X-Y+24)%13==0) &&
+                            Y>4 && Y<21)
+                        C=Shift(Edge,-6); // irregular hairline cracking
+                    else if(Kind==5 && X>7 && X<17 && Y>4 && Y<19 &&
+                            ((X+Y*2)%7)==0)
+                        C=Shift(Accent,-20); // arcane glyph remnants
+                    else if(Kind==6 && H%12u<3u)
+                        C=Shift(Light,-28); // weathering
+                    else if(Kind==7 && (Y==6 || Y==17) && X>=5 && X<=19)
+                        C=Shift(Edge,-4); // stone scratches
+                    else if(Kind==8 && (X==6 || X==17) && Y>=5 && Y<=19)
+                        C=Shift(Light,-39); // inset carving
+                    else if(Kind==9 && (X-7)*(X-7)+(Y-17)*(Y-17)<18)
+                        C=Shift(Accent,-62); // scattered growth
+                    else if(Kind==10 && (X-17)*(X-17)+(Y-6)*(Y-6)<9)
+                        C=Shift(Edge,-10); // floor wear
+                    else if(Kind==11 && (X>8 && X<15 && Y>8 && Y<15) &&
+                            (X+Y)%3==0)
+                        C=Shift(Light,-21); // old tiling
                 }
             }
             // Small one-pixel highlights reinforce handmade pixel detail.
