@@ -1017,7 +1017,8 @@ void AAVGameMode::Strike(bool bSpin)
             const float A=6.2831853f*I/Count;
             FAVBolt Wave; Wave.bFriendly=true; Wave.Pos=Hero;
             Wave.Velocity=FVector2D(FMath::Cos(A),FMath::Sin(A))*6.f;
-            Wave.Time=0.55f; Wave.Damage=FMath::RoundToInt(AttackPower*0.35f);
+            Wave.Time=0.55f; Wave.Visual=4;
+            Wave.Damage=FMath::RoundToInt(AttackPower*0.35f);
             Bolts.Add(Wave);
         }
     }
@@ -2543,7 +2544,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         if (E.Cooldown > 0.f || Distance > 8.3f || !bSeesTarget) continue;
 
         const bool bRangedAttack = ((Spec.Ranged || E.Equipment == 2) && Distance >= Reach) ||
-                                   (bMeleeBoss && Distance >= 2.2f) ||
+                                   (bMeleeBoss && E.Type == 8 && Distance >= 2.2f) ||
                                    (E.bMiniBoss && Distance >= 2.3f);
         if (bRangedAttack)
         {
