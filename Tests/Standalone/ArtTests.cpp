@@ -18,12 +18,12 @@ int main()
     assert(FAVArt::Hash(1, 2, 1234u) == FAVArt::Hash(1, 2, 1234u));
     assert(FAVArt::Hash(1, 2, 1234u) != FAVArt::Hash(2, 1, 1234u));
     assert(FAVArt::BuildTile(-1, 0) == nullptr);
-    assert(FAVArt::BuildTile(3, 0) == nullptr);
+    assert(FAVArt::BuildTile(4, 0) == nullptr);
     assert(FAVArt::BuildTile(0, 12) == nullptr);
     assert(FAVArt::BuildTile(0, -1) == nullptr);
 
     std::set<std::vector<uint8>> Unique;
-    for (int Biome = 0; Biome < 3; ++Biome)
+    for (int Biome = 0; Biome < 4; ++Biome)
     {
         const auto Glow = FAVArt::LightColor(Biome);
         assert(Glow.R > 0.f && Glow.G > 0.f && Glow.B > 0.f);
@@ -41,8 +41,8 @@ int main()
             delete Tile;
         }
     }
-    // All 36 runtime tile variants are distinct, not recolored flat blocks.
-    assert(Unique.size() == 36u);
-    std::cout << "PASS: 36 biome textures, relief shading, deterministic hashes, light math\n";
+    // All 48 runtime tile variants are distinct, not recolored flat blocks.
+    assert(Unique.size() == 48u);
+    std::cout << "PASS: 48 biome textures, relief shading, deterministic hashes, light math\n";
     return 0;
 }

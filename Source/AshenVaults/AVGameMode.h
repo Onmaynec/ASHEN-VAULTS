@@ -5,7 +5,7 @@
 #include "AVGameMode.generated.h"
 
 UENUM()
-enum class EAVPhase : uint8 { Playing, Upgrade, Relic, Shop, Paused, Dead, Victory };
+enum class EAVPhase : uint8 { Playing, Upgrade, Relic, Shop, Paused, Dead, Victory, Inventory, Skills };
 
 USTRUCT()
 struct FAVEnemy
@@ -14,6 +14,7 @@ struct FAVEnemy
     FVector2D Pos = FVector2D::ZeroVector;
     FVector2D Knockback = FVector2D::ZeroVector;
     int32 Type = 0; // enemy archetype ID
+    int32 Subclass = 0; // Bastion enemy variant (0 or 1), persisted
     int32 Level = 1;
     int32 Equipment = 0; // 0 none, 1 armor, 2 bow, 3 enchanted weapon
     int32 Faction = 0; // 0 dungeon, 1 bandits
@@ -38,6 +39,8 @@ struct FAVEnemy
     float Telegraph = 0.f; // Melee attack wind-up, rendered by the HUD.
     bool bElite = false;
     int32 Id = 0;
+    int32 LastVolleyId = -1; // transient overlap protection
+    int32 VolleyHitCount = 0;
 };
 
 USTRUCT()
@@ -58,6 +61,11 @@ struct FAVBolt
     FVector2D Velocity = FVector2D::ZeroVector;
     float Time = 2.f;
     int32 Damage = 10;
+    int32 PierceRemaining = 1; // how many unique enemies a friendly shot can hit
+    int32 Visual = 0; // 0 existing bolt; 1 normal arrow; 2 volley; 3 piercing shot
+    int32 ShotId = 0; // normal-shot sequence for the Marksman passive
+    int32 VolleyId = 0;
+    TArray<int32> HitEnemyIds; // transient, projectiles are not in SaveGame
     bool bFriendly = false;
     int32 Status = 0; // poison=1, burn=2
     int32 Faction = 0; // 0 dungeon, 1 bandits; hero projectiles use bFriendly
@@ -153,14 +161,14 @@ public:
 
     static constexpr int32 FloorsPerBiome = 5;
     // Unbounded descent; every fifth floor is a biome guardian floor.
-    static constexpr int32 MapW = 52;
-    static constexpr int32 MapH = 38;
+    int32 MapW = 52; // fourth biome is larger; original maps keep 52x38
+    int32 MapH = 38;
     static constexpr float TilePixels = 24.f;
     static constexpr float ViewW = 960.f;
     static constexpr float ViewH = 540.f;
 
     UPROPERTY(BlueprintReadOnly) int32 Floor = 1;
-    UPROPERTY(BlueprintReadOnly) int32 HeroClass = 0; // H cycles class and starts a new run
+    UPROPERTY(BlueprintReadOnly) int32 HeroClass = 0; // 3 = Marksman
     UPROPERTY(BlueprintReadOnly) int32 Level = 1;
     UPROPERTY(BlueprintReadOnly) int32 XP = 0;
     UPROPERTY(BlueprintReadOnly) int32 Gold = 0;
@@ -179,7 +187,36 @@ public:
     UPROPERTY(BlueprintReadOnly) float MoveSpeed = 4.8f;
     UPROPERTY(BlueprintReadOnly) float ArmorRating = 0.f;
     UPROPERTY(BlueprintReadOnly) float RangedBonus = 0.f;
+    UPROPERTY(BlueprintReadOnly) int32 ShotSeries = 0;
     UPROPERTY(BlueprintReadOnly) int32 EquippedGear = 0;
+    // v0.9.0 item instances: 0 weapon, 1 head, 2 chest, 3 hands, 4 legs,
+    // 5 boots, 6 and 7 accessories. -1 means empty.
+    TArray<int32> EquipmentSlots;
+    TArray<int32> InventoryItems;
+    TArray<uint8> LearnedSkills;
+    int32 SkillPoints = 0;
+    int32 GearSelection = 0;
+    int32 SkillSelection = 0;
+    bool bFreeRespecUsed = false;
+    bool bLastStandUsed = false;
+    float EquipmentAppliedHP = 0.f;
+    float EquipmentAppliedStamina = 0.f;
+    float EquipmentAppliedAttack = 0.f;
+    float EquipmentAppliedSpeed = 0.f;
+    float EquipmentAppliedArmor = 0.f;
+    float RewardDamageTime = 0.f;
+    float TemporaryShield = 0.f;
+    float LastKillBoostTime = 0.f;
+    float MarkedHitTime = 0.f;
+    float DashBonusTime = 0.f;
+    float RevengeTime = 0.f;
+    int32 BasicAttackSequence = 0;
+    int32 MeleeSwingCount = 0;
+    int32 BlooddrinkerHitCount = 0;
+    float ChainCooldown = 0.f;
+    float GuardWhirlTime = 0.f;
+    float ShieldCooldown = 0.f;
+    bool bMagicBarrierUsed = false;
 
     EAVPhase Phase = EAVPhase::Playing;
     FVector2D Hero = FVector2D(4.f, 4.f);
@@ -251,12 +288,17 @@ public:
     int32 NextXP() const { return 8 + Level * 7; }
     bool IsExitReady() const { return Enemies.Num() == 0; }
     bool HasRelic(int32 Index) const { return Index >= 0 && Index < 6 && (RelicMask & (1u << Index)) != 0; }
-    int32 CurrentBiome() const { return ((Floor - 1) / FloorsPerBiome) % 3; }
+    int32 CurrentBiome() const { return ((Floor - 1) / FloorsPerBiome) % 4; }
     int32 BiomeDepth() const { return (Floor - 1) % FloorsPerBiome + 1; }
-    int32 BiomeCycle() const { return (Floor - 1) / (FloorsPerBiome * 3); }
+    int32 BiomeCycle() const { return (Floor - 1) / (FloorsPerBiome * 4); }
     bool IsGuardianFloor() const { return BiomeDepth() == FloorsPerBiome; }
     int32 ShopPrice(int32 Slot) const;
     void NewRun(bool bSameSeed = false);
+    int32 SkillIdAt(int32 Selection) const;
+    int32 SkillRank(int32 Id) const;
+    float GearStat(int32 Stat) const;
+    bool HasGearPerk(int32 PerkId) const;
+    FString GearName(int32 ItemId) const;
 
 private:
     FRandomStream RNG;
@@ -272,11 +314,25 @@ private:
     bool PrevHero = false;
     bool PrevChoices[3] = { false, false, false };
     FVector2D DashDirection = FVector2D(1.f, 0.f);
+    int32 ShotTargetId = -1;
+    int32 ShotCounter = 0;
+    int32 LastConnectedShotId = 0;
+    int32 VolleyCounter = 0;
+    float LastShotHitTime = -100.f;
     int32 LastVisionX = -1;
     int32 LastVisionY = -1;
     float FlowRefreshTime = 0.f;
 
     void GenerateFloor();
+    void RebuildCharacterBonuses();
+    void EquipInventoryItem(int32 Index);
+    void UnequipSlot(int32 Slot);
+    void LearnSkill(int32 Selection);
+    void ResetSkills();
+    void SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity = 0);
+    float ModifiedAttackDamage(float Damage, const FAVEnemy& Target, bool bRanged, bool bAbility);
+    float BasicAttackInterval() const;
+    float ProjectileSpeedMultiplier() const;
     void StoreDungeon();
     void RestoreDungeon();
     void EnterSafeCamp();
@@ -292,6 +348,9 @@ private:
     void UpdateCombat(float DeltaSeconds);
     void RefreshAwareness(float DeltaSeconds, bool bForce = false);
     void ThrowKnife();
+    void ShootArrow();
+    void FireVolley();
+    void PiercingShot();
     void OfferRelic();
     void ChooseRelic(int32 Choice);
     void BuyFromMerchant(int32 Slot);

@@ -1,4 +1,7 @@
 #include "AVGameMode.h"
+#include "AVEquipment.h"
+#include "AVSkills.h"
+#include "AVFortressLayout.h"
 #include "AVHUD.h"
 #include "AVSaveGame.h"
 #include "AVDungeonNavigation.h"
@@ -57,6 +60,8 @@ void AAVGameMode::BeginPlay()
         if (Save->bHasCheckpoint)
         {
             Floor = FMath::Max(1, Save->CheckpointFloor);
+            MapW = CurrentBiome() == 3 ? 60 : 52;
+            MapH = CurrentBiome() == 3 ? 44 : 38;
             RunSeed = Save->CheckpointSeed;
             HeroClass = Save->CheckpointHeroClass;
             Level = Save->CheckpointLevel; XP = Save->CheckpointXP;
@@ -71,6 +76,25 @@ void AAVGameMode::BeginPlay()
             Stamina = Save->CheckpointStamina; MaxStamina = Save->CheckpointMaxStamina;
             AttackPower = Save->CheckpointAttack; MoveSpeed = Save->CheckpointSpeed;
             ArmorRating = Save->CheckpointArmor; RangedBonus = Save->CheckpointRanged;
+            EquipmentSlots.Init(-1,8); InventoryItems.Reset();
+            LearnedSkills.Init(0,FAVSkills::Count);
+            SkillPoints=FAVSkills::AwardedPointsAtLevel(Level);
+            if (Save->bCheckpointV09Data) {
+                if(Save->CheckpointEquipmentSlots.Num()==8)
+                    EquipmentSlots=Save->CheckpointEquipmentSlots;
+                for(int32 Id : Save->CheckpointInventoryItems)
+                    if(FAVEquipment::Find(Id) && InventoryItems.Num()<48)
+                        InventoryItems.Add(Id);
+                if(Save->CheckpointSkillRanks.Num()==FAVSkills::Count)
+                    LearnedSkills=Save->CheckpointSkillRanks;
+                SkillPoints=FMath::Clamp(Save->CheckpointSkillPoints,0,29);
+                bFreeRespecUsed=Save->bCheckpointFreeRespecUsed;
+                bLastStandUsed=Save->bCheckpointLastStandUsed;
+                bMagicBarrierUsed=Save->bCheckpointMagicBarrierUsed;
+            }
+            for(int32& Id : EquipmentSlots)
+                if(Id>=0 && !FAVEquipment::CanEquip(Id,HeroClass)) Id=-1;
+            RebuildCharacterBonuses();
             // Do not overwrite the existing checkpoint while booting the lobby.
             bInLobby = true;
             bInSafeCamp = false;
@@ -156,9 +180,248 @@ FVector2D AAVGameMode::MoveWithCollision(const FVector2D& From, const FVector2D&
     return Next;
 }
 
+
+int32 AAVGameMode::SkillIdAt(int32 Selection) const
+{
+    return Selection >= 0 && Selection < 15 ? Selection :
+           Selection >= 15 && Selection < 21 ? 15 + FMath::Clamp(HeroClass, 0, 3) * 6 + Selection - 15 : -1;
+}
+
+int32 AAVGameMode::SkillRank(int32 Id) const
+{
+    return LearnedSkills.IsValidIndex(Id) ? int32(LearnedSkills[Id]) : 0;
+}
+
+float AAVGameMode::GearStat(int32 Stat) const
+{
+    float Result = 0.f;
+    int32 Sets[6] = {0,0,0,0,0,0};
+    for (int32 ItemId : EquipmentSlots)
+    {
+        const FAVEquipmentSpec* I = FAVEquipment::Find(ItemId);
+        if (!I) continue;
+        if (I->StatA == Stat) Result += I->ValueA;
+        if (I->StatB == Stat) Result += I->ValueB;
+        if (I->SetId > 0 && I->SetId <= 5) ++Sets[I->SetId];
+    }
+    // Each thematic set has one 3-piece bonus, regardless of the other sets.
+    if (Stat == AVArmorPercent) Result += Sets[1] >= 3 ? 5.f : 0.f;
+    if (Stat == AVAttackSpeedPercent) Result += Sets[2] >= 3 ? 8.f : 0.f;
+    if (Stat == AVAbilityDamagePercent) Result += Sets[3] >= 3 ? 8.f : 0.f;
+    if (Stat == AVRangedDamagePercent) Result += Sets[4] >= 3 ? 10.f : 0.f;
+    if (Stat == AVHealthFlat) Result += Sets[5] >= 3 ? 20.f : 0.f;
+    return Result;
+}
+
+bool AAVGameMode::HasGearPerk(int32 Perk) const
+{
+    for (int32 Id : EquipmentSlots)
+    {
+        const FAVEquipmentSpec* I = FAVEquipment::Find(Id);
+        if (I && I->PerkId == Perk) return true;
+    }
+    return false;
+}
+
+FString AAVGameMode::GearName(int32 ItemId) const
+{
+    const FAVEquipmentSpec* S = FAVEquipment::Find(ItemId);
+    if (!S) return TEXT("EMPTY");
+    FString Name = FString(UTF8_TO_TCHAR(S->CodeName));
+    Name.ReplaceInline(TEXT("_"), TEXT(" "));
+    return Name.ToUpper();
+}
+
+void AAVGameMode::RebuildCharacterBonuses()
+{
+    // Base attributes continue to contain the old level, forge, and relic bonuses.
+    // Remove the previous equipment/skill delta first; never stack on re-equip.
+    const float BaseHP = MaxHP - EquipmentAppliedHP;
+    const float BaseStamina = MaxStamina - EquipmentAppliedStamina;
+    const float BaseAttack = AttackPower - EquipmentAppliedAttack;
+    const float BaseSpeed = MoveSpeed - EquipmentAppliedSpeed;
+    const float BaseArmor = ArmorRating - EquipmentAppliedArmor;
+    EquipmentAppliedHP = GearStat(AVHealthFlat) + BaseHP * (0.06f * SkillRank(0));
+    EquipmentAppliedStamina = GearStat(AVStaminaFlat) + 10.f * SkillRank(11);
+    // Hero-specific skill 30 adds another stamina tier.
+    if (HeroClass == 2) EquipmentAppliedStamina += 10.f * SkillRank(30);
+    EquipmentAppliedAttack = GearStat(AVAttackFlat);
+    EquipmentAppliedSpeed = BaseSpeed * (GearStat(AVMoveSpeedPercent) +
+        3.f * SkillRank(10)) * 0.01f;
+    EquipmentAppliedArmor = FMath::Min(0.45f, BaseArmor +
+        (GearStat(AVArmorPercent) + 2.f * SkillRank(15)) * 0.01f) - BaseArmor;
+    MaxHP = BaseHP + EquipmentAppliedHP;
+    MaxStamina = BaseStamina + EquipmentAppliedStamina;
+    AttackPower = BaseAttack + EquipmentAppliedAttack;
+    MoveSpeed = BaseSpeed + EquipmentAppliedSpeed;
+    ArmorRating = FMath::Clamp(BaseArmor + EquipmentAppliedArmor, 0.f, 0.45f);
+    HP = FMath::Min(HP, MaxHP);
+    Stamina = FMath::Min(Stamina, MaxStamina);
+}
+
+float AAVGameMode::BasicAttackInterval() const
+{
+    const float Speed = FMath::Clamp(1.f + GearStat(AVAttackSpeedPercent) * 0.01f, 0.45f, 2.f);
+    return FMath::Max(0.33f, (HeroClass == 3 ? 0.52f : 0.33f) / Speed);
+}
+
+float AAVGameMode::ProjectileSpeedMultiplier() const
+{
+    const float Skill = HeroClass == 3 ? 7.f * SkillRank(33) : 0.f;
+    return FMath::Clamp(1.f + (GearStat(AVProjectileSpeedPercent) + Skill +
+        (HasGearPerk(4) ? 10.f : 0.f)) * 0.01f, 0.8f, 1.8f);
+}
+
+float AAVGameMode::ModifiedAttackDamage(float Damage, const FAVEnemy& Target,
+                                       bool bRanged, bool bAbility)
+{
+    float Percent = bRanged ? GearStat(AVRangedDamagePercent) : GearStat(AVMeleeDamagePercent);
+    Percent += bAbility ? GearStat(AVAbilityDamagePercent) + 6.f * SkillRank(27) :
+                          4.f * SkillRank(5);
+    if (bAbility && HeroClass == 1 && !bRanged) Percent += 10.f * SkillRank(23);
+    if (bAbility && HeroClass == 1 && bRanged) Percent += 12.f * SkillRank(22);
+    if (Target.bMiniBoss || FAVContent::Enemy(Target.Type, Floor).Boss)
+        Percent += GearStat(AVBossDamagePercent) + 8.f * SkillRank(8);
+    if (Target.HP < Target.MaxHP * 0.20f && HasGearPerk(8)) Percent += 12.f;
+    if (Target.HP < Target.MaxHP * 0.30f && HasGearPerk(2)) Percent += 20.f;
+    if (HeroClass == 1 && Target.HP < Target.MaxHP * 0.25f) Percent += 28.f * SkillRank(26);
+    if (HeroClass == 3 && Target.Id == ShotTargetId && bRanged)
+        Percent += 5.f * SkillRank(34);
+    if (RewardDamageTime > 0.f) Percent += 10.f;
+    if (RevengeTime > 0.f) Percent += 8.f * SkillRank(18);
+    if (!bAbility && (++BasicAttackSequence % 4) == 0) Percent += 7.f * SkillRank(7);
+    if(HeroClass==1 && DashBonusTime>0.f) Percent+=3.f*SkillRank(21);
+    if(HeroClass==1 && LastKillBoostTime>0.f) Percent+=6.f*SkillRank(24);
+    const bool GuaranteedCrit=HeroClass==3 && SkillRank(38)>0 &&
+        ShotSeries>=4 && bRanged && !bAbility;
+    if(GuaranteedCrit) ShotSeries=0;
+    const float CritChance=FMath::Clamp(0.05f+
+        GearStat(AVCriticalPercent)*0.01f+0.03f*SkillRank(6)+
+        (HeroClass==1 && DashBonusTime>0.f ? 0.03f*SkillRank(21):0.f),
+        0.f,0.40f);
+    const bool bCritical=GuaranteedCrit || RNG.FRand()<CritChance;
+    if(bCritical) Percent+=50.f;
+    if(bCritical && HeroClass==2 && SkillRank(31)>0 && ChainCooldown<=0.f) {
+        int32 JumpCount=0;
+        for(FAVEnemy& Other:Enemies)
+            if(Other.Id!=Target.Id && Other.HP>0.f &&
+               FVector2D::Distance(Other.Pos,Target.Pos)<3.f) {
+                Other.HP-=FMath::Max(1.f,Damage*0.28f);
+                Other.Flash=0.15f;
+                if(++JumpCount>=2)break;
+            }
+        ChainCooldown=1.5f;
+    }
+    return FMath::Max(1.f, Damage * (1.f + Percent * 0.01f));
+}
+
+void AAVGameMode::EquipInventoryItem(int32 Index)
+{
+    if (!InventoryItems.IsValidIndex(Index)) return;
+    const int32 ItemId = InventoryItems[Index];
+    if (!FAVEquipment::CanEquip(ItemId, HeroClass)) {
+        Toast = TEXT("NOT FOR THIS CLASS"); ToastTime=2.f; return;
+    }
+    const FAVEquipmentSpec* Item = FAVEquipment::Find(ItemId);
+    if (!Item) return;
+    int32 Slot = Item->Slot;
+    if (Slot == AVAccessory && EquipmentSlots.IsValidIndex(7) &&
+        EquipmentSlots[6] >= 0 && EquipmentSlots[7] < 0) Slot = 7;
+    if (!EquipmentSlots.IsValidIndex(Slot)) return;
+    if (EquipmentSlots[Slot] >= 0) InventoryItems.Add(EquipmentSlots[Slot]);
+    EquipmentSlots[Slot] = ItemId;
+    InventoryItems.RemoveAt(Index);
+    GearSelection = FMath::Clamp(GearSelection, 0, FMath::Max(0, InventoryItems.Num()-1));
+    RebuildCharacterBonuses();
+    Toast = TEXT("EQUIPPED: ") + GearName(ItemId);
+    ToastTime = 2.3f;
+}
+
+void AAVGameMode::UnequipSlot(int32 Slot)
+{
+    if (!EquipmentSlots.IsValidIndex(Slot) || EquipmentSlots[Slot] < 0 ||
+        InventoryItems.Num() >= 48) return;
+    const int32 Id = EquipmentSlots[Slot];
+    EquipmentSlots[Slot] = -1;
+    InventoryItems.Add(Id);
+    RebuildCharacterBonuses();
+    Toast = TEXT("UNEQUIPPED: ") + GearName(Id);
+    ToastTime = 2.f;
+}
+
+void AAVGameMode::LearnSkill(int32 Selection)
+{
+    const int32 Id = SkillIdAt(Selection);
+    if (Id < 0 || !FAVSkills::CanLearn(Id, HeroClass, Level,
+        LearnedSkills.GetData(), LearnedSkills.Num(), SkillPoints)) {
+        Toast = TEXT("SKILL LOCKED OR NO POINTS"); ToastTime=2.f; return;
+    }
+    ++LearnedSkills[Id];
+    --SkillPoints;
+    RebuildCharacterBonuses();
+    Toast = TEXT("SKILL UNLOCKED"); ToastTime = 2.f;
+}
+
+void AAVGameMode::ResetSkills()
+{
+    if (!bInLobby && !bInSafeCamp) {
+        Toast=TEXT("RESPEC IN TOWN OR CAMP"); ToastTime=2.f; return;
+    }
+    const int32 Cost = bFreeRespecUsed ? 20 + Level * 5 : 0;
+    if (Gold < Cost) { Toast=TEXT("NOT ENOUGH GOLD"); ToastTime=2.f; return; }
+    Gold -= Cost;
+    bFreeRespecUsed = true;
+    LearnedSkills.Init(0, FAVSkills::Count);
+    SkillPoints = FAVSkills::AwardedPointsAtLevel(Level);
+    RebuildCharacterBonuses();
+    Toast=TEXT("SKILLS RESET"); ToastTime=2.f;
+}
+
+void AAVGameMode::SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity)
+{
+    // Prefer current-class gear (including universal); depth limits early legends.
+    const int32 Rarity = FMath::Max(MinimumRarity, FAVEquipment::RarityRoll(RNG.RandRange(0,99)));
+    const int32 MaxTier = Floor < 6 ? AVRare : Floor < 11 ? AVEpic : AVLegendary;
+    TArray<int32> Candidates;
+    for (int32 I=0; I<FAVEquipment::Count; ++I) {
+        const FAVEquipmentSpec* Item = FAVEquipment::Find(I);
+        if (!Item || Item->Rarity > MaxTier ||
+            Item->Rarity < FMath::Min(Rarity,MaxTier)) continue;
+        if (Item->RequiredHero == HeroClass || Item->RequiredHero == -1)
+            Candidates.Add(I);
+    }
+    if (Candidates.Num() == 0)
+        for(int32 I=0;I<FAVEquipment::Count;++I) {
+            const FAVEquipmentSpec* Item=FAVEquipment::Find(I);
+            if(Item && Item->Rarity<=MaxTier &&
+               (Item->RequiredHero==HeroClass || Item->RequiredHero==-1))
+                Candidates.Add(I);
+        }
+    if(Candidates.Num()==0) return;
+    FAVPickup Gear;
+    Gear.Pos=Pos;
+    Gear.Type=11;
+    Gear.Amount=Candidates[RNG.RandRange(0,Candidates.Num()-1)];
+    Pickups.Add(Gear);
+}
+
 void AAVGameMode::NewRun(bool bSameSeed)
 {
     Floor = 1; Level = 1; XP = 0; Gold = 0; Kills = 0; Potions = 2;
+    EquipmentSlots.Init(-1, 8); InventoryItems.Reset();
+    LearnedSkills.Init(0, FAVSkills::Count);
+    SkillPoints=0; GearSelection=0; SkillSelection=0;
+    bFreeRespecUsed=false; bLastStandUsed=false;
+    EquipmentAppliedHP=0.f; EquipmentAppliedStamina=0.f;
+    EquipmentAppliedAttack=0.f; EquipmentAppliedSpeed=0.f; EquipmentAppliedArmor=0.f;
+    RewardDamageTime=0.f; DashBonusTime=0.f; RevengeTime=0.f;
+    BasicAttackSequence=0; MeleeSwingCount=0; BlooddrinkerHitCount=0;
+    ChainCooldown=0.f; GuardWhirlTime=0.f; TemporaryShield=0.f;
+    ShieldCooldown=0.f; bMagicBarrierUsed=false;
+    LastKillBoostTime=0.f; MarkedHitTime=0.f;
+    MapW = 52; MapH = 38; ShotSeries = 0; ShotTargetId = -1;
+    ShotCounter = 0; LastConnectedShotId = 0; VolleyCounter = 0;
+    LastShotHitTime = -100.f;
     MaxHP = FAVContent::HeroHealth(HeroClass); HP = MaxHP;
     MaxStamina = FAVContent::HeroStamina(HeroClass); Stamina = MaxStamina;
     AttackPower = FAVContent::HeroAttack(HeroClass);
@@ -184,6 +447,13 @@ void AAVGameMode::NewRun(bool bSameSeed)
 
 void AAVGameMode::GenerateFloor()
 {
+    // Dimensions belong to the biome and never reshape previously generated floors.
+    ShotSeries=0; ShotTargetId=-1; LastShotHitTime=-100.f;
+    bLastStandUsed=false; RewardDamageTime=0.f;
+    TemporaryShield=0.f; LastKillBoostTime=0.f; ChainCooldown=0.f;
+    GuardWhirlTime=0.f; ShieldCooldown=0.f; bMagicBarrierUsed=false;
+    MapW = CurrentBiome() == 3 ? 60 : 52;
+    MapH = CurrentBiome() == 3 ? 44 : 38;
     // Floor layouts are independent of combat loot RNG consumption.
     // This makes the same run seed reproducible on every depth.
     RNG.Initialize(static_cast<int32>(static_cast<uint32>(RunSeed) ^
@@ -208,11 +478,25 @@ void AAVGameMode::GenerateFloor()
     bShrineUsed = false;
     struct FRoom { int32 X, Y, W, H; FVector2D Center() const { return FVector2D(X + W / 2.f, Y + H / 2.f); } };
     TArray<FRoom> Rooms;
-    const int32 TargetCount = FMath::Min(20, 9 + BiomeDepth() * 2);
+    const int32 TargetCount = CurrentBiome() == 3 ?
+        FMath::Min(14, 10 + BiomeDepth()) : FMath::Min(20, 9 + BiomeDepth() * 2);
+    if(CurrentBiome()==3)
+    {
+        TArray<FAVFortressRoom> Layout;
+        const int32 LayoutSeed=static_cast<int32>(static_cast<uint32>(RunSeed)^
+            (static_cast<uint32>(Floor)*0x9E3779B9u));
+        FAVFortressLayout::Build(LayoutSeed,Tiles,Layout);
+        for(const FAVFortressRoom& R:Layout)
+            Rooms.Add({R.X,R.Y,R.W,R.H});
+    }
+    else
+    {
     for (int32 Attempt = 0; Attempt < 220 && Rooms.Num() < TargetCount; ++Attempt)
     {
-        const int32 W = RNG.RandRange(5, 11);
-        const int32 H = RNG.RandRange(5, 9);
+        const bool bBastion = CurrentBiome() == 3;
+        // The Bastion has a guaranteed main battle hall, wings and broad galleries.
+        const int32 W = bBastion ? (Rooms.Num() == 0 ? 18 : RNG.RandRange(8, 14)) : RNG.RandRange(5, 11);
+        const int32 H = bBastion ? (Rooms.Num() == 0 ? 14 : RNG.RandRange(8, 12)) : RNG.RandRange(5, 9);
         FRoom R = { RNG.RandRange(2, MapW - W - 3), RNG.RandRange(2, MapH - H - 3), W, H };
         bool bOverlaps = false;
         for (const FRoom& Existing : Rooms)
@@ -248,6 +532,7 @@ void AAVGameMode::GenerateFloor()
                     bCarve = CornerX + CornerY >= 2 ||
                         (CornerX >= 1 && CornerY >= 1);
                 }
+                // Bastion keeps square fortified rooms rather than caves or clipped corners.
                 if (bCarve) Tiles[Y * MapW + X] = 1;
             }
         }
@@ -259,11 +544,19 @@ void AAVGameMode::GenerateFloor()
             const int32 BX = FMath::FloorToInt(B.X), BY = FMath::FloorToInt(B.Y);
             const bool bHorizontalFirst = RNG.RandRange(0, 1) == 0;
             auto DigX = [&]() {
-                while (AX != BX) { Tiles[AY * MapW + AX] = 1; AX += BX > AX ? 1 : -1; }
+                while (AX != BX) {
+                    Tiles[AY * MapW + AX] = 1;
+                    if (CurrentBiome() == 3 && AY + 1 < MapH - 1) Tiles[(AY + 1) * MapW + AX] = 1;
+                    AX += BX > AX ? 1 : -1;
+                }
                 Tiles[AY * MapW + AX] = 1;
             };
             auto DigY = [&]() {
-                while (AY != BY) { Tiles[AY * MapW + AX] = 1; AY += BY > AY ? 1 : -1; }
+                while (AY != BY) {
+                    Tiles[AY * MapW + AX] = 1;
+                    if (CurrentBiome() == 3 && AX + 1 < MapW - 1) Tiles[AY * MapW + AX + 1] = 1;
+                    AY += BY > AY ? 1 : -1;
+                }
                 Tiles[AY * MapW + AX] = 1;
             };
             if (bHorizontalFirst) { DigX(); DigY(); }
@@ -289,6 +582,7 @@ void AAVGameMode::GenerateFloor()
         }
         Tiles[Y * MapW + X] = 1;
     }
+    } // end classic room-and-corridor generator
     if (Rooms.Num() == 0)
     {
         for (int32 Y = 4; Y <= 13; ++Y)
@@ -343,7 +637,7 @@ void AAVGameMode::GenerateFloor()
                 continue;
             FAVTrap Trap;
             Trap.Pos = Candidate;
-            Trap.Type = RNG.RandRange(0, 2);
+            Trap.Type = CurrentBiome() == 3 ? RNG.RandRange(3, 6) : RNG.RandRange(0, 2);
             Traps.Add(Trap);
             break;
         }
@@ -381,6 +675,7 @@ void AAVGameMode::GenerateFloor()
                                   RNG.FRandRange(R.Y + 1.f, R.Y + R.H - 1.f));
             if (!CanMove(Enemy.Pos, 0.3f)) Enemy.Pos = R.Center();
             Enemy.Type = FAVContent::EnemyRoll(Floor, RNG.RandRange(0, 99));
+            if (Enemy.Type >= 34 && Enemy.Type <= 51) Enemy.Subclass = RNG.RandRange(0, 1);
             Enemy.Level = FAVContent::EnemyLevel(Floor, RNG.RandRange(0, 99));
             Enemy.Equipment = RNG.FRand() < 0.085f ? RNG.RandRange(1, 3) : 0;
             // Bow zombies keep their own appearance and fire projectiles.
@@ -459,7 +754,7 @@ void AAVGameMode::GenerateFloor()
     {
         const FRoom& Arena = Rooms[RNG.RandRange(2, Rooms.Num() - 2)];
         FAVEnemy Mini;
-        Mini.Type = 26 + RNG.RandRange(0, 6);
+        Mini.Type = CurrentBiome() == 3 ? 52 + RNG.RandRange(0, 3) : 26 + RNG.RandRange(0, 6);
         Mini.bMiniBoss = true;
         Mini.Pos = Arena.Center();
         Mini.Level = FAVContent::EnemyLevel(Floor, 99);
@@ -470,8 +765,7 @@ void AAVGameMode::GenerateFloor()
         Mini.Id = NextId++;
         Enemies.Add(Mini);
     }
-    PendingGuardian = IsGuardianFloor() ?
-        (CurrentBiome() == 0 ? 8 : CurrentBiome() == 1 ? 9 : 3) : -1;
+    PendingGuardian = IsGuardianFloor() ? FAVContent::Boss(Floor) : -1;
     // The guardian is spawned in a separate arena when its portal is used.
     if (Rooms.Num() > 2 && RNG.FRand() < 0.36f)
     {
@@ -493,7 +787,7 @@ void AAVGameMode::GenerateFloor()
         Pickup.Amount = 22;
         Pickups.Add(Pickup);
     }
-    if (Floor >= 3)
+    if (Floor >= 3 && CurrentBiome() != 3)
     {
         for (int32 I = 2; I < Rooms.Num() - 1; I += 2)
         {
@@ -511,7 +805,7 @@ void AAVGameMode::GenerateFloor()
     {
         const FRoom& R = Rooms[I];
         FAVProp Prop;
-        Prop.Type = CurrentBiome() == 2 ? 1 : 0;
+        Prop.Type = CurrentBiome() >= 2 ? 1 : 0;
         Prop.Pos = FVector2D(R.X + R.W - 1.5f, R.Y + 1.5f);
         if (FVector2D::Distance(Prop.Pos, Shrine) < 2.f ||
             FVector2D::Distance(Prop.Pos, Exit) < 2.f ||
@@ -666,11 +960,18 @@ void AAVGameMode::Strike(bool bSpin)
     const float Cost = bSpin ? (HasRelic(3) ? 24.f : 32.f) : 0.f;
     if (Stamina < Cost || (bSpin ? SpinCooldown > 0.f : AttackCooldown > 0.f)) return;
     Stamina -= Cost;
-    if (bSpin) SpinCooldown = 1.65f;
-    else AttackCooldown = 0.33f;
+    if (bSpin) {
+        SpinCooldown=1.65f*FMath::Max(0.5f,
+            1.f+GearStat(AVCooldownPercent)*0.01f);
+        if(HeroClass==0 && SkillRank(17)>0) GuardWhirlTime=1.6f;
+    }
+    else {
+        AttackCooldown=BasicAttackInterval();
+        ++MeleeSwingCount;
+    }
     AddEffect(Hero, bSpin ? 1 : 0, bSpin ? 2.2f : 1.75f, FMath::Atan2(Aim.Y, Aim.X));
     const float Range = bSpin ? 2.25f : 1.92f;
-    const float Damage = AttackPower * (bSpin ? (HasRelic(3) ? 2.f : 1.65f) : 1.f);
+    const float Damage=AttackPower*(bSpin?(HasRelic(3)?2.f:1.65f):1.f);
     for (int32 I = Enemies.Num() - 1; I >= 0; --I)
     {
         FAVEnemy& Enemy = Enemies[I];
@@ -681,31 +982,148 @@ void AAVGameMode::Strike(bool bSpin)
         // Fix: sword swings can no longer hit actors through solid stone walls.
         if (!FAVDungeonNavigation::LineOfSight(Tiles, MapW, MapH, Hero, Enemy.Pos)) continue;
         // Crypt guards and armored enemies block frontal strikes.
-        const bool bShield = Enemy.Type == 20 || Enemy.Equipment == 1;
+        const bool bShield = Enemy.Type == 20 || Enemy.Type == 36 ||
+                             Enemy.Type == 53 || Enemy.Equipment == 1;
         const bool bFacing = FVector2D::DotProduct(SafeDirection(Hero - Enemy.Pos),
                                                    SafeDirection(Enemy.LastSeenHero - Enemy.Pos)) > 0.25f;
-        Enemy.HP -= bShield && bFacing ? Damage * 0.58f : Damage;
+        float HitDamage=ModifiedAttackDamage(Damage,Enemy,false,bSpin);
+        if(HeroClass==1 && !bSpin && SkillRank(25)>0 &&
+            (MeleeSwingCount%3)==0) HitDamage*=1.5f;
+        if(bShield && bFacing) HitDamage*=0.58f;
+        Enemy.HP-=HitDamage;
         Enemy.Flash = 0.16f;
-        Enemy.Knockback += SafeDirection(Delta) * (Enemy.Type == 3 ? 1.f : 5.f);
-        AddEffect(Enemy.Pos, 2, 0.55f);
-        if (Enemy.HP <= 0.f) KillEnemy(I);
+        Enemy.Knockback += SafeDirection(Delta) *
+            (Enemy.Type == 3 ? 1.f : 5.f + (HasGearPerk(1)?2.f:0.f) +
+             (HeroClass==0 ? 0.5f*SkillRank(16) : 0.f));
+        AddEffect(Enemy.Pos,2,0.55f);
+        if(HasGearPerk(3) && (++BlooddrinkerHitCount%5)==0)
+            HP=FMath::Min(MaxHP,HP+3.f);
+        if(Enemy.HP<=0.f) KillEnemy(I);
     }
-    if (Phase == EAVPhase::Playing) StrikeProps(bSpin, Damage);
+    if(HeroClass==0 && SkillRank(20)>0 && !bSpin &&
+       (MeleeSwingCount%3)==0)
+        for(int32 I=0;I<8;++I) {
+            const float A=6.2831853f*I/8.f;
+            FAVBolt Wave;
+            Wave.bFriendly=true; Wave.Pos=Hero;
+            Wave.Velocity=FVector2D(FMath::Cos(A),FMath::Sin(A))*7.f;
+            Wave.Time=0.35f;
+            Wave.Damage=FMath::RoundToInt(AttackPower*0.5f);
+            Bolts.Add(Wave);
+        }
+    if(HeroClass==2 && bSpin && SkillRank(30)>0) {
+        const int32 Count=SkillRank(30)>=2?12:8;
+        for(int32 I=0;I<Count;++I) {
+            const float A=6.2831853f*I/Count;
+            FAVBolt Wave; Wave.bFriendly=true; Wave.Pos=Hero;
+            Wave.Velocity=FVector2D(FMath::Cos(A),FMath::Sin(A))*6.f;
+            Wave.Time=0.55f; Wave.Visual=4;
+            Wave.Damage=FMath::RoundToInt(AttackPower*0.35f);
+            Bolts.Add(Wave);
+        }
+    }
+    if(Phase==EAVPhase::Playing) StrikeProps(bSpin,Damage);
+}
+
+void AAVGameMode::ShootArrow()
+{
+    if (HeroClass != 3 || AttackCooldown > 0.f || Aim.IsNearlyZero()) return;
+    AttackCooldown=BasicAttackInterval();
+    FAVBolt Arrow;
+    Arrow.bFriendly = true;
+    Arrow.Pos = Hero + Aim * 0.52f;
+    Arrow.Velocity=Aim*(13.f*ProjectileSpeedMultiplier());
+    Arrow.Time=8.5f/(13.f*ProjectileSpeedMultiplier());
+    Arrow.Damage = FMath::RoundToInt(AttackPower + RangedBonus);
+    Arrow.Visual = 1;
+    Arrow.ShotId=++ShotCounter;
+    if(HasGearPerk(5) && ShotCounter%4==0) Arrow.PierceRemaining=2;
+    Bolts.Add(Arrow);
+    AddEffect(Hero, 0, 0.5f, FMath::Atan2(Aim.Y, Aim.X));
+}
+
+void AAVGameMode::FireVolley()
+{
+    const float Cost = HasRelic(3) ? 24.f : 30.f;
+    if (HeroClass != 3 || Stamina < Cost || SpinCooldown > 0.f || Aim.IsNearlyZero()) return;
+    Stamina -= Cost;
+    SpinCooldown=FMath::Max(1.4f,3.4f*(1.f+GearStat(AVCooldownPercent)*0.01f));
+    const float Angle=FMath::Atan2(Aim.Y,Aim.X);
+    const int32 VolleyId = ++VolleyCounter;
+    const int32 Spread=SkillRank(35)>=2?2:1;
+    for(int32 I=-Spread;I<=Spread;++I)
+    {
+        const float A=Angle+I*(12.f*3.14159265f/180.f);
+        const FVector2D Direction(FMath::Cos(A), FMath::Sin(A));
+        FAVBolt Arrow;
+        Arrow.bFriendly = true;
+        Arrow.Pos = Hero + Direction * 0.52f;
+        Arrow.Velocity=Direction*(13.f*ProjectileSpeedMultiplier());
+        Arrow.Time=8.5f/(13.f*ProjectileSpeedMultiplier());
+        Arrow.Damage = FMath::RoundToInt((AttackPower + RangedBonus) *
+                           (HasRelic(3)?0.90f:0.75f)*(1.f+0.1f*SkillRank(35)));
+        Arrow.Visual = 2;
+        Arrow.VolleyId = VolleyId;
+        Bolts.Add(Arrow);
+    }
+    AddEffect(Hero, 1, 0.75f, Angle);
+}
+
+void AAVGameMode::PiercingShot()
+{
+    if (HeroClass != 3 || KnifeCooldown > 0.f || Stamina < 20.f || Aim.IsNearlyZero()) return;
+    Stamina -= 20.f;
+    KnifeCooldown = 2.f;
+    FAVBolt Arrow;
+    Arrow.bFriendly = true;
+    Arrow.Pos = Hero + Aim * 0.52f;
+    Arrow.Velocity=Aim*(17.f*ProjectileSpeedMultiplier());
+    Arrow.Time=10.f/(17.f*ProjectileSpeedMultiplier());
+    Arrow.Damage=FMath::RoundToInt((AttackPower+RangedBonus)*
+        (HasRelic(2)?1.736f:1.55f)*(1.f+0.1f*SkillRank(36)));
+    Arrow.Visual = 3;
+    Arrow.PierceRemaining = 2;
+    Bolts.Add(Arrow);
+    if(SkillRank(37)>0) {
+        const float A=FMath::Atan2(Aim.Y,Aim.X);
+        for(int32 S=-1;S<=1;S+=2) {
+            const float B=A+S*0.21f;
+            FAVBolt Extra=Arrow;
+            Extra.Velocity=FVector2D(FMath::Cos(B),FMath::Sin(B))*
+                (17.f*ProjectileSpeedMultiplier());
+            Extra.Damage=FMath::RoundToInt(Extra.Damage*0.62f);
+            Bolts.Add(Extra);
+        }
+    }
+    AddEffect(Hero,0,0.8f,FMath::Atan2(Aim.Y,Aim.X));
 }
 
 void AAVGameMode::ThrowKnife()
 {
     if (KnifeCooldown > 0.f || Stamina < 18.f || Aim.IsNearlyZero()) return;
     Stamina -= 18.f;
-    KnifeCooldown = HasRelic(2) ? 0.43f : 0.65f;
+    KnifeCooldown=(HasRelic(2)?0.43f:0.65f)*
+        FMath::Max(0.5f,1.f+GearStat(AVCooldownPercent)*0.01f);
     FAVBolt Blade;
     Blade.bFriendly = true;
     Blade.Pos = Hero + Aim * 0.52f;
-    Blade.Velocity = Aim * 11.f;
-    Blade.Time = 1.1f;
-    Blade.Damage = FMath::RoundToInt(AttackPower * (HasRelic(2) ? 1.12f : 0.83f) + RangedBonus);
+    Blade.Velocity=Aim*(11.f*ProjectileSpeedMultiplier());
+    Blade.Time=1.1f/ProjectileSpeedMultiplier();
+    Blade.Damage=FMath::RoundToInt(AttackPower*
+        (HasRelic(2)?1.12f:0.83f)+RangedBonus);
+    if(HeroClass==2 && SkillRank(29)>0) {
+        Blade.Visual=4; Blade.Damage=FMath::RoundToInt(
+            Blade.Damage*(1.f+0.12f*SkillRank(29)));
+    }
     Bolts.Add(Blade);
-    AddEffect(Hero, 0, 0.5f, FMath::Atan2(Aim.Y, Aim.X));
+    if(HeroClass==2 && HasGearPerk(7) && (++BasicAttackSequence%4)==0) {
+        FAVBolt Bonus=Blade;
+        Bonus.Velocity=SafeDirection(Aim+FVector2D(-Aim.Y,Aim.X)*0.22f)*
+                       (11.f*ProjectileSpeedMultiplier());
+        Bonus.Damage=FMath::RoundToInt(Bonus.Damage*0.5f);
+        Bolts.Add(Bonus);
+    }
+    AddEffect(Hero,0,0.5f,FMath::Atan2(Aim.Y,Aim.X));
 }
 
 bool AAVGameMode::OpenNearbyCampDoor()
@@ -755,6 +1173,7 @@ bool AAVGameMode::OpenNearbyChest()
             Reward.Type = RNG.FRand() < 0.22f ? 4 : RNG.FRand() < 0.55f ? 3 : 1;
             Reward.Amount = Reward.Type == 4 ? 2 : Reward.Type == 3 ? 1 : 30;
             Pickups.Add(Reward);
+            if(RNG.FRand()<0.38f) SpawnGearDrop(Chest.Pos);
             Toast = TEXT("TREASURE FOUND!");
         }
         ToastTime = 2.3f;
@@ -790,12 +1209,32 @@ bool AAVGameMode::ActivateNearbyEcho()
 void AAVGameMode::DamageHero(float Damage, const FVector2D& Source)
 {
     if (Invulnerability > 0.f || Phase != EAVPhase::Playing || bInSafeCamp || bInLobby) return;
-    const float AdjustedDamage = Damage * (HasRelic(1) ? 0.80f : 1.f) *
-        (1.f - FMath::Clamp(ArmorRating, 0.f, 0.45f));
-    HP = FMath::Max(0.f, HP - AdjustedDamage);
+    float AdjustedDamage=Damage*(HasRelic(1)?0.80f:1.f)*
+        (1.f-FMath::Clamp(ArmorRating,0.f,0.45f));
+    if(HP<MaxHP*0.3f) AdjustedDamage*=1.f-0.08f*SkillRank(3);
+    if(HeroClass==0 && GuardWhirlTime>0.f)
+        AdjustedDamage*=1.f-0.08f*SkillRank(17);
+    if(TemporaryShield>0.f) {
+        const float Absorbed=FMath::Min(TemporaryShield,AdjustedDamage);
+        TemporaryShield-=Absorbed;
+        AdjustedDamage-=Absorbed;
+    }
+    if(AdjustedDamage>0.f) RevengeTime=3.f;
+    HP=FMath::Max(0.f,HP-AdjustedDamage);
+    if(HP<=0.f && SkillRank(4)>0 && !bLastStandUsed) {
+        bLastStandUsed=true; HP=1.f;
+        Invulnerability=FMath::Max(Invulnerability,0.7f);
+    }
+    if(HP<MaxHP*0.25f && HeroClass==2 && SkillRank(32)>0 &&
+       TemporaryShield<=0.f && !bMagicBarrierUsed) {
+        TemporaryShield=MaxHP*0.18f; bMagicBarrierUsed=true;
+    }
     Invulnerability = 0.72f;
     ScreenShake = 0.26f;
-    Hero = MoveWithCollision(Hero, SafeDirection(Hero - Source) * 2.8f, 0.10f, 0.27f);
+    const float KnockbackScale=FMath::Clamp(1.f-
+        GearStat(AVKnockbackResistPercent)*0.01f,0.2f,1.f);
+    Hero=MoveWithCollision(Hero,SafeDirection(Hero-Source)*
+         2.8f*KnockbackScale,0.10f,0.27f);
     AddEffect(Hero, 2, 0.8f);
     if (HP <= 0.f)
     {
@@ -853,6 +1292,17 @@ void AAVGameMode::KillEnemy(int32 Index)
     }
     AddEffect(Dead.Pos, 3, bBoss ? 2.2f : Dead.bMiniBoss ? 1.7f : 0.9f);
     DropLoot(Dead.Pos, bBoss || Dead.bMiniBoss);
+    if (bBoss || (Dead.bMiniBoss && RNG.FRand()<0.8f) ||
+        (Dead.bElite && RNG.FRand()<0.28f) ||
+        (!Dead.bMiniBoss && !Dead.bElite && RNG.FRand()<0.075f))
+        SpawnGearDrop(Dead.Pos,bBoss || Dead.bMiniBoss ? AVRare : AVUncommon);
+    if(HasGearPerk(6)) HP=FMath::Min(MaxHP,HP+2.f);
+    if(SkillRank(24)>0 && HeroClass==1) LastKillBoostTime=3.f;
+    if(Dead.bElite && HasGearPerk(9)) RewardDamageTime=8.f;
+    if(SkillRank(9)>0) {
+        SpinCooldown=FMath::Max(0.f,SpinCooldown-0.5f);
+        KnifeCooldown=FMath::Max(0.f,KnifeCooldown-0.5f);
+    }
     if (Dead.bElite)
     {
         FAVPickup Shard;
@@ -888,9 +1338,11 @@ void AAVGameMode::SelectUpgrade(int32 Choice)
     if (Phase != EAVPhase::Upgrade) return;
     XP -= NextXP();
     ++Level;
+    if(Level<=30) ++SkillPoints;
     if (Choice == 0) { MaxHP += 25.f; HP = FMath::Min(MaxHP, HP + 40.f); }
     if (Choice == 1) AttackPower += 7.f;
     if (Choice == 2) { MoveSpeed += 0.55f; MaxStamina += 12.f; Stamina = MaxStamina; }
+    RebuildCharacterBonuses();
     Phase = XP >= NextXP() ? EAVPhase::Upgrade : EAVPhase::Playing;
 }
 
@@ -1010,8 +1462,13 @@ void AAVGameMode::SellPack()
 {
     Gold += PackMaterials * FMath::Max(1, 3 + Floor / 5) +
         BackpackArmor * 18 + BackpackBows * 15 + BackpackWeapons * 20;
-    PackGold = 0; PackMaterials = 0;
-    BackpackArmor = 0; BackpackBows = 0; BackpackWeapons = 0;
+    for(int32 Id : InventoryItems) {
+        const FAVEquipmentSpec* Item=FAVEquipment::Find(Id);
+        if(Item) Gold += (8 + 12 * Item->Rarity) * FMath::Max(1,1+Floor/5);
+    }
+    InventoryItems.Reset();
+    PackGold=0; PackMaterials=0;
+    BackpackArmor=0; BackpackBows=0; BackpackWeapons=0;
 }
 
 void AAVGameMode::ForgeUpgrade(int32 Slot)
@@ -1049,7 +1506,22 @@ void AAVGameMode::SaveCheckpoint()
     Save->CheckpointHP = HP; Save->CheckpointMaxHP = MaxHP;
     Save->CheckpointStamina = Stamina; Save->CheckpointMaxStamina = MaxStamina;
     Save->CheckpointAttack = AttackPower; Save->CheckpointSpeed = MoveSpeed;
-    Save->CheckpointArmor = ArmorRating; Save->CheckpointRanged = RangedBonus;
+    // v0.9.0 stores the base values, so gear and skills never double apply.
+    Save->CheckpointMaxHP=MaxHP-EquipmentAppliedHP;
+    Save->CheckpointMaxStamina=MaxStamina-EquipmentAppliedStamina;
+    Save->CheckpointAttack=AttackPower-EquipmentAppliedAttack;
+    Save->CheckpointSpeed=MoveSpeed-EquipmentAppliedSpeed;
+    Save->CheckpointArmor=ArmorRating-EquipmentAppliedArmor;
+    Save->CheckpointRanged=RangedBonus;
+    Save->bCheckpointV09Data=true;
+    Save->CheckpointMapWidth=MapW; Save->CheckpointMapHeight=MapH;
+    Save->CheckpointInventoryItems=InventoryItems;
+    Save->CheckpointEquipmentSlots=EquipmentSlots;
+    Save->CheckpointSkillRanks=LearnedSkills;
+    Save->CheckpointSkillPoints=SkillPoints;
+    Save->bCheckpointFreeRespecUsed=bFreeRespecUsed;
+    Save->bCheckpointLastStandUsed=bLastStandUsed;
+    Save->bCheckpointMagicBarrierUsed=bMagicBarrierUsed;
     // Store the dungeon, not the peaceful camp or the lobby.
     const FAVWorldSnapshot* World = bWorldStored ? &StoredWorld : nullptr;
     const TArray<FAVEnemy>& SavedEnemies = World ? World->Enemies : Enemies;
@@ -1088,7 +1560,7 @@ void AAVGameMode::SaveCheckpoint()
             E.AttackWindup, E.LockedTarget.X, E.LockedTarget.Y, float(E.AttackPattern),
             E.bMiniBoss ? 1.f : 0.f, E.HP, E.MaxHP, E.Cooldown, E.Flash,
             E.Wander, E.Telegraph, E.bElite ? 1.f : 0.f, float(E.Id),
-            E.PhaseShiftTime, E.bPhaseShifted ? 1.f : 0.f};
+            E.PhaseShiftTime, E.bPhaseShifted ? 1.f : 0.f, float(E.Subclass)};
         for (float F : V) Save->CheckpointEnemyData.Add(F);
     }
     Save->CheckpointPickupData.Reset();
@@ -1175,7 +1647,8 @@ void AAVGameMode::LoadCheckpointWorld()
     ShopPurchased[2] = Save->bCheckpointShopPurchased2;
     Enemies.Reset();
     const TArray<float>& ED = Save->CheckpointEnemyData;
-    for (int32 I = 0; I + 29 < ED.Num(); I += 30)
+    const int32 EnemyStride = Save->bCheckpointV09Data ? 31 : 30;
+    for (int32 I = 0; I + EnemyStride - 1 < ED.Num(); I += EnemyStride)
     {
         FAVEnemy E;
         E.Pos = FVector2D(ED[I], ED[I + 1]); E.Type = int32(ED[I + 2]);
@@ -1194,6 +1667,7 @@ void AAVGameMode::LoadCheckpointWorld()
         E.Telegraph = ED[I + 25]; E.bElite = ED[I + 26] != 0.f;
         E.Id = int32(ED[I + 27]); E.PhaseShiftTime = ED[I + 28];
         E.bPhaseShifted = ED[I + 29] != 0.f;
+        if (EnemyStride == 31) E.Subclass = FMath::Clamp(int32(ED[I + 30]),0,1);
         Enemies.Add(E);
     }
     Pickups.Reset();
@@ -1250,6 +1724,10 @@ void AAVGameMode::LoadCheckpointWorld()
     for (int32 I = 0; I + 1 < Save->CheckpointCampWallData.Num(); I += 2)
         CampWalls.Add(FVector2D(Save->CheckpointCampWallData[I],
                                 Save->CheckpointCampWallData[I + 1]));
+    if(Save->bCheckpointV09Data) {
+        bLastStandUsed=Save->bCheckpointLastStandUsed;
+        bMagicBarrierUsed=Save->bCheckpointMagicBarrierUsed;
+    }
     LastVisionX = -1; LastVisionY = -1;
     RefreshAwareness(0.f, true);
 }
@@ -1305,7 +1783,8 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         HeroClass = (HeroClass + 1) % FAVContent::HeroCount;
         NewRun(); // Class changes restart the run; never mix stats mid-run.
         Toast = HeroClass == 0 ? TEXT("WARDEN SELECTED") :
-                HeroClass == 1 ? TEXT("DUELIST SELECTED") : TEXT("ARCANIST SELECTED");
+                HeroClass == 1 ? TEXT("DUELIST SELECTED") :
+                HeroClass == 2 ? TEXT("ARCANIST SELECTED") : TEXT("MARKSMAN SELECTED");
         ToastTime = 3.f;
         return;
     }
@@ -1332,6 +1811,39 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         else if (bReplay) NewRun(true);
         return;
     }
+    // Inventory and skill tree intentionally pause the game, including enemy AI.
+    const bool bInventoryKey = PC->WasInputKeyJustPressed(EKeys::I) ||
+                               PC->WasInputKeyJustPressed(EKeys::Tab);
+    const bool bSkillsKey = PC->WasInputKeyJustPressed(EKeys::K);
+    if (Phase == EAVPhase::Inventory)
+    {
+        if (bInventoryKey || bPause) { Phase=EAVPhase::Playing; return; }
+        if (PC->WasInputKeyJustPressed(EKeys::Up) && InventoryItems.Num()>0)
+            GearSelection=(GearSelection+InventoryItems.Num()-1)%InventoryItems.Num();
+        if (PC->WasInputKeyJustPressed(EKeys::Down) && InventoryItems.Num()>0)
+            GearSelection=(GearSelection+1)%InventoryItems.Num();
+        if (bRestart || bUse) EquipInventoryItem(GearSelection);
+        const FKey Slots[8]={EKeys::One,EKeys::Two,EKeys::Three,EKeys::Four,
+                             EKeys::Five,EKeys::Six,EKeys::Seven,EKeys::Eight};
+        for(int32 I=0;I<8;++I)
+            if(PC->WasInputKeyJustPressed(Slots[I])) { UnequipSlot(I); break; }
+        return;
+    }
+    if (Phase == EAVPhase::Skills)
+    {
+        if (bSkillsKey || bPause) { Phase=EAVPhase::Playing; return; }
+        if (PC->WasInputKeyJustPressed(EKeys::Up))
+            SkillSelection=(SkillSelection+20)%21;
+        if (PC->WasInputKeyJustPressed(EKeys::Down))
+            SkillSelection=(SkillSelection+1)%21;
+        if (bRestart || bUse) LearnSkill(SkillSelection);
+        if (PC->WasInputKeyJustPressed(EKeys::BackSpace)) ResetSkills();
+        return;
+    }
+    if (Phase == EAVPhase::Playing && bInventoryKey)
+    { Phase=EAVPhase::Inventory; GearSelection=0; return; }
+    if (Phase == EAVPhase::Playing && bSkillsKey)
+    { Phase=EAVPhase::Skills; SkillSelection=0; return; }
     if (Phase == EAVPhase::Shop)
     {
         if (bPause || bUse) { Phase = EAVPhase::Playing; return; }
@@ -1375,16 +1887,24 @@ void AAVGameMode::PollInput(float DeltaSeconds)
     if (PC->IsInputKeyDown(EKeys::A)) Direction.X -= 1.f;
     if (PC->IsInputKeyDown(EKeys::D)) Direction.X += 1.f;
     Direction = SafeDirection(Direction);
-    const float DashCost = HasRelic(4) ? 16.f : 23.f;
+    const float DashCost=(HasRelic(4)?16.f:23.f)*(1.f-0.1f*SkillRank(13));
     if (bDash && Stamina >= DashCost && DashCooldown <= 0.f && DashTime <= 0.f)
     {
         Stamina -= DashCost;
         DashCooldown = HasRelic(4) ? 0.47f : 0.7f;
         DashDirection = Direction.IsNearlyZero() ? Aim : Direction;
         DashTime = 0.17f;
-        Invulnerability = FMath::Max(Invulnerability, 0.25f);
-        AddEffect(Hero, 1, 0.7f);
+        Invulnerability=FMath::Max(Invulnerability,0.25f+0.07f*SkillRank(14));
+        DashBonusTime=3.f;
+        if(HeroClass==0 && SkillRank(19)>0 && ShieldCooldown<=0.f) {
+            TemporaryShield=FMath::Max(TemporaryShield,MaxHP*0.25f);
+            ShieldCooldown=12.f;
+        }
+        AddEffect(Hero,1,0.7f);
     }
+    const float EffectiveMove=MoveSpeed*
+        (HeroClass==1 && LastKillBoostTime>0.f ?
+            (1.f+0.06f*SkillRank(24)):1.f);
     const FVector2D BeforeMovement = Hero;
     if (DashTime > 0.f)
     {
@@ -1392,24 +1912,24 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         const float DashDt = FMath::Min(DashTime, DeltaSeconds);
         Hero = MoveWithCollision(Hero, DashDirection * 16.f, DashDt, 0.27f);
         if (DeltaSeconds > DashDt)
-            Hero = MoveWithCollision(Hero, Direction * MoveSpeed,
+            Hero = MoveWithCollision(Hero, Direction * EffectiveMove,
                                      DeltaSeconds - DashDt, 0.27f);
     }
     else
-        Hero = MoveWithCollision(Hero, Direction * MoveSpeed, DeltaSeconds, 0.27f);
+        Hero=MoveWithCollision(Hero,Direction*EffectiveMove,DeltaSeconds,0.27f);
     HeroVelocity = (Hero - BeforeMovement) / FMath::Max(0.001f, DeltaSeconds);
 
-    if (bHit) Strike(false);
+    if (bHit) { if (HeroClass == 3) ShootArrow(); else Strike(false); }
     // A sword can defeat a guardian and open a relic selection instantly:
     // don't process another action in the same frame after phase changes.
     if (Phase != EAVPhase::Playing) return;
-    if (bSpin) Strike(true);
+    if (bSpin) { if (HeroClass == 3) FireVolley(); else Strike(true); }
     if (Phase != EAVPhase::Playing) return;
-    if (bReplay) ThrowKnife();
+    if (bReplay) { if (HeroClass == 3) PiercingShot(); else ThrowKnife(); }
     if (Phase != EAVPhase::Playing) return;
     if (bHeal && Potions > 0 && HP < MaxHP)
     {
-        --Potions; HP = FMath::Min(MaxHP, HP + 42.f);
+        --Potions; HP = FMath::Min(MaxHP, HP + 42.f + 8.f*SkillRank(2));
         PoisonTime = 0.f; BurnTime = 0.f;
         AddEffect(Hero, 2, 1.f);
     }
@@ -1563,6 +2083,167 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
             SpawnEnemyBolt(E, Dir + Side * (K * 0.12f), 9.1f, 0.95f, 2);
         E.AbilityCooldown = bFrenzy ? 3.0f : 4.8f;
     }
+    else if (Pattern == 56) // Commandant: uncompromising melee guardian, two stages
+    {
+        // First stage cleaves a frontal arc. After the armor breaks at 45% HP
+        // the Commandant lunges and chains heavier fan strikes.
+        const bool Enraged = E.bPhaseShifted && E.PhaseShiftTime <= 0.f;
+        if (Enraged)
+            E.Pos = MoveWithCollision(E.Pos, Dir * 8.5f, 0.24f, 0.47f);
+        const int32 Count = Enraged ? 7 : 5;
+        for (int32 K = -(Count / 2); K <= Count / 2; ++K)
+            SpawnEnemyBolt(E, Dir + Side * (K * (Enraged ? 0.23f : 0.18f)),
+                           Enraged ? 8.4f : 6.8f, Enraged ? 0.79f : 0.66f);
+        if (Enraged && E.AttackPattern % 3 == 2)
+            for (int32 K = 0; K < 10; ++K)
+            {
+                const float A = 6.2831853f * K / 10.f;
+                SpawnEnemyBolt(E, FVector2D(FMath::Cos(A), FMath::Sin(A)),
+                               5.6f, 0.42f);
+            }
+        E.AbilityCooldown = Enraged ? 2.9f : 4.1f;
+    }
+    else if (Pattern >= 52 && Pattern <= 55) // Bastion's four miniboss archetypes
+    {
+        if (Pattern == 52) // Executioner: heavy axe cleave
+            for (int32 K = -2; K <= 2; ++K)
+                SpawnEnemyBolt(E, Dir + Side * K * 0.30f, 6.3f, 0.78f);
+        else if (Pattern == 53) // Captain: shield wall and counter-thrust
+            for (int32 K = -1; K <= 1; ++K)
+                SpawnEnemyBolt(E, Dir + Side * K * 0.18f, 9.2f, 0.73f);
+        else if (Pattern == 54) // Siege Golem: heavy ground shockwave
+            for (int32 K = 0; K < 12; ++K)
+            {
+                const float A = 6.2831853f * K / 12.f;
+                SpawnEnemyBolt(E, FVector2D(FMath::Cos(A), FMath::Sin(A)), 5.0f, 0.72f);
+            }
+        else // Inquisitor: ranged magic with a sweeping fan
+            for (int32 K = -3; K <= 3; ++K)
+                SpawnEnemyBolt(E, Dir + Side * K * 0.22f, 8.7f, 0.63f, 2);
+        E.AbilityCooldown = bFrenzy ? 2.8f : 4.6f;
+    }
+    else if (Pattern >= 34 && Pattern <= 51) // Bastion normal enemies: 18 types, two variants by stable enemy id
+    {
+        const bool Variant = E.Subclass != 0;
+        // Every variant changes the ability and cadence, not just HP or tint.
+        switch (Pattern)
+        {
+        case 34: // infantry: wide slash / hard straight thrust
+            for (int32 K = -1; K <= 1; ++K)
+                SpawnEnemyBolt(E, Dir + Side * K * (Variant ? 0.12f : 0.34f),
+                               7.f, Variant ? 0.77f : 0.50f);
+            break;
+        case 35: // pikeman: precision thrust / spear sweep
+            for (int32 K = Variant ? -2 : 0; K <= (Variant ? 2 : 0); ++K)
+                SpawnEnemyBolt(E, Dir + Side * K * 0.24f, 9.f, Variant ? 0.48f : 0.98f);
+            break;
+        case 36: // shieldbearer: a shield pulse / guarded counter
+            for (int32 K = 0; K < (Variant ? 3 : 6); ++K)
+            {
+                const float A = Variant ? FMath::Atan2(Dir.Y, Dir.X) + (K-1) * 0.35f :
+                    6.2831853f * K / 6.f;
+                SpawnEnemyBolt(E, FVector2D(FMath::Cos(A), FMath::Sin(A)), 5.7f, 0.55f);
+            }
+            break;
+        case 37: // crossbowman: sniper / spread bolts
+            for (int32 K = Variant ? -1 : 0; K <= (Variant ? 1 : 0); ++K)
+                SpawnEnemyBolt(E, Dir + Side * K * 0.26f, Variant ? 9.5f : 12.0f,
+                               Variant ? 0.48f : 0.92f);
+            break;
+        case 38: // halberdier: sweeping cone / spinning swing
+            for (int32 K = 0; K < (Variant ? 8 : 5); ++K)
+            {
+                const float A = Variant ? 6.2831853f * K / 8.f :
+                    FMath::Atan2(Dir.Y,Dir.X) + (K-2) * 0.30f;
+                SpawnEnemyBolt(E,FVector2D(FMath::Cos(A),FMath::Sin(A)),5.9f,0.53f);
+            }
+            break;
+        case 39: // berserker: close assault / crossing blows
+            E.Pos = MoveWithCollision(E.Pos, Dir * (Variant ? 10.f : 6.f), 0.17f, 0.26f);
+            for (int32 K=-1;K<=1;++K)
+                SpawnEnemyBolt(E,Dir+Side*K*(Variant?0.5f:0.2f),6.3f,0.59f);
+            break;
+        case 40: // hound: fast pounce / short bloody fan
+            E.Pos = MoveWithCollision(E.Pos, Dir * (Variant ? 11.f : 7.f), 0.19f, 0.26f);
+            if (Variant)
+                for (int32 K=-1;K<=1;++K)
+                    SpawnEnemyBolt(E,Dir+Side*K*0.24f,6.1f,0.39f);
+            break;
+        case 41: // gargoyle: flank blink / diving dash
+        {
+            const FVector2D Desired=E.Pos+(Variant?Side*2.2f:Dir*2.1f);
+            if (CanMove(Desired,0.26f)) E.Pos=Desired;
+            if (Variant) SpawnEnemyBolt(E,Dir,8.f,0.65f);
+            break;
+        }
+        case 42: // bonebreaker: shockwave / focused smash
+            for (int32 K=0;K<(Variant?3:8);++K)
+            {
+                const float A=Variant?FMath::Atan2(Dir.Y,Dir.X)+(K-1)*0.2f:
+                    6.2831853f*K/8.f;
+                SpawnEnemyBolt(E,FVector2D(FMath::Cos(A),FMath::Sin(A)),4.8f,0.58f);
+            }
+            break;
+        case 43: // crawler: erratic dash / venom spit
+            if (!Variant) E.Pos=MoveWithCollision(E.Pos,Dir*10.f,0.18f,0.24f);
+            else for(int32 K=-1;K<=1;++K)
+                SpawnEnemyBolt(E,Dir+Side*K*0.25f,7.2f,0.38f,1);
+            break;
+        case 44: // possessed knight: blade crescent / armor-piercing salvo
+            for(int32 K=-2;K<=2;++K)
+                SpawnEnemyBolt(E,Dir+Side*K*(Variant?0.1f:0.31f),6.9f,Variant?0.71f:0.52f);
+            break;
+        case 45: // dark hunter: evasive sidestep / quick volley
+            if(!Variant) {
+                const FVector2D Move=E.Pos+Side*2.1f;
+                if(CanMove(Move,0.26f)) E.Pos=Move;
+            }
+            for(int32 K=Variant?-1:0;K<=(Variant?1:0);++K)
+                SpawnEnemyBolt(E,Dir+Side*K*0.16f,10.2f,Variant?0.47f:0.75f);
+            break;
+        case 46: // battlemage: fan of magic / radial burst
+            for(int32 K=0;K<(Variant?8:5);++K) {
+                const float A=Variant?6.2831853f*K/8.f:
+                    FMath::Atan2(Dir.Y,Dir.X)+(K-2)*0.25f;
+                SpawnEnemyBolt(E,FVector2D(FMath::Cos(A),FMath::Sin(A)),7.8f,0.51f);
+            }
+            break;
+        case 47: // summoner: summons after casting / defensive spell fan
+            if (!Variant)
+                for(int32 K=-1;K<=1;++K)
+                    SpawnEnemyBolt(E,Dir+Side*K*0.27f,6.2f,0.40f);
+            break;
+        case 48: // punisher: brutal cone / crushing circular slam
+            for(int32 K=0;K<(Variant?10:5);++K) {
+                const float A=Variant?6.2831853f*K/10.f:
+                    FMath::Atan2(Dir.Y,Dir.X)+(K-2)*0.23f;
+                SpawnEnemyBolt(E,FVector2D(FMath::Cos(A),FMath::Sin(A)),5.5f,0.63f);
+            }
+            break;
+        case 49: // blood priest: healing prayer / fire fan
+            if (!Variant)
+                for (FAVEnemy& Ally : Enemies)
+                    if (Ally.Faction==E.Faction && FVector2D::Distance(Ally.Pos,E.Pos)<4.f)
+                        Ally.HP=FMath::Min(Ally.MaxHP,Ally.HP+Ally.MaxHP*0.12f);
+            else for(int32 K=-1;K<=1;++K)
+                SpawnEnemyBolt(E,Dir+Side*K*0.3f,6.6f,0.50f,2);
+            break;
+        case 50: // seal sentinel: guarding radial pulse / targeted runes
+            for(int32 K=0;K<(Variant?3:8);++K) {
+                const float A=Variant?FMath::Atan2(Dir.Y,Dir.X)+(K-1)*0.31f:
+                    6.2831853f*K/8.f;
+                SpawnEnemyBolt(E,FVector2D(FMath::Cos(A),FMath::Sin(A)),7.f,0.51f);
+            }
+            break;
+        case 51: // ravager: dash dual slash / rapid horizontal flurry
+            if (!Variant) E.Pos=MoveWithCollision(E.Pos,Dir*11.f,0.16f,0.26f);
+            for(int32 K=-(Variant?2:1);K<=(Variant?2:1);++K)
+                SpawnEnemyBolt(E,Dir+Side*K*0.27f,8.2f,0.42f);
+            break;
+        default: break;
+        }
+        E.AbilityCooldown = Variant ? 4.7f : 3.8f;
+    }
     else if (Pattern == 3 || Pattern == 8 || Pattern == 9) // existing bosses: new signature phase attack
     {
         const int32 Count = Pattern == 3 ? (bFrenzy ? 18 : 12) :
@@ -1652,6 +2333,24 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
             Enemies.Add(Skeleton);
         }
     }
+    ++E.AttackPattern; // Cycle boss attack patterns and unique summon IDs.
+    if (Pattern == 47 && E.Subclass != 0 && Enemies.Num() < 100)
+    {
+        // Summon only after the caster's effects are complete (TArray may reallocate).
+        const FVector2D Spawn = E.Pos + Side * (E.AttackPattern % 2 == 0 ? 1.2f : -1.2f);
+        if (CanMove(Spawn,0.26f))
+        {
+            FAVEnemy Soldier;
+            Soldier.Type=34; Soldier.Pos=Spawn; Soldier.Faction=E.Faction;
+            Soldier.Level=E.Level;
+            Soldier.MaxHP=FAVContent::Enemy(34,Floor).Health *
+                FAVContent::LevelHealthMultiplier(Soldier.Level) * 0.55f;
+            Soldier.HP=Soldier.MaxHP; Soldier.Id=300000+E.Id*1000+E.AttackPattern;
+            Soldier.Cooldown=0.8f;
+            Enemies.Add(Soldier);
+        }
+    }
+
 }
 
 void AAVGameMode::UpdateCombat(float DeltaSeconds)
@@ -1730,11 +2429,12 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         const FVector2D ToHero = Target - E.Pos;
         const float Distance = ToHero.Size();
         const FVector2D Direction = SafeDirection(ToHero);
-        const float Speed = Spec.Speed * (E.bElite ? 1.18f : 1.f);
+        const float Speed = Spec.Speed * (E.bElite ? 1.18f : 1.f) *
+            ((E.Type == 56 || E.Type == 39) && E.HP < E.MaxHP * 0.45f ? 1.27f : 1.f);
         const bool bCaster = (Spec.Ranged || E.Equipment == 2) && !Spec.Boss;
-        const bool bMeleeBoss = E.Type == 8;
+        const bool bMeleeBoss = E.Type == 8 || E.Type == 56;
         const float Reach = Spec.Boss ? (bMeleeBoss ? 2.0f : 1.6f) :
-                            (E.Type == 7 || E.Type == 13) ? 1.30f : 1.08f;
+                            (E.Type == 7 || E.Type == 13 || E.Type == 35 || E.Type == 38 || E.Type == 42) ? 1.30f : 1.08f;
         FVector2D DesiredVelocity = FVector2D::ZeroVector;
         if ((bSeesTarget || E.MemoryTime > 0.f) && E.Telegraph <= 0.f)
         {
@@ -1807,7 +2507,8 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         if (E.AbilityCooldown <= 0.f && bSeesTarget && Distance < 8.0f &&
             (E.bMiniBoss || Spec.Boss || (E.bElite && E.Type == 0) || E.Type == 7 || E.Type == 23 ||
              E.Type == 24 || E.Type == 19 || E.Type == 12 || E.Type == 21 ||
-             E.Type == 6 || E.Type == 18 || E.Type == 14))
+             E.Type == 6 || E.Type == 18 || E.Type == 14 ||
+             (E.Type >= 34 && E.Type <= 51)))
         {
             E.LockedTarget = Target;
             E.AttackWindup = E.bMiniBoss || Spec.Boss ? 0.85f : 0.55f;
@@ -1843,7 +2544,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         if (E.Cooldown > 0.f || Distance > 8.3f || !bSeesTarget) continue;
 
         const bool bRangedAttack = ((Spec.Ranged || E.Equipment == 2) && Distance >= Reach) ||
-                                   (bMeleeBoss && Distance >= 2.2f) ||
+                                   (bMeleeBoss && E.Type == 8 && Distance >= 2.2f) ||
                                    (E.bMiniBoss && Distance >= 2.3f);
         if (bRangedAttack)
         {
@@ -1903,6 +2604,9 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         if (Bolt.Time <= 0.f || !CanMove(Bolt.Pos, 0.06f) ||
             !FAVDungeonNavigation::LineOfSight(Tiles, MapW, MapH, Old, Bolt.Pos))
         {
+            // A missed normal shot breaks the precision chain only if no newer shot connected.
+            if (Bolt.Visual == 1 && Bolt.ShotId > LastConnectedShotId)
+            { ShotSeries = 0; ShotTargetId = -1; }
             Bolts.RemoveAtSwap(I);
             continue;
         }
@@ -1914,19 +2618,46 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             for (int32 J = Enemies.Num() - 1; J >= 0; --J)
             {
                 FAVEnemy& E = Enemies[J];
+                if (Bolt.HitEnemyIds.Contains(E.Id)) continue;
                 const float T = LenSq > KINDA_SMALL_NUMBER ?
                     FMath::Clamp(FVector2D::DotProduct(E.Pos - Old, Segment) / LenSq, 0.f, 1.f) : 0.f;
                 const float Radius = FAVContent::Enemy(E.Type, Floor).Boss ? 0.76f : 0.47f;
                 if (FVector2D::Distance(Old + Segment * T, E.Pos) > Radius) continue;
-                E.HP -= Bolt.Damage;
+                // The three arrows from one volley may land at most twice on one target.
+                if (Bolt.Visual == 2 && E.LastVolleyId == Bolt.VolleyId &&
+                    E.VolleyHitCount >= 2) continue;
+                int32 Damage = Bolt.Damage;
+                if (Bolt.Visual == 1)
+                {
+                    const bool bSameTarget = ShotTargetId == E.Id &&
+                        RunTime - LastShotHitTime <= 4.f;
+                    ShotSeries = bSameTarget ? FMath::Min(4, ShotSeries + 1) : 1;
+                    ShotTargetId = E.Id;
+                    LastShotHitTime = RunTime;
+                    LastConnectedShotId = Bolt.ShotId;
+                    Damage = FMath::RoundToInt(Damage *
+                        (1.f + 0.08f * (ShotSeries - 1)));
+                }
+                if (Bolt.Visual == 2)
+                {
+                    if (E.LastVolleyId != Bolt.VolleyId)
+                    { E.LastVolleyId = Bolt.VolleyId; E.VolleyHitCount = 0; }
+                    ++E.VolleyHitCount;
+                }
+                if(Bolt.Visual==3 && Bolt.HitEnemyIds.Num()>0)
+                    Damage=FMath::RoundToInt(Damage*0.45f);
+                Damage=FMath::RoundToInt(ModifiedAttackDamage(Damage,E,true,Bolt.Visual!=1));
+                Bolt.HitEnemyIds.Add(E.Id);
+                --Bolt.PierceRemaining;
+                E.HP-=Damage;
                 E.Flash = 0.16f;
                 E.Knockback += SafeDirection(E.Pos - Old) * 3.1f;
                 AddEffect(E.Pos, 2, 0.4f);
                 if (E.HP <= 0.f) KillEnemy(J);
-                bHit = true;
-                break;
+                bHit=true;
+                if(Bolt.PierceRemaining<=0) break;
             }
-            if (bHit) Bolts.RemoveAtSwap(I);
+            if(bHit && Bolt.PierceRemaining<=0) Bolts.RemoveAtSwap(I);
         }
         else
         {
@@ -1956,8 +2687,11 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                     DamageHero(Bolt.Damage, Bolt.Pos);
                     if (bVulnerable && Phase != EAVPhase::Dead)
                     {
-                        if (Status == 1) PoisonTime = FMath::Max(PoisonTime, 4.2f);
-                        if (Status == 2) BurnTime = FMath::Max(BurnTime, 3.3f);
+                        const float Resist=FMath::Clamp(1.f-
+                            (GearStat(AVStatusResistPercent)+10.f*SkillRank(1))*0.01f,
+                            0.4f,1.f);
+                        if(Status==1) PoisonTime=FMath::Max(PoisonTime,4.2f*Resist);
+                        if(Status==2) BurnTime=FMath::Max(BurnTime,3.3f*Resist);
                     }
                     bHit = true;
                 }
@@ -1976,7 +2710,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             if (Trap.Windup <= 0.f)
             {
                 Trap.Windup = 0.f;
-                Trap.Cooldown = Trap.Type == 0 ? 2.8f : 3.7f;
+                Trap.Cooldown = Trap.Type == 0 ? 2.8f : Trap.Type >= 3 ? 4.4f : 3.7f;
                 AddEffect(Trap.Pos, 2, Trap.Type == 1 ? 1.4f : 0.8f);
                 if (Trap.Type == 0 && FVector2D::Distance(Trap.Pos, Hero) < 0.88f)
                     DamageHero(14.f + Floor * 3.f, Trap.Pos);
@@ -1986,6 +2720,27 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                     {
                         BurnTime = FMath::Max(BurnTime, 3.5f);
                         DamageHero(10.f + Floor * 2.f, Trap.Pos);
+                    }
+                }
+                else if (Trap.Type >= 3 && Trap.Type <= 5)
+                {
+                    const float Radius = Trap.Type == 3 ? 1.4f :
+                                         Trap.Type == 4 ? 1.65f : 1.1f;
+                    if (FVector2D::Distance(Trap.Pos, Hero) < Radius)
+                        DamageHero((Trap.Type == 3 ? 26.f : 17.f) + Floor * 2.f, Trap.Pos);
+                }
+                else if (Trap.Type == 6)
+                {
+                    const FVector2D Dir = SafeDirection(Hero - Trap.Pos);
+                    const FVector2D Side(-Dir.Y, Dir.X);
+                    for (int32 K = -1; K <= 1; ++K)
+                    {
+                        FAVBolt Spear;
+                        Spear.Pos = Trap.Pos;
+                        Spear.Velocity = SafeDirection(Dir + Side * (K * 0.19f)) * 11.f;
+                        Spear.Damage = 10 + Floor * 2;
+                        Spear.Time = 1.f;
+                        Bolts.Add(Spear);
                     }
                 }
                 else if (Trap.Type == 2)
@@ -2001,7 +2756,8 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         }
         else if (Trap.Cooldown <= 0.f &&
                  FVector2D::Distance(Trap.Pos, Hero) < 0.78f)
-            Trap.Windup = 0.62f;
+            Trap.Windup = Trap.Type == 3 ? 1.f : Trap.Type == 4 ? 0.78f :
+                          Trap.Type == 5 ? 1.15f : Trap.Type == 6 ? 0.8f : 0.62f;
     }
 
     // Contact areas apply a temporary status, but not during a dodge iframe.
@@ -2012,8 +2768,11 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             FVector2D::Distance(Hero, Hazard.Pos) > 1.f ||
             Invulnerability > 0.f) continue;
         Hazard.Cooldown = 1.25f;
-        if (Hazard.Type == 0) PoisonTime = FMath::Max(PoisonTime, 4.0f);
-        else BurnTime = FMath::Max(BurnTime, 3.f);
+        const float StatusFactor=FMath::Clamp(1.f-
+            (GearStat(AVStatusResistPercent)+10.f*SkillRank(1))*0.01f,
+            0.4f,1.f);
+        if(Hazard.Type==0) PoisonTime=FMath::Max(PoisonTime,4.f*StatusFactor);
+        else BurnTime=FMath::Max(BurnTime,3.f*StatusFactor);
         AddEffect(Hazard.Pos, 2, 0.6f);
     }
 
@@ -2058,6 +2817,17 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 }
                 else { ++BackpackBows; Toast = TEXT("BOW STORED IN PACK"); }
                 ToastTime = 2.4f; break;
+            case 11:
+                if(InventoryItems.Num()>=48) {
+                    Toast=TEXT("PACK FULL: SELL GEAR AT CAMP"); ToastTime=2.f;
+                    continue;
+                }
+                if(FAVEquipment::Find(P.Amount)) {
+                    InventoryItems.Add(P.Amount);
+                    Toast=TEXT("GEAR FOUND: ")+GearName(P.Amount);
+                    ToastTime=3.f;
+                }
+                break;
             case 10:
                 if ((EquippedSlotsMask & 4) == 0)
                 {
@@ -2096,7 +2866,16 @@ void AAVGameMode::Tick(float DeltaSeconds)
         DashCooldown = FMath::Max(0.f, DashCooldown - DT);
         Invulnerability = FMath::Max(0.f, Invulnerability - DT);
         ScreenShake = FMath::Max(0.f, ScreenShake - DT);
-        Stamina = FMath::Min(MaxStamina, Stamina + 14.5f * DT);
+        Stamina=FMath::Min(MaxStamina,Stamina+
+            14.5f*(1.f+(GearStat(AVStaminaRegenPercent)+
+            6.f*SkillRank(12))*0.01f)*DT);
+        RewardDamageTime=FMath::Max(0.f,RewardDamageTime-DT);
+        DashBonusTime=FMath::Max(0.f,DashBonusTime-DT);
+        RevengeTime=FMath::Max(0.f,RevengeTime-DT);
+        LastKillBoostTime=FMath::Max(0.f,LastKillBoostTime-DT);
+        GuardWhirlTime=FMath::Max(0.f,GuardWhirlTime-DT);
+        ChainCooldown=FMath::Max(0.f,ChainCooldown-DT);
+        ShieldCooldown=FMath::Max(0.f,ShieldCooldown-DT);
         ComboTime = FMath::Max(0.f, ComboTime - DT);
         if (ComboTime <= 0.f) Combo = 0;
         ToastTime = FMath::Max(0.f, ToastTime - DT);

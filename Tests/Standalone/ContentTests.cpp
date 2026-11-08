@@ -1,6 +1,7 @@
 #include "AVContent.h"
 #include <cassert>
 #include <iostream>
+#include <string>
 
 int main()
 {
@@ -8,10 +9,13 @@ int main()
     assert(FAVContent::Biome(1) == 0 && FAVContent::Biome(5) == 0);
     assert(FAVContent::Biome(6) == 1 && FAVContent::Biome(10) == 1);
     assert(FAVContent::Biome(11) == 2 && FAVContent::Biome(15) == 2);
-    assert(FAVContent::Biome(16) == 0 && FAVContent::Biome(31) == 0);
+    assert(FAVContent::Biome(16) == 3 && FAVContent::Biome(20) == 3);
+    assert(FAVContent::Biome(21) == 0 && FAVContent::Biome(31) == 2);
+    assert(FAVContent::Biome(36) == 3 && FAVContent::Biome(41) == 0);
     assert(FAVContent::Boss(1) == -1 && FAVContent::Boss(5) == 8);
     assert(FAVContent::Boss(10) == 9 && FAVContent::Boss(15) == 3);
-    assert(FAVContent::Boss(20) == 8 && FAVContent::Boss(21) == -1);
+    assert(FAVContent::Boss(20) == 56 && FAVContent::Boss(21) == -1);
+    assert(FAVContent::Boss(25) == 8 && FAVContent::Boss(40) == 56);
     for (int32 Floor = 1; Floor <= 35; ++Floor)
     {
         for (int32 Roll = 0; Roll < 100; ++Roll)
@@ -37,8 +41,28 @@ int main()
     assert(FAVContent::LevelDamageMultiplier(10) > FAVContent::LevelDamageMultiplier(1));
     for (int32 Type = 15; Type < FAVContent::EnemyCount; ++Type)
         assert(FAVContent::Enemy(Type, 3).Health > 0.f);
-    assert(FAVContent::MiniBossCount == 7);
+    assert(FAVContent::MiniBossCount == 11);
     assert(FAVContent::PickupCount == 11);
+    assert(FAVContent::HeroCount == 4 && FAVContent::HeroHealth(3) == 90.f);
+    assert(FAVContent::HeroAttack(3) == 19.f && FAVContent::HeroSpeed(3) == 5.1f);
+    for (int32 Type = 34; Type <= 51; ++Type) {
+        const FAVEnemySpec S = FAVContent::Enemy(Type, 16);
+        assert(S.Health > 0.f && S.Damage > 0.f && !S.Boss);
+    }
+    for (int32 Type = 52; Type <= 55; ++Type) {
+        assert(FAVContent::Enemy(Type, 18).Health > 100.f);
+    }
+    assert(FAVContent::Enemy(56, 20).Boss);
+    for (int Type=34;Type<=51;++Type) {
+        assert(FAVContent::BastionVariantName(Type,0)[0]!=0);
+        assert(FAVContent::BastionVariantName(Type,1)[0]!=0);
+        assert(std::string(FAVContent::BastionVariantName(Type,0)) !=
+               std::string(FAVContent::BastionVariantName(Type,1)));
+    }
+    for (int32 P = 0; P < 100; ++P) {
+        const int32 Type = FAVContent::EnemyRoll(16, P);
+        assert(Type >= 34 && Type <= 51);
+    }
     for (int32 Floor = 1; Floor <= 6; ++Floor)
     {
         assert(FAVContent::EnemyLevel(Floor, 0) == 1 + (Floor - 1) * 2);
@@ -54,6 +78,6 @@ int main()
     assert(FAVContent::Enemy(25, 3).Ranged);
     assert(!FAVContent::Enemy(33, 3).Ranged);
     assert(FAVContent::ShopPrice(0, 6) > FAVContent::ShopPrice(0, 1));
-    std::cout << "PASS: 6 floors, 3 biomes, 3 bosses, archetypes and shop prices\n";
+    std::cout << "PASS: 4 cyclic biomes, 4 heroes, 57 enemy IDs and shops\n";
     return 0;
 }

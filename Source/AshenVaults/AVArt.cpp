@@ -50,13 +50,14 @@ FLinearColor FAVArt::LightColor(int32 Biome)
     {
     case 1: return FLinearColor(0.26f, 0.89f, 0.62f, 1.f);
     case 2: return FLinearColor(1.f, 0.49f, 0.22f, 1.f);
+    case 3: return FLinearColor(0.81f, 0.37f, 0.30f, 1.f); // Bastion blood-red torches
     default: return FLinearColor(0.54f, 0.71f, 1.f, 1.f);
     }
 }
 
 UTexture2D* FAVArt::BuildTile(int32 Biome, int32 TileVariant)
 {
-    if (Biome < 0 || Biome > 2 || TileVariant < 0 ||
+    if (Biome < 0 || Biome > 3 || TileVariant < 0 ||
         TileVariant >= VariantsPerBiome)
         return nullptr;
 
@@ -64,13 +65,13 @@ UTexture2D* FAVArt::BuildTile(int32 Biome, int32 TileVariant)
     const int32 Variant = bWall ? TileVariant - 8 : TileVariant;
     const int32 N = TextureSize;
     const FColor Base = Biome == 0 ? RGB(49, 61, 76) :
-                        Biome == 1 ? RGB(42, 75, 62) : RGB(83, 56, 53);
+                        Biome == 1 ? RGB(42, 75, 62) : Biome == 2 ? RGB(83, 56, 53) : RGB(49, 50, 54);
     const FColor Edge = Biome == 0 ? RGB(24, 34, 49) :
-                        Biome == 1 ? RGB(25, 44, 40) : RGB(47, 28, 35);
+                        Biome == 1 ? RGB(25, 44, 40) : Biome == 2 ? RGB(47, 28, 35) : RGB(23, 24, 29);
     const FColor Light = Biome == 0 ? RGB(115, 147, 164) :
-                         Biome == 1 ? RGB(93, 159, 112) : RGB(202, 109, 74);
+                         Biome == 1 ? RGB(93, 159, 112) : Biome == 2 ? RGB(202, 109, 74) : RGB(123, 117, 113);
     const FColor Accent = Biome == 0 ? RGB(89, 152, 162) :
-                          Biome == 1 ? RGB(153, 223, 111) : RGB(255, 149, 63);
+                          Biome == 1 ? RGB(153, 223, 111) : Biome == 2 ? RGB(255, 149, 63) : RGB(186, 77, 70);
     const uint32 Seed = 9719u + static_cast<uint32>(Biome) * 31337u +
                         static_cast<uint32>(TileVariant) * 487u;
 
