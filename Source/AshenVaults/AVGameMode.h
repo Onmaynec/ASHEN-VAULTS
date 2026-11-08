@@ -246,6 +246,7 @@ private:
     void BuyFromMerchant(int32 Slot);
     void StrikeProps(bool bSpin, float Damage);
     bool OpenNearbyChest();
+    bool OpenNearbyCampDoor();
     bool ActivateNearbyEcho();
     void DamageHero(float Damage, const FVector2D& Source);
     void Strike(bool bSpin);
