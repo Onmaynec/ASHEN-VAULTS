@@ -6,7 +6,7 @@ int main() {
     int weapons=0,armor=0,accessories=0,sets[6]={0,0,0,0,0,0};
     for(int id=0;id<FAVEquipment::Count;++id) {
         const FAVEquipmentSpec* p=FAVEquipment::Find(id);
-        assert(p && p->Id==id && p->CodeName[0]!='\\0');
+        assert(p && p->Id==id && p->CodeName[0]!=0);
         assert(p->Rarity>=AVCommon && p->Rarity<=AVLegendary);
         assert(p->RequiredHero>=-1 && p->RequiredHero<4);
         assert(FAVEquipment::CanEquip(id,p->RequiredHero<0?0:p->RequiredHero));
@@ -27,7 +27,7 @@ int main() {
     uint8 ranks[FAVSkills::Count]={0};
     for(int id=0;id<FAVSkills::Count;++id) {
         const FAVSkillSpec* p=FAVSkills::Find(id);
-        assert(p && p->Id==id && p->CodeName[0]!='\\0');
+        assert(p && p->Id==id && p->CodeName[0]!=0);
         assert(p->MaxRank==1 || p->MaxRank==2);
         assert(p->RequiredHero>=-1 && p->RequiredHero<=3);
         assert(p->PrerequisiteId<id);
@@ -41,6 +41,6 @@ int main() {
     assert(!FAVSkills::CanLearn(15,3,20,ranks,FAVSkills::Count,1)); // wrong class
     assert(!FAVSkills::CanLearn(37,3,19,ranks,FAVSkills::Count,1)); // below level
     assert(!FAVSkills::CanLearn(0,3,20,ranks,FAVSkills::Count,0)); // no points
-    std::cout<<"PASS: 42 equipment specs, five sets, 39 skills and restrictions\\n";
+    std::cout<<"PASS: 42 equipment specs, five sets, 39 skills and restrictions\n";
     return 0;
 }
