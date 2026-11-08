@@ -4,13 +4,15 @@
 
 int main()
 {
-    assert(FAVContent::FinalFloor == 6);
-    assert(FAVContent::Biome(1) == 0 && FAVContent::Biome(2) == 0);
-    assert(FAVContent::Biome(3) == 1 && FAVContent::Biome(4) == 1);
-    assert(FAVContent::Biome(5) == 2 && FAVContent::Biome(6) == 2);
-    assert(FAVContent::Boss(1) == -1 && FAVContent::Boss(2) == 8);
-    assert(FAVContent::Boss(4) == 9 && FAVContent::Boss(6) == 3);
-    for (int32 Floor = 1; Floor <= FAVContent::FinalFloor; ++Floor)
+    assert(FAVContent::FloorsPerBiome == 5);
+    assert(FAVContent::Biome(1) == 0 && FAVContent::Biome(5) == 0);
+    assert(FAVContent::Biome(6) == 1 && FAVContent::Biome(10) == 1);
+    assert(FAVContent::Biome(11) == 2 && FAVContent::Biome(15) == 2);
+    assert(FAVContent::Biome(16) == 0 && FAVContent::Biome(31) == 0);
+    assert(FAVContent::Boss(1) == -1 && FAVContent::Boss(5) == 8);
+    assert(FAVContent::Boss(10) == 9 && FAVContent::Boss(15) == 3);
+    assert(FAVContent::Boss(20) == 8 && FAVContent::Boss(21) == -1);
+    for (int32 Floor = 1; Floor <= 35; ++Floor)
     {
         for (int32 Roll = 0; Roll < 100; ++Roll)
         {
