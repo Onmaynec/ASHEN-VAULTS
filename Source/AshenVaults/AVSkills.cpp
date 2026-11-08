@@ -52,6 +52,50 @@ const FAVSkillSpec Nodes[FAVSkills::Count] = {
  {38,"unerring_hunt",3,3,1,20,36,4,38,1}
 };
 }
+const char* FAVSkills::Description(int32 Id)
+{
+    static const char* Text[Count] = {
+        "+6% maximum health per rank",
+        "-10% status duration per rank",
+        "+8 health per potion per rank",
+        "-8% damage taken under 30% health",
+        "Survive one fatal strike per floor",
+        "+4% basic attack damage per rank",
+        "+3% critical chance per rank",
+        "Every fourth hit: +7% damage per rank",
+        "+8% damage to bosses",
+        "Kills reduce Q/R cooldown by 0.5s",
+        "+3% movement speed per rank",
+        "+10 maximum stamina per rank",
+        "+6% stamina recovery per rank",
+        "-10% dash stamina cost",
+        "+0.07s dash invulnerability",
+        "+2% armor per rank",
+        "More stagger and knockback per rank",
+        "-8% damage after Q per rank",
+        "Retaliate after taking damage",
+        "Dash grants shield worth 25% max HP",
+        "Every third strike creates shockwave",
+        "+3% critical chance after dash",
+        "+12% throw damage per rank",
+        "+10% spin damage per rank",
+        "Kills grant +6% speed per rank",
+        "Every third hit: +50% bonus strike",
+        "+28% damage below 25% enemy HP",
+        "+6% ability damage per rank",
+        "R changes into a magical sphere",
+        "Q emits a radial rune wave",
+        "Critical magic chains to 2 enemies",
+        "Low HP grants one magical shield",
+        "+7% arrow speed per rank",
+        "+5% damage to marked foes per rank",
+        "Volley strengthens; more arrows at rank 2",
+        "+10% piercing shot damage per rank",
+        "Piercing shot fires three arrows",
+        "Fourth precise shot is critical"
+    };
+    return Id>=0 && Id<Count ? Text[Id] : "UNKNOWN SKILL";
+}
 const FAVSkillSpec* FAVSkills::Find(int32 Id) {
     return Id>=0 && Id<Count ? &Nodes[Id] : nullptr;
 }
