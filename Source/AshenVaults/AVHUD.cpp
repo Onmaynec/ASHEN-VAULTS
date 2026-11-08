@@ -792,7 +792,7 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
                  Traveler.Y - 31.f * Scale, Mint, 0.72f);
         }
     }
-    if (Game.bHasSafeCampDoor && Game.IsVisibleAt(Game.SafeCampDoor))
+    if (Game.bHasSafeCampDoor && Game.IsVisibleAt(Game.SafeCampDoor + FVector2D(0.f, 1.f)))
     {
         const FVector2D Door = Screen(Game.SafeCampDoor);
         Rect(Door.X - 12.f * Scale, Door.Y - 17.f * Scale,
