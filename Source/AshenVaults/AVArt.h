@@ -14,7 +14,9 @@ class UTexture2D;
 class FAVArt
 {
 public:
-    static constexpr int32 VariantsPerBiome = 12; // floor 0..7, wall 8..11
+    static constexpr int32 FloorVariants = 20;
+    static constexpr int32 WallVariants = 8;
+    static constexpr int32 VariantsPerBiome = FloorVariants + WallVariants;
     static constexpr int32 TextureSize = 24;
 
     static UTexture2D* BuildTile(int32 Biome, int32 TileVariant);
