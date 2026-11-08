@@ -1644,6 +1644,167 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
             SpawnEnemyBolt(E, Dir + Side * (K * 0.12f), 9.1f, 0.95f, 2);
         E.AbilityCooldown = bFrenzy ? 3.0f : 4.8f;
     }
+    else if (Pattern == 56) // Commandant: uncompromising melee guardian, two stages
+    {
+        // First stage cleaves a frontal arc. After the armor breaks at 45% HP
+        // the Commandant lunges and chains heavier fan strikes.
+        const bool Enraged = E.bPhaseShifted && E.PhaseShiftTime <= 0.f;
+        if (Enraged)
+            E.Pos = MoveWithCollision(E.Pos, Dir * 8.5f, 0.24f, 0.47f);
+        const int32 Count = Enraged ? 7 : 5;
+        for (int32 K = -(Count / 2); K <= Count / 2; ++K)
+            SpawnEnemyBolt(E, Dir + Side * (K * (Enraged ? 0.23f : 0.18f)),
+                           Enraged ? 8.4f : 6.8f, Enraged ? 0.79f : 0.66f);
+        if (Enraged && E.AttackPattern % 3 == 2)
+            for (int32 K = 0; K < 10; ++K)
+            {
+                const float A = 6.2831853f * K / 10.f;
+                SpawnEnemyBolt(E, FVector2D(FMath::Cos(A), FMath::Sin(A)),
+                               5.6f, 0.42f);
+            }
+        E.AbilityCooldown = Enraged ? 2.9f : 4.1f;
+    }
+    else if (Pattern >= 52 && Pattern <= 55) // Bastion's four miniboss archetypes
+    {
+        if (Pattern == 52) // Executioner: heavy axe cleave
+            for (int32 K = -2; K <= 2; ++K)
+                SpawnEnemyBolt(E, Dir + Side * K * 0.30f, 6.3f, 0.78f);
+        else if (Pattern == 53) // Captain: shield wall and counter-thrust
+            for (int32 K = -1; K <= 1; ++K)
+                SpawnEnemyBolt(E, Dir + Side * K * 0.18f, 9.2f, 0.73f);
+        else if (Pattern == 54) // Siege Golem: heavy ground shockwave
+            for (int32 K = 0; K < 12; ++K)
+            {
+                const float A = 6.2831853f * K / 12.f;
+                SpawnEnemyBolt(E, FVector2D(FMath::Cos(A), FMath::Sin(A)), 5.0f, 0.72f);
+            }
+        else // Inquisitor: ranged magic with a sweeping fan
+            for (int32 K = -3; K <= 3; ++K)
+                SpawnEnemyBolt(E, Dir + Side * K * 0.22f, 8.7f, 0.63f, 2);
+        E.AbilityCooldown = bFrenzy ? 2.8f : 4.6f;
+    }
+    else if (Pattern >= 34 && Pattern <= 51) // Bastion normal enemies: 18 types, two variants by stable enemy id
+    {
+        const bool Variant = (E.Id & 1) != 0;
+        // Every variant changes the ability and cadence, not just HP or tint.
+        switch (Pattern)
+        {
+        case 34: // infantry: wide slash / hard straight thrust
+            for (int32 K = -1; K <= 1; ++K)
+                SpawnEnemyBolt(E, Dir + Side * K * (Variant ? 0.12f : 0.34f),
+                               7.f, Variant ? 0.77f : 0.50f);
+            break;
+        case 35: // pikeman: precision thrust / spear sweep
+            for (int32 K = Variant ? -2 : 0; K <= (Variant ? 2 : 0); ++K)
+                SpawnEnemyBolt(E, Dir + Side * K * 0.24f, 9.f, Variant ? 0.48f : 0.98f);
+            break;
+        case 36: // shieldbearer: a shield pulse / guarded counter
+            for (int32 K = 0; K < (Variant ? 3 : 6); ++K)
+            {
+                const float A = Variant ? FMath::Atan2(Dir.Y, Dir.X) + (K-1) * 0.35f :
+                    6.2831853f * K / 6.f;
+                SpawnEnemyBolt(E, FVector2D(FMath::Cos(A), FMath::Sin(A)), 5.7f, 0.55f);
+            }
+            break;
+        case 37: // crossbowman: sniper / spread bolts
+            for (int32 K = Variant ? -1 : 0; K <= (Variant ? 1 : 0); ++K)
+                SpawnEnemyBolt(E, Dir + Side * K * 0.26f, Variant ? 9.5f : 12.0f,
+                               Variant ? 0.48f : 0.92f);
+            break;
+        case 38: // halberdier: sweeping cone / spinning swing
+            for (int32 K = 0; K < (Variant ? 8 : 5); ++K)
+            {
+                const float A = Variant ? 6.2831853f * K / 8.f :
+                    FMath::Atan2(Dir.Y,Dir.X) + (K-2) * 0.30f;
+                SpawnEnemyBolt(E,FVector2D(FMath::Cos(A),FMath::Sin(A)),5.9f,0.53f);
+            }
+            break;
+        case 39: // berserker: close assault / crossing blows
+            E.Pos = MoveWithCollision(E.Pos, Dir * (Variant ? 10.f : 6.f), 0.17f, 0.26f);
+            for (int32 K=-1;K<=1;++K)
+                SpawnEnemyBolt(E,Dir+Side*K*(Variant?0.5f:0.2f),6.3f,0.59f);
+            break;
+        case 40: // hound: fast pounce / short bloody fan
+            E.Pos = MoveWithCollision(E.Pos, Dir * (Variant ? 11.f : 7.f), 0.19f, 0.26f);
+            if (Variant)
+                for (int32 K=-1;K<=1;++K)
+                    SpawnEnemyBolt(E,Dir+Side*K*0.24f,6.1f,0.39f);
+            break;
+        case 41: // gargoyle: flank blink / diving dash
+        {
+            const FVector2D Desired=E.Pos+(Variant?Side*2.2f:Dir*2.1f);
+            if (CanMove(Desired,0.26f)) E.Pos=Desired;
+            if (Variant) SpawnEnemyBolt(E,Dir,8.f,0.65f);
+            break;
+        }
+        case 42: // bonebreaker: shockwave / focused smash
+            for (int32 K=0;K<(Variant?3:8);++K)
+            {
+                const float A=Variant?FMath::Atan2(Dir.Y,Dir.X)+(K-1)*0.2f:
+                    6.2831853f*K/8.f;
+                SpawnEnemyBolt(E,FVector2D(FMath::Cos(A),FMath::Sin(A)),4.8f,0.58f);
+            }
+            break;
+        case 43: // crawler: erratic dash / venom spit
+            if (!Variant) E.Pos=MoveWithCollision(E.Pos,Dir*10.f,0.18f,0.24f);
+            else for(int32 K=-1;K<=1;++K)
+                SpawnEnemyBolt(E,Dir+Side*K*0.25f,7.2f,0.38f,1);
+            break;
+        case 44: // possessed knight: blade crescent / armor-piercing salvo
+            for(int32 K=-2;K<=2;++K)
+                SpawnEnemyBolt(E,Dir+Side*K*(Variant?0.1f:0.31f),6.9f,Variant?0.71f:0.52f);
+            break;
+        case 45: // dark hunter: evasive sidestep / quick volley
+            if(!Variant) {
+                const FVector2D Move=E.Pos+Side*2.1f;
+                if(CanMove(Move,0.26f)) E.Pos=Move;
+            }
+            for(int32 K=Variant?-1:0;K<=(Variant?1:0);++K)
+                SpawnEnemyBolt(E,Dir+Side*K*0.16f,10.2f,Variant?0.47f:0.75f);
+            break;
+        case 46: // battlemage: fan of magic / radial burst
+            for(int32 K=0;K<(Variant?8:5);++K) {
+                const float A=Variant?6.2831853f*K/8.f:
+                    FMath::Atan2(Dir.Y,Dir.X)+(K-2)*0.25f;
+                SpawnEnemyBolt(E,FVector2D(FMath::Cos(A),FMath::Sin(A)),7.8f,0.51f);
+            }
+            break;
+        case 47: // summoner: summons after casting / defensive spell fan
+            if (!Variant)
+                for(int32 K=-1;K<=1;++K)
+                    SpawnEnemyBolt(E,Dir+Side*K*0.27f,6.2f,0.40f);
+            break;
+        case 48: // punisher: brutal cone / crushing circular slam
+            for(int32 K=0;K<(Variant?10:5);++K) {
+                const float A=Variant?6.2831853f*K/10.f:
+                    FMath::Atan2(Dir.Y,Dir.X)+(K-2)*0.23f;
+                SpawnEnemyBolt(E,FVector2D(FMath::Cos(A),FMath::Sin(A)),5.5f,0.63f);
+            }
+            break;
+        case 49: // blood priest: healing prayer / fire fan
+            if (!Variant)
+                for (FAVEnemy& Ally : Enemies)
+                    if (Ally.Faction==E.Faction && FVector2D::Distance(Ally.Pos,E.Pos)<4.f)
+                        Ally.HP=FMath::Min(Ally.MaxHP,Ally.HP+Ally.MaxHP*0.12f);
+            else for(int32 K=-1;K<=1;++K)
+                SpawnEnemyBolt(E,Dir+Side*K*0.3f,6.6f,0.50f,2);
+            break;
+        case 50: // seal sentinel: guarding radial pulse / targeted runes
+            for(int32 K=0;K<(Variant?3:8);++K) {
+                const float A=Variant?FMath::Atan2(Dir.Y,Dir.X)+(K-1)*0.31f:
+                    6.2831853f*K/8.f;
+                SpawnEnemyBolt(E,FVector2D(FMath::Cos(A),FMath::Sin(A)),7.f,0.51f);
+            }
+            break;
+        case 51: // ravager: dash dual slash / rapid horizontal flurry
+            if (!Variant) E.Pos=MoveWithCollision(E.Pos,Dir*11.f,0.16f,0.26f);
+            for(int32 K=-(Variant?2:1);K<=(Variant?2:1);++K)
+                SpawnEnemyBolt(E,Dir+Side*K*0.27f,8.2f,0.42f);
+            break;
+        default: break;
+        }
+        E.AbilityCooldown = Variant ? 4.7f : 3.8f;
+    }
     else if (Pattern == 3 || Pattern == 8 || Pattern == 9) // existing bosses: new signature phase attack
     {
         const int32 Count = Pattern == 3 ? (bFrenzy ? 18 : 12) :
@@ -1733,6 +1894,23 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
             Enemies.Add(Skeleton);
         }
     }
+    if (Pattern == 47 && (E.Id & 1) != 0 && Enemies.Num() < 100)
+    {
+        // Summon only after the caster's effects are complete (TArray may reallocate).
+        const FVector2D Spawn = E.Pos + Side * (E.AttackPattern % 2 == 0 ? 1.2f : -1.2f);
+        if (CanMove(Spawn,0.26f))
+        {
+            FAVEnemy Soldier;
+            Soldier.Type=34; Soldier.Pos=Spawn; Soldier.Faction=E.Faction;
+            Soldier.Level=E.Level;
+            Soldier.MaxHP=FAVContent::Enemy(34,Floor).Health *
+                FAVContent::LevelHealthMultiplier(Soldier.Level) * 0.55f;
+            Soldier.HP=Soldier.MaxHP; Soldier.Id=300000+Floor*100+Kills+E.AttackPattern;
+            Soldier.Cooldown=0.8f;
+            Enemies.Add(Soldier);
+        }
+    }
+
 }
 
 void AAVGameMode::UpdateCombat(float DeltaSeconds)
