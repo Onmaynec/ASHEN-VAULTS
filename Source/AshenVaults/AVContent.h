@@ -29,12 +29,17 @@ public:
     static int32 EnemyLevel(int32 Floor, int32 Roll);
     static float LevelHealthMultiplier(int32 Level);
     static float LevelDamageMultiplier(int32 Level);
+    // One health scaling pass. Level already increases with floor.
+    static float ScaledEnemyHealth(int32 Type, int32 Floor, int32 Level);
+    // Bound camp occupancy independently of the unbounded floor number.
+    static int32 BanditGroupSize(int32 Floor);
     static constexpr int32 PickupCount = 11;
     // 0 Warden, 1 Duelist, 2 Arcanist, 3 Marksman. Pure data.
     static float HeroHealth(int32 HeroId);
     static float HeroStamina(int32 HeroId);
     static float HeroAttack(int32 HeroId);
     static float HeroSpeed(int32 HeroId);
+    static float BasicAttackInterval(int32 HeroId, float AttackSpeedPercent);
     static int32 Biome(int32 Floor);
     static int32 Boss(int32 Floor);
     static int32 EnemyRoll(int32 Floor, int32 Percentile);

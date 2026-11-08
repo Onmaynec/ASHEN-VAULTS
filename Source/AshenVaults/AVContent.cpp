@@ -5,6 +5,16 @@ float FAVContent::HeroStamina(int32 Id) { return Id == 1 ? 120.f : Id == 2 ? 135
 float FAVContent::HeroAttack(int32 Id) { return Id == 1 ? 22.f : Id == 2 ? 16.f : Id == 3 ? 19.f : 18.f; }
 float FAVContent::HeroSpeed(int32 Id) { return Id == 1 ? 5.7f : Id == 2 ? 4.6f : Id == 3 ? 5.1f : 4.8f; }
 
+float FAVContent::BasicAttackInterval(int32 HeroId, float AttackSpeedPercent)
+{
+    const float Speed = FMath::Clamp(1.f + AttackSpeedPercent * 0.01f, 0.45f, 2.f);
+    const float Base = HeroId == 3 ? 0.52f : 0.33f;
+    // Previous minimum was 0.33s for *every* hero, so bonuses to melee
+    // attack speed had no effect. Keep ranged attacks more deliberately paced.
+    return FMath::Max(HeroId == 3 ? 0.33f : 0.22f, Base / Speed);
+}
+
+
 int32 FAVContent::EnemyLevel(int32 Floor, int32 Roll)
 {
     const int32 Depth = Floor > 1 ? Floor - 1 : 0;
@@ -17,7 +27,22 @@ float FAVContent::LevelHealthMultiplier(int32 Level)
 }
 float FAVContent::LevelDamageMultiplier(int32 Level)
 {
-    return 1.f + 0.085f * (Level > 1 ? Level - 1 : 0);
+    return 1.f + 0.065f * (Level > 1 ? Level - 1 : 0);
+}
+
+float FAVContent::ScaledEnemyHealth(int32 Type, int32 Floor, int32 Level)
+{
+    // Enemy level is already based on absolute depth; a second floor
+    // multiplier made health grow quadratically and eventually stalled runs.
+    return Enemy(Type, Floor).Health * LevelHealthMultiplier(Level);
+}
+
+int32 FAVContent::BanditGroupSize(int32 Floor)
+{
+    // Keep the hostile camp a distinct, demanding encounter without
+    // spawning dozens of units in a single chamber in late cycles.
+    const int32 Depth = Floor > 1 ? Floor - 1 : 0;
+    return 3 + FMath::Min(5, Depth / 4);
 }
 
 int32 FAVContent::Biome(int32 Floor)
@@ -108,8 +133,8 @@ FAVEnemySpec FAVContent::Enemy(int32 Type, int32 Floor)
     case 56: S = {650.f,1.7f,42.f,false,true}; break; // Commandant
     default: break;
     }
-    if (!S.Boss)
-        S.Health *= 1.f + 0.22f * (Floor > 1 ? Floor - 1 : 0);
+    // Health scaling belongs to ScaledEnemyHealth(), not the base spec.
+    (void)Floor;
     return S;
 }
 

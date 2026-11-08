@@ -298,8 +298,8 @@ void AAVGameMode::RebuildCharacterBonuses()
 
 float AAVGameMode::BasicAttackInterval() const
 {
-    const float Speed = FMath::Clamp(1.f + GearStat(AVAttackSpeedPercent) * 0.01f, 0.45f, 2.f);
-    return FMath::Max(0.33f, (HeroClass == 3 ? 0.52f : 0.33f) / Speed);
+    return FAVContent::BasicAttackInterval(
+        HeroClass, GearStat(AVAttackSpeedPercent));
 }
 
 float AAVGameMode::ProjectileSpeedMultiplier() const
@@ -716,8 +716,7 @@ void AAVGameMode::GenerateFloor()
             Enemy.Level = FAVContent::EnemyLevel(Floor, RNG.RandRange(0, 99));
             Enemy.Equipment = RNG.FRand() < 0.085f ? RNG.RandRange(1, 3) : 0;
             // Bow zombies keep their own appearance and fire projectiles.
-            Enemy.MaxHP = FAVContent::Enemy(Enemy.Type, Floor).Health *
-                FAVContent::LevelHealthMultiplier(Enemy.Level) *
+            Enemy.MaxHP = FAVContent::ScaledEnemyHealth(Enemy.Type, Floor, Enemy.Level) *
                 (Enemy.Equipment == 1 ? 1.35f : 1.f);
             Enemy.bElite = RNG.FRand() < FMath::Min(0.26f, 0.10f + 0.025f * Floor);
             if (Enemy.bElite) Enemy.MaxHP *= 1.65f;
@@ -762,7 +761,7 @@ void AAVGameMode::GenerateFloor()
             const int32 X = Camp.X + Camp.W / 2, Y = Camp.Y;
             CampDoors.Add(FVector2D(X + 0.5f, Y + 0.5f));
         }
-        for (int32 I = 0; I < 3 + Floor / 2; ++I)
+        for (int32 I = 0; I < FAVContent::BanditGroupSize(Floor); ++I)
         {
             FAVEnemy Bandit;
             Bandit.Pos = FVector2D(RNG.FRandRange(Camp.X + 1.f, Camp.X + Camp.W - 1.f),
@@ -771,8 +770,7 @@ void AAVGameMode::GenerateFloor()
             Bandit.Type = I % 3 == 0 ? 25 : 33;
             Bandit.Faction = 1;
             Bandit.Level = FAVContent::EnemyLevel(Floor, RNG.RandRange(0, 99));
-            Bandit.MaxHP = FAVContent::Enemy(Bandit.Type, Floor).Health *
-                           FAVContent::LevelHealthMultiplier(Bandit.Level);
+            Bandit.MaxHP = FAVContent::ScaledEnemyHealth(Bandit.Type, Floor, Bandit.Level);
             Bandit.HP = Bandit.MaxHP;
             Bandit.Cooldown = RNG.FRandRange(0.3f, 1.1f);
             Bandit.Id = NextId++;
@@ -795,8 +793,7 @@ void AAVGameMode::GenerateFloor()
         Mini.bMiniBoss = true;
         Mini.Pos = Arena.Center();
         Mini.Level = FAVContent::EnemyLevel(Floor, 99);
-        Mini.MaxHP = FAVContent::Enemy(Mini.Type, Floor).Health *
-                     FAVContent::LevelHealthMultiplier(Mini.Level);
+        Mini.MaxHP = FAVContent::ScaledEnemyHealth(Mini.Type, Floor, Mini.Level);
         Mini.HP = Mini.MaxHP;
         Mini.Cooldown = 1.f;
         Mini.Id = NextId++;
@@ -1215,7 +1212,8 @@ bool AAVGameMode::OpenNearbyChest()
             FAVEnemy Mimic;
             Mimic.Type = 4;
             Mimic.Pos = Chest.Pos;
-            Mimic.MaxHP = 64.f + Floor * 18.f;
+            Mimic.Level = FAVContent::EnemyLevel(Floor, RNG.RandRange(0,99));
+            Mimic.MaxHP = FAVContent::ScaledEnemyHealth(Mimic.Type, Floor, Mimic.Level);
             Mimic.HP = Mimic.MaxHP;
             Mimic.Cooldown = 0.35f;
             Mimic.Id = 100000 + Kills + Chests.Num();
@@ -1506,8 +1504,7 @@ void AAVGameMode::EnterBossArena()
     Boss.Type = PendingGuardian;
     Boss.Level = FAVContent::EnemyLevel(Floor, 99);
     Boss.Pos = FVector2D(26.5f, 16.5f);
-    Boss.MaxHP = FAVContent::Enemy(Boss.Type, Floor).Health *
-        FAVContent::LevelHealthMultiplier(Boss.Level);
+    Boss.MaxHP = FAVContent::ScaledEnemyHealth(Boss.Type, Floor, Boss.Level);
     Boss.HP = Boss.MaxHP;
     Boss.Cooldown = 1.f;
     Boss.Id = 900000 + Floor;
@@ -2288,7 +2285,8 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
         case 49: // blood priest: healing prayer / fire fan
             if (!Variant)
                 for (FAVEnemy& Ally : Enemies)
-                    if (Ally.Faction==E.Faction && FVector2D::Distance(Ally.Pos,E.Pos)<4.f)
+                    if (Ally.HP>0.f && Ally.Faction==E.Faction &&
+                        FVector2D::DistSquared(Ally.Pos,E.Pos)<16.f)
                         Ally.HP=FMath::Min(Ally.MaxHP,Ally.HP+Ally.MaxHP*0.12f);
             else for(int32 K=-1;K<=1;++K)
                 SpawnEnemyBolt(E,Dir+Side*K*0.3f,6.6f,0.50f,2);
@@ -2375,9 +2373,11 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
         E.AbilityCooldown = 3.4f;
     }
     else E.AbilityCooldown = 6.f;
-    E.AttackPattern++;
+    // Increment exactly once before any summon can grow Enemies/TArray.
+    // Otherwise an old FAVEnemy& may dangle after reallocation.
+    ++E.AttackPattern;
     AddEffect(E.Pos, 1, E.bMiniBoss || FAVContent::Enemy(E.Type, Floor).Boss ? 2.f : 1.f);
-    if (Pattern == 8 && Enemies.Num() < 110) // Bone Regent: raise two skeletons
+    if (Pattern == 8 && Enemies.Num() <= 108) // Leave room for both summons
     {
         const FVector2D SummonCenter = E.Pos;
         const int32 SummonLevel = E.Level;
@@ -2390,15 +2390,13 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
             Skeleton.Type = 17;
             Skeleton.Pos = Spawn;
             Skeleton.Level = SummonLevel;
-            Skeleton.MaxHP = FAVContent::Enemy(17, Floor).Health *
-                             FAVContent::LevelHealthMultiplier(Skeleton.Level);
+            Skeleton.MaxHP = FAVContent::ScaledEnemyHealth(17, Floor, Skeleton.Level);
             Skeleton.HP = Skeleton.MaxHP;
             Skeleton.Cooldown = 0.8f;
             Skeleton.Id = 200000 + Kills + SummonCast * 10 + K;
             Enemies.Add(Skeleton);
         }
     }
-    ++E.AttackPattern; // Cycle boss attack patterns and unique summon IDs.
     if (Pattern == 47 && E.Subclass != 0 && Enemies.Num() < 100)
     {
         // Summon only after the caster's effects are complete (TArray may reallocate).
@@ -2408,8 +2406,7 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
             FAVEnemy Soldier;
             Soldier.Type=34; Soldier.Pos=Spawn; Soldier.Faction=E.Faction;
             Soldier.Level=E.Level;
-            Soldier.MaxHP=FAVContent::Enemy(34,Floor).Health *
-                FAVContent::LevelHealthMultiplier(Soldier.Level) * 0.55f;
+            Soldier.MaxHP=FAVContent::ScaledEnemyHealth(34,Floor,Soldier.Level) * 0.55f;
             Soldier.HP=Soldier.MaxHP; Soldier.Id=300000+E.Id*1000+E.AttackPattern;
             Soldier.Cooldown=0.8f;
             Enemies.Add(Soldier);
@@ -2461,15 +2458,17 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         E.Flash = FMath::Max(0.f, E.Flash - DeltaSeconds);
         FVector2D Target = Hero;
         bool bTargetEnemy = false;
-        float TargetDistance = FVector2D::Distance(Hero, E.Pos);
+        float TargetDistanceSq = FVector2D::DistSquared(Hero, E.Pos);
         for (int32 J = 0; J < Enemies.Num(); ++J)
         {
-            if (J == I || Enemies[J].Faction == E.Faction) continue;
-            const float D = FVector2D::Distance(E.Pos, Enemies[J].Pos);
-            if (D < TargetDistance && D < 7.f)
-            { Target = Enemies[J].Pos; TargetDistance = D; bTargetEnemy = true; }
+            if (J == I || Enemies[J].HP <= 0.f ||
+                Enemies[J].Faction == E.Faction) continue;
+            const float DistSq = FVector2D::DistSquared(E.Pos, Enemies[J].Pos);
+            if (DistSq < TargetDistanceSq && DistSq < 49.f)
+            { Target = Enemies[J].Pos; TargetDistanceSq = DistSq; bTargetEnemy = true; }
         }
-        const bool bSeesTarget = TargetDistance < 11.f && FAVDungeonNavigation::LineOfSight(
+        const bool bSeesTarget = TargetDistanceSq < 121.f &&
+            FAVDungeonNavigation::LineOfSight(
             Tiles, MapW, MapH, E.Pos, Target);
         if (bSeesTarget)
         {
@@ -2480,7 +2479,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             for (int32 J = 0; J < Enemies.Num(); ++J)
             {
                 if (J == I || Enemies[J].Faction != E.Faction ||
-                    FVector2D::Distance(E.Pos, Enemies[J].Pos) > 5.5f) continue;
+                    FVector2D::DistSquared(E.Pos, Enemies[J].Pos) > 30.25f) continue;
                 if (Enemies[J].MemoryTime < 1.5f)
                 {
                     Enemies[J].LastSeenHero = Target;
@@ -2539,7 +2538,8 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         {
             if (J == I || Enemies[J].Faction != E.Faction) continue;
             const FVector2D Away = E.Pos - Enemies[J].Pos;
-            if (Away.SizeSquared() > 0.01f && Away.SizeSquared() < 0.6f)
+            const float DistanceSq = Away.SizeSquared();
+            if (DistanceSq > 0.01f && DistanceSq < 0.6f)
                 DesiredVelocity += SafeDirection(Away) * Speed * 0.35f;
         }
         // Pack hunters converge quickly, while crypt guards advance as a shield wall.
@@ -2687,7 +2687,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 const float T = LenSq > KINDA_SMALL_NUMBER ?
                     FMath::Clamp(FVector2D::DotProduct(E.Pos - Old, Segment) / LenSq, 0.f, 1.f) : 0.f;
                 const float Radius = FAVContent::Enemy(E.Type, Floor).Boss ? 0.76f : 0.47f;
-                if (FVector2D::Distance(Old + Segment * T, E.Pos) > Radius) continue;
+                if ((Old + Segment * T - E.Pos).SizeSquared() > Radius * Radius) continue;
                 // The three arrows from one volley may land at most twice on one target.
                 if (Bolt.Visual == 2 && E.LastVolleyId == Bolt.VolleyId &&
                     E.VolleyHitCount >= 2) continue;
@@ -2734,7 +2734,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 if (Victim.Faction == Bolt.Faction || Victim.HP <= 0.f) continue;
                 const float T = LenSq > KINDA_SMALL_NUMBER ?
                     FMath::Clamp(FVector2D::DotProduct(Victim.Pos - Old, Segment) / LenSq, 0.f, 1.f) : 0.f;
-                if (FVector2D::Distance(Old + Segment * T, Victim.Pos) > 0.42f) continue;
+                if ((Old + Segment * T - Victim.Pos).SizeSquared() > 0.1764f) continue;
                 Victim.HP -= Bolt.Damage;
                 Victim.Flash = 0.15f;
                 AddEffect(Victim.Pos, 2, 0.5f);
@@ -2745,7 +2745,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             {
                 const float T = LenSq > KINDA_SMALL_NUMBER ?
                     FMath::Clamp(FVector2D::DotProduct(Hero - Old, Segment) / LenSq, 0.f, 1.f) : 0.f;
-                if (FVector2D::Distance(Old + Segment * T, Hero) < 0.43f)
+                if ((Old + Segment * T - Hero).SizeSquared() < 0.1849f)
                 {
                     const bool bVulnerable = Invulnerability <= 0.f;
                     const int32 Status = Bolt.Status;
