@@ -1089,6 +1089,23 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
                            Pattern == 8 ? 5.8f : 7.0f, 0.55f, Status);
         }
         E.AbilityCooldown = bFrenzy ? 3.3f : 5.6f;
+        if (Pattern == 9) // Forge Tyrant: persistent molten ground
+        {
+            for (int32 K = -1; K <= 1; ++K)
+            {
+                const FVector2D Pos = E.Pos + Dir * 2.2f + Side * (K * 1.25f);
+                if (!CanMove(Pos, 0.2f)) continue;
+                FAVHazard FirePatch;
+                FirePatch.Pos = Pos;
+                FirePatch.Type = 1;
+                Hazards.Add(FirePatch);
+            }
+        }
+        if (Pattern == 3) // Vault Warden: phase blink to reposition
+        {
+            const FVector2D Blink = E.Pos + Side * (E.Id % 2 ? 2.4f : -2.4f);
+            if (CanMove(Blink, 0.47f)) E.Pos = Blink;
+        }
     }
     else if (Pattern == 23 || Pattern == 24 || Pattern == 7) // golem ground slam
     {
@@ -1119,6 +1136,25 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
     else E.AbilityCooldown = 6.f;
     E.AttackPattern++;
     AddEffect(E.Pos, 1, E.bMiniBoss || FAVContent::Enemy(E.Type, Floor).Boss ? 2.f : 1.f);
+    if (Pattern == 8 && Enemies.Num() < 110) // Bone Regent: raise two skeletons
+    {
+        const FVector2D SummonCenter = E.Pos;
+        for (int32 K = -1; K <= 1; K += 2)
+        {
+            const FVector2D Spawn = SummonCenter + Side * (K * 1.5f);
+            if (!CanMove(Spawn, 0.28f)) continue;
+            FAVEnemy Skeleton;
+            Skeleton.Type = 17;
+            Skeleton.Pos = Spawn;
+            Skeleton.Level = E.Level;
+            Skeleton.MaxHP = FAVContent::Enemy(17, Floor).Health *
+                             FAVContent::LevelHealthMultiplier(Skeleton.Level);
+            Skeleton.HP = Skeleton.MaxHP;
+            Skeleton.Cooldown = 0.8f;
+            Skeleton.Id = 200000 + Kills + E.AttackPattern * 10 + K;
+            Enemies.Add(Skeleton);
+        }
+    }
 }
 
 void AAVGameMode::UpdateCombat(float DeltaSeconds)
