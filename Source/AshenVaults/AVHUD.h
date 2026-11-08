@@ -35,6 +35,8 @@ private:
     void Rect(float X, float Y, float W, float H, const FLinearColor& Color);
     void Text(const FString& Value, float X, float Y, const FLinearColor& Color, float Size = 1.f);
     void Sprite(int32 Type, const FVector2D& Pos, float Size = 1.f, float Alpha = 1.f);
+    void SpriteRotated(int32 Type, const FVector2D& Pos, float Size,
+                       float AngleRadians, float Alpha = 1.f);
     FVector2D Screen(const FVector2D& World) const;
     void DrawDungeon(const AAVGameMode& Game);
     void DrawLighting(const AAVGameMode& Game);
