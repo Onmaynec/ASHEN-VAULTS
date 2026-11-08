@@ -8,6 +8,7 @@
 #include "AVSaveGame.h"
 #include "AVDungeonNavigation.h"
 #include "AVContent.h"
+#include "AVEncounters.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
@@ -704,21 +705,27 @@ void AAVGameMode::GenerateFloor()
         // The merchant's chamber is a safe retreat, not an accidental arena.
         if (bMerchantSpawned && I == 1) continue;
         const FRoom& R = Rooms[I];
-        const int32 Count = RNG.RandRange(2 + BiomeDepth() / 3, FMath::Min(8, 3 + BiomeDepth()));
-        for (int32 E = 0; E < Count; ++E)
+        const FAVEncounterPlan Encounter = FAVEncounters::Plan(
+            Floor, R.W * R.H, RNG.RandRange(0, 99), RNG.RandRange(0, 99));
+        for (int32 E = 0; E < Encounter.EnemyCount; ++E)
         {
             FAVEnemy Enemy;
             Enemy.Pos = FVector2D(RNG.FRandRange(R.X + 1.f, R.X + R.W - 1.f),
                                   RNG.FRandRange(R.Y + 1.f, R.Y + R.H - 1.f));
             if (!CanMove(Enemy.Pos, 0.3f)) Enemy.Pos = R.Center();
-            Enemy.Type = FAVContent::EnemyRoll(Floor, RNG.RandRange(0, 99));
+            Enemy.Type = FAVEncounters::SelectType(
+                Floor, Encounter.Kind,
+                RNG.RandRange(0, 99), RNG.RandRange(0, 99),
+                RNG.RandRange(0, 99));
             if (Enemy.Type >= 34 && Enemy.Type <= 51) Enemy.Subclass = RNG.RandRange(0, 1);
             Enemy.Level = FAVContent::EnemyLevel(Floor, RNG.RandRange(0, 99));
-            Enemy.Equipment = RNG.FRand() < 0.085f ? RNG.RandRange(1, 3) : 0;
+            Enemy.Equipment = RNG.FRand() < Encounter.EquipmentChance ?
+                RNG.RandRange(1, 3) : 0;
             // Bow zombies keep their own appearance and fire projectiles.
             Enemy.MaxHP = FAVContent::ScaledEnemyHealth(Enemy.Type, Floor, Enemy.Level) *
                 (Enemy.Equipment == 1 ? 1.35f : 1.f);
-            Enemy.bElite = RNG.FRand() < FMath::Min(0.26f, 0.10f + 0.025f * Floor);
+            Enemy.bElite = E < Encounter.GuaranteedElites ||
+                RNG.FRand() < Encounter.EliteChance;
             if (Enemy.bElite) Enemy.MaxHP *= 1.65f;
             Enemy.HP = Enemy.MaxHP;
             Enemy.Cooldown = RNG.FRandRange(0.3f, 1.6f);
@@ -1066,8 +1073,10 @@ void AAVGameMode::Strike(bool bSpin)
             Wave.Damage=FMath::RoundToInt(AttackPower*0.5f);
             Bolts.Add(Wave);
         }
-    if(HeroClass==2 && bSpin && SkillRank(30)>0) {
-        const int32 Count=SkillRank(30)>=2?12:8;
+    if(HeroClass==2 && bSpin &&
+       SkillRank(FAVSkills::ArcanistRuneWaveSkillId)>0) {
+        const int32 Count=
+            SkillRank(FAVSkills::ArcanistRuneWaveSkillId)>=2?12:8;
         for(int32 I=0;I<Count;++I) {
             const float A=6.2831853f*I/Count;
             FAVBolt Wave; Wave.bFriendly=true; Wave.Pos=Hero;
@@ -1166,9 +1175,11 @@ void AAVGameMode::ThrowKnife()
     Blade.Time=1.1f/ProjectileSpeedMultiplier();
     Blade.Damage=FMath::RoundToInt(AttackPower*
         (HasRelic(2)?1.12f:0.83f)+RangedBonus);
-    if(HeroClass==2 && SkillRank(29)>0) {
+    if(HeroClass==2 &&
+       SkillRank(FAVSkills::ArcanistSphereSkillId)>0) {
         Blade.Visual=4; Blade.Damage=FMath::RoundToInt(
-            Blade.Damage*(1.f+0.12f*SkillRank(29)));
+            Blade.Damage*(1.f+0.12f*
+                SkillRank(FAVSkills::ArcanistSphereSkillId)));
     }
     Bolts.Add(Blade);
     if(HeroClass==2 && HasGearPerk(7) && (++BasicAttackSequence%4)==0) {
