@@ -5,7 +5,7 @@
 #include "AVGameMode.generated.h"
 
 UENUM()
-enum class EAVPhase : uint8 { Playing, Upgrade, Relic, Shop, Paused, Dead, Victory };
+enum class EAVPhase : uint8 { Playing, Upgrade, Relic, Shop, Paused, Dead, Victory, Inventory, Skills };
 
 USTRUCT()
 struct FAVEnemy
@@ -188,6 +188,25 @@ public:
     UPROPERTY(BlueprintReadOnly) float RangedBonus = 0.f;
     UPROPERTY(BlueprintReadOnly) int32 ShotSeries = 0;
     UPROPERTY(BlueprintReadOnly) int32 EquippedGear = 0;
+    // v0.9.0 item instances: 0 weapon, 1 head, 2 chest, 3 hands, 4 legs,
+    // 5 boots, 6 and 7 accessories. -1 means empty.
+    TArray<int32> EquipmentSlots;
+    TArray<int32> InventoryItems;
+    TArray<uint8> LearnedSkills;
+    int32 SkillPoints = 0;
+    int32 GearSelection = 0;
+    int32 SkillSelection = 0;
+    bool bFreeRespecUsed = false;
+    bool bLastStandUsed = false;
+    float EquipmentAppliedHP = 0.f;
+    float EquipmentAppliedStamina = 0.f;
+    float EquipmentAppliedAttack = 0.f;
+    float EquipmentAppliedSpeed = 0.f;
+    float EquipmentAppliedArmor = 0.f;
+    float RewardDamageTime = 0.f;
+    float DashBonusTime = 0.f;
+    float RevengeTime = 0.f;
+    int32 BasicAttackSequence = 0;
 
     EAVPhase Phase = EAVPhase::Playing;
     FVector2D Hero = FVector2D(4.f, 4.f);
@@ -265,6 +284,11 @@ public:
     bool IsGuardianFloor() const { return BiomeDepth() == FloorsPerBiome; }
     int32 ShopPrice(int32 Slot) const;
     void NewRun(bool bSameSeed = false);
+    int32 SkillIdAt(int32 Selection) const;
+    int32 SkillRank(int32 Id) const;
+    float GearStat(int32 Stat) const;
+    bool HasGearPerk(int32 PerkId) const;
+    FString GearName(int32 ItemId) const;
 
 private:
     FRandomStream RNG;
@@ -290,6 +314,15 @@ private:
     float FlowRefreshTime = 0.f;
 
     void GenerateFloor();
+    void RebuildCharacterBonuses();
+    void EquipInventoryItem(int32 Index);
+    void UnequipSlot(int32 Slot);
+    void LearnSkill(int32 Selection);
+    void ResetSkills();
+    void SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity = 0);
+    float ModifiedAttackDamage(float Damage, const FAVEnemy& Target, bool bRanged, bool bAbility);
+    float BasicAttackInterval() const;
+    float ProjectileSpeedMultiplier() const;
     void StoreDungeon();
     void RestoreDungeon();
     void EnterSafeCamp();
