@@ -1232,6 +1232,9 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
          646.f * Scale, Y + 11.f * Scale, Game.IsExitReady() ? Mint : Blood, 0.95f);
     Text(FString::Printf(TEXT("RELICS %d   ECHOES %d"), Game.RelicCount, Game.Echoes),
          646.f * Scale, Y + 34.f * Scale, Pale, 0.83f);
+    Text(FString::Printf(TEXT("GEAR %d  ARMOR %.0f%%  RANGED +%.0f"),
+         Game.EquippedGear, Game.ArmorRating * 100.f, Game.RangedBonus),
+         280.f * Scale, Y + 53.f * Scale, GoldColor, 0.73f);
     Text(FString::Printf(TEXT("F3  FX %s"), Game.VisualQuality == 2 ?
          TEXT("HIGH") : Game.VisualQuality == 1 ? TEXT("MED") : TEXT("LOW")),
          816.f * Scale, Y + 53.f * Scale, Aether, 0.73f);
