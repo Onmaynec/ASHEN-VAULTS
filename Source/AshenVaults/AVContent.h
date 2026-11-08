@@ -31,7 +31,7 @@ public:
     static int32 EnemyLevel(int32 Floor, int32 Roll);
     static float LevelHealthMultiplier(int32 Level);
     static float LevelDamageMultiplier(int32 Level);
-    static constexpr int32 PickupCount = 8;
+    static constexpr int32 PickupCount = 11;
     // 0 Warden, 1 Duelist, 2 Arcanist. Pure data: safe in standalone tests.
     static float HeroHealth(int32 HeroId);
     static float HeroStamina(int32 HeroId);
