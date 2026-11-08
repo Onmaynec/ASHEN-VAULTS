@@ -56,7 +56,8 @@ void AAVGameMode::BeginPlay()
             LifetimeGold = Save->TotalGold;
         }
     }
-    NewRun();
+    // Construct the initial state without deleting a saved run during boot.
+    NewRun(false, true);
     if (UAVSaveGame* Save = Cast<UAVSaveGame>(
         UGameplayStatics::LoadGameFromSlot(TEXT("AshenVaultsRecord"), 0)))
     {
@@ -443,8 +444,21 @@ void AAVGameMode::SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity)
     Pickups.Add(Gear);
 }
 
-void AAVGameMode::NewRun(bool bSameSeed)
+void AAVGameMode::InvalidateCheckpoint()
 {
+    bCanContinue = false;
+    UAVSaveGame* Save = Cast<UAVSaveGame>(
+        UGameplayStatics::LoadGameFromSlot(TEXT("AshenVaultsRecord"), 0));
+    if (!Save || !Save->bHasCheckpoint) return;
+    // Preserve lifetime statistics but never allow an abandoned/dead run
+    // to reappear as a valid "Continue" choice after the next launch.
+    Save->bHasCheckpoint = false;
+    UGameplayStatics::SaveGameToSlot(Save, TEXT("AshenVaultsRecord"), 0);
+}
+
+void AAVGameMode::NewRun(bool bSameSeed, bool bKeepExistingCheckpoint)
+{
+    if (!bKeepExistingCheckpoint) InvalidateCheckpoint();
     Floor = 1; Level = 1; XP = 0; Gold = 0; Kills = 0; Potions = 2;
     EquipmentSlots.Init(-1, 8); InventoryItems.Reset();
     LearnedSkills.Init(0, FAVSkills::Count);
@@ -1831,6 +1845,9 @@ void AAVGameMode::RecordRun()
         UGameplayStatics::CreateSaveGameObject(UAVSaveGame::StaticClass()));
     if (Save)
     {
+        // A completed/dead run cannot be resumed from its old checkpoint.
+        Save->bHasCheckpoint = false;
+        bCanContinue = false;
         Save->BestFloor = BestFloor; Save->BestKills = BestKills; Save->TotalGold = LifetimeGold;
         UGameplayStatics::SaveGameToSlot(Save, TEXT("AshenVaultsRecord"), 0);
     }
