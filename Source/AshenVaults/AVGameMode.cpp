@@ -62,6 +62,7 @@ void AAVGameMode::BeginPlay()
             Level = Save->CheckpointLevel; XP = Save->CheckpointXP;
             Gold = Save->CheckpointGold; Kills = Save->CheckpointKills;
             Potions = Save->CheckpointPotions; EquippedGear = Save->CheckpointGear;
+            EquippedSlotsMask = Save->CheckpointEquippedMask;
             WeaponUpgrade = Save->CheckpointWeaponUpgrade;
             ArmorUpgrade = Save->CheckpointArmorUpgrade;
             RelicMask = Save->CheckpointRelics;
@@ -159,6 +160,8 @@ void AAVGameMode::NewRun(bool bSameSeed)
     ArmorRating = 0.f; RangedBonus = 0.f; EquippedGear = 0;
     bInSafeCamp = false; bInLobby = false; bInBossArena = false;
     bWorldStored = false; PackGold = 0; PackMaterials = 0;
+    BackpackArmor = 0; BackpackBows = 0; BackpackWeapons = 0;
+    EquippedSlotsMask = 0;
     WeaponUpgrade = 0; ArmorUpgrade = 0;
     RelicMask = 0u; RelicCount = 0; Echoes = 0; bRelicPending = false;
     HeroVelocity = FVector2D::ZeroVector;
@@ -971,8 +974,10 @@ void AAVGameMode::EnterBossArena()
 
 void AAVGameMode::SellPack()
 {
-    Gold += PackMaterials * FMath::Max(1, 3 + Floor / 5);
+    Gold += PackMaterials * FMath::Max(1, 3 + Floor / 5) +
+        BackpackArmor * 18 + BackpackBows * 15 + BackpackWeapons * 20;
     PackGold = 0; PackMaterials = 0;
+    BackpackArmor = 0; BackpackBows = 0; BackpackWeapons = 0;
 }
 
 void AAVGameMode::ForgeUpgrade(int32 Slot)
@@ -1003,6 +1008,7 @@ void AAVGameMode::SaveCheckpoint()
     Save->CheckpointLevel = Level; Save->CheckpointXP = XP;
     Save->CheckpointGold = Gold; Save->CheckpointKills = Kills;
     Save->CheckpointPotions = Potions; Save->CheckpointGear = EquippedGear;
+    Save->CheckpointEquippedMask = EquippedSlotsMask;
     Save->CheckpointWeaponUpgrade = WeaponUpgrade;
     Save->CheckpointArmorUpgrade = ArmorUpgrade;
     Save->CheckpointRelics = RelicMask;
@@ -1783,13 +1789,31 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 Toast = TEXT("ENDURANCE SHARD: +10 MAX STAMINA"); ToastTime = 2.f; break;
             case 7: MoveSpeed += 0.18f;
                 Toast = TEXT("HASTE SHARD: +0.18 SPEED"); ToastTime = 2.f; break;
-            case 8: ArmorRating = FMath::Min(0.45f, ArmorRating + 0.08f);
-                ++EquippedGear;
-                Toast = TEXT("SALVAGED CHESTPLATE: +8% ARMOR"); ToastTime = 2.4f; break;
-            case 9: RangedBonus += 2.f; ++EquippedGear;
-                Toast = TEXT("SALVAGED BOW: +2 RANGED DAMAGE"); ToastTime = 2.4f; break;
-            case 10: AttackPower += 3.f; ++EquippedGear;
-                Toast = TEXT("SALVAGED WEAPON: +3 MELEE DAMAGE"); ToastTime = 2.4f; break;
+            case 8:
+                if ((EquippedSlotsMask & 1) == 0)
+                {
+                    EquippedSlotsMask |= 1; ++EquippedGear;
+                    ArmorRating = FMath::Min(0.45f, ArmorRating + 0.08f);
+                    Toast = TEXT("CHESTPLATE EQUIPPED"); 
+                }
+                else { ++BackpackArmor; Toast = TEXT("CHESTPLATE STORED IN PACK"); }
+                ToastTime = 2.4f; break;
+            case 9:
+                if ((EquippedSlotsMask & 2) == 0)
+                {
+                    EquippedSlotsMask |= 2; ++EquippedGear; RangedBonus += 2.f;
+                    Toast = TEXT("BOW EQUIPPED");
+                }
+                else { ++BackpackBows; Toast = TEXT("BOW STORED IN PACK"); }
+                ToastTime = 2.4f; break;
+            case 10:
+                if ((EquippedSlotsMask & 4) == 0)
+                {
+                    EquippedSlotsMask |= 4; ++EquippedGear; AttackPower += 3.f;
+                    Toast = TEXT("WEAPON EQUIPPED");
+                }
+                else { ++BackpackWeapons; Toast = TEXT("WEAPON STORED IN PACK"); }
+                ToastTime = 2.4f; break;
             default: break;
             }
             Pickups.RemoveAtSwap(I);
