@@ -298,8 +298,8 @@ void AAVGameMode::RebuildCharacterBonuses()
 
 float AAVGameMode::BasicAttackInterval() const
 {
-    const float Speed = FMath::Clamp(1.f + GearStat(AVAttackSpeedPercent) * 0.01f, 0.45f, 2.f);
-    return FMath::Max(0.33f, (HeroClass == 3 ? 0.52f : 0.33f) / Speed);
+    return FAVContent::BasicAttackInterval(
+        HeroClass, GearStat(AVAttackSpeedPercent));
 }
 
 float AAVGameMode::ProjectileSpeedMultiplier() const
