@@ -936,12 +936,29 @@ void AAVGameMode::EnterBossArena()
     StoreDungeon();
     bInBossArena = true;
     MakeSafeRoom(true);
-    Hero = FVector2D(26.5f, 23.5f);
-    Exit = FVector2D(26.5f, 14.5f);
+    // Isolated guardian chamber: a wide octagonal fighting floor.
+    Tiles.Init(0, MapW * MapH);
+    for (int32 Y = 8; Y <= 30; ++Y)
+        for (int32 X = 11; X <= 41; ++X)
+            if (FMath::Abs(X - 26) + FMath::Abs(Y - 19) <= 25)
+                Tiles[Y * MapW + X] = 1;
+    Visible.Init(0, MapW * MapH);
+    Explored.Init(0, MapW * MapH);
+    Hero = FVector2D(26.5f, 27.5f);
+    Exit = FVector2D(26.5f, 29.5f);
+    for (int32 I = 0; I < 8; ++I)
+    {
+        const float Angle = I * 6.2831853f / 8.f;
+        FAVDecor Pillar;
+        Pillar.Type = CurrentBiome() * 3 + (I % 3);
+        Pillar.Pos = FVector2D(26.5f + FMath::Cos(Angle) * 11.f,
+                               19.5f + FMath::Sin(Angle) * 8.f);
+        Decorations.Add(Pillar);
+    }
     FAVEnemy Boss;
     Boss.Type = PendingGuardian;
     Boss.Level = FAVContent::EnemyLevel(Floor, 99);
-    Boss.Pos = FVector2D(26.5f, 17.5f);
+    Boss.Pos = FVector2D(26.5f, 16.5f);
     Boss.MaxHP = FAVContent::Enemy(Boss.Type, Floor).Health *
         FAVContent::LevelHealthMultiplier(Boss.Level);
     Boss.HP = Boss.MaxHP;
