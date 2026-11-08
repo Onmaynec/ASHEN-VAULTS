@@ -10,3 +10,12 @@ g++ -std=c++14 -Wall -Wextra -Werror -pedantic \
   "$ROOT/Tests/Standalone/NavigationTests.cpp" \
   -o "$OUTPUT"
 "$OUTPUT"
+
+CONTENT_OUTPUT="$(mktemp)"
+trap 'rm -f "$OUTPUT" "$CONTENT_OUTPUT"' EXIT
+g++ -std=c++14 -Wall -Wextra -Werror -pedantic \
+  -I"$ROOT/Tests/Standalone" -I"$ROOT/Source/AshenVaults" \
+  "$ROOT/Source/AshenVaults/AVContent.cpp" \
+  "$ROOT/Tests/Standalone/ContentTests.cpp" \
+  -o "$CONTENT_OUTPUT"
+"$CONTENT_OUTPUT"
