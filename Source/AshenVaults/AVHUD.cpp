@@ -911,7 +911,7 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         Rect(Pt.X + 3.f * Scale, Pt.Y + 1.f * Scale,
              3.f * Scale, 3.f * Scale, GoldColor);
         if (FVector2D::Distance(Door, Game.Hero) < 2.5f)
-            Text(TEXT("[F] OPEN"), Pt.X - 22.f * Scale, Pt.Y - 23.f * Scale,
+            Text(TEXT("[E] OPEN"), Pt.X - 22.f * Scale, Pt.Y - 23.f * Scale,
                  GoldColor, 0.76f);
     }
 
@@ -1144,7 +1144,7 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
     }
 
     if (Game.bMerchantSpawned && FVector2D::Distance(Game.Hero, Game.Merchant) < 2.0f)
-        Text(TEXT("F  VISIT THE MERCHANT"),
+        Text(TEXT("E  VISIT THE MERCHANT"),
              Hp.X - 77.f * Scale, Hp.Y - 49.f * Scale, GoldColor, 0.85f);
     else if (!Game.bShrineUsed && FVector2D::Distance(Game.Hero, Game.Shrine) < 2.1f)
         Text(TEXT("F  PRAY  +HP / +DAMAGE"),
@@ -1156,7 +1156,7 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
                 return true;
         return false;
     }())
-        Text(TEXT("F  OPEN TREASURE"), Hp.X - 61.f * Scale,
+        Text(TEXT("E  OPEN TREASURE"), Hp.X - 61.f * Scale,
              Hp.Y - 49.f * Scale, GoldColor, 0.88f);
     else if ([&Game]()
     {
@@ -1274,7 +1274,7 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
          Game.SpinCooldown <= 0.f ? Mint : Pale, 0.95f);
     Text(TEXT("R   THROW BLADE"), 447.f * Scale, Y + 11.f * Scale,
          Game.KnifeCooldown <= 0.f && Game.Stamina >= 18.f ? Mint : Pale, 0.95f);
-    Text(FString::Printf(TEXT("E   POTION x%d"), Game.Potions),
+    Text(FString::Printf(TEXT("F   POTION x%d"), Game.Potions),
          447.f * Scale, Y + 34.f * Scale, Game.Potions > 0 ? GoldColor : Pale, 0.95f);
     Text(Game.IsExitReady() ? TEXT("F   EXIT READY") :
          FString::Printf(TEXT("FOES %d  |  CACHE %d"),
