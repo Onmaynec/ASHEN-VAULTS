@@ -752,7 +752,7 @@ bool AAVGameMode::ActivateNearbyEcho()
 
 void AAVGameMode::DamageHero(float Damage, const FVector2D& Source)
 {
-    if (Invulnerability > 0.f || Phase != EAVPhase::Playing) return;
+    if (Invulnerability > 0.f || Phase != EAVPhase::Playing || bInSafeCamp || bInLobby) return;
     const float AdjustedDamage = Damage * (HasRelic(1) ? 0.80f : 1.f) *
         (1.f - FMath::Clamp(ArmorRating, 0.f, 0.45f));
     HP = FMath::Max(0.f, HP - AdjustedDamage);
@@ -833,7 +833,10 @@ void AAVGameMode::KillEnemy(int32 Index)
         Pickups.Add(Upgrade);
     }
     if (bBoss)
+    {
+        if (bInBossArena) bGuardianDefeated = true;
         OfferRelic();
+    }
 }
 
 void AAVGameMode::GrantExperience(int32 Amount)
@@ -1034,7 +1037,7 @@ void AAVGameMode::PollInput(float DeltaSeconds)
     const bool bPause = Pressed(PC, EKeys::Escape, PrevPause) || PC->WasInputKeyJustPressed(EKeys::P);
     const bool bRestart = Pressed(PC, EKeys::Enter, PrevEnter);
     const bool bReplay = Pressed(PC, EKeys::R, PrevReplay); // Retry after death; knife during play.
-    if (Pressed(PC, EKeys::H, PrevHero))
+    if (!bInLobby && !bInSafeCamp && Pressed(PC, EKeys::H, PrevHero))
     {
         HeroClass = (HeroClass + 1) % FAVContent::HeroCount;
         NewRun(); // Class changes restart the run; never mix stats mid-run.
@@ -1057,8 +1060,8 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         (PC->IsInputKeyDown(EKeys::LeftMouseButton) && AttackCooldown <= 0.f);
     const bool bSpin = Pressed(PC, EKeys::Q, PrevSpin) || PC->WasInputKeyJustPressed(EKeys::RightMouseButton);
     const bool bDash = Pressed(PC, EKeys::SpaceBar, PrevDash);
-    const bool bHeal = Pressed(PC, EKeys::E, PrevHeal);
-    const bool bUse = Pressed(PC, EKeys::F, PrevUse);
+    const bool bHeal = Pressed(PC, EKeys::F, PrevHeal);
+    const bool bUse = Pressed(PC, EKeys::E, PrevUse);
 
     if (Phase == EAVPhase::Dead || Phase == EAVPhase::Victory)
     {
@@ -1072,6 +1075,7 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         if (bChoice0) BuyFromMerchant(0);
         else if (bChoice1) BuyFromMerchant(1);
         else if (bChoice2) BuyFromMerchant(2);
+        else if (PC->WasInputKeyJustPressed(EKeys::Four) && bInSafeCamp) SellPack();
         return;
     }
     if (Phase == EAVPhase::Relic)
@@ -1146,6 +1150,42 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         PoisonTime = 0.f; BurnTime = 0.f;
         AddEffect(Hero, 2, 1.f);
     }
+    if (bInLobby)
+    {
+        if (bUse && FVector2D::Distance(Hero, Exit) < 1.8f) ResumeFromLobby();
+        return;
+    }
+    if (bInSafeCamp)
+    {
+        if (bUse && FVector2D::Distance(Hero, Exit) < 1.8f) RestoreDungeon();
+        else if (bUse && FVector2D::Distance(Hero, Shrine) < 1.8f) EnterLobby();
+        else if (bUse && FVector2D::Distance(Hero, Merchant) < 1.8f) Phase = EAVPhase::Shop;
+        else if (bUse && FVector2D::Distance(Hero, FVector2D(32.5f, 22.5f)) < 1.8f)
+        {
+            ForgeUpgrade(PC->IsInputKeyDown(EKeys::LeftShift) ? 1 : 0);
+        }
+        return;
+    }
+    if (bUse && bHasSafeCampDoor && FVector2D::Distance(Hero, SafeCampDoor) < 1.7f)
+    {
+        EnterSafeCamp();
+        return;
+    }
+    if (bUse && bInBossArena && IsExitReady() && FVector2D::Distance(Hero, Exit) < 1.8f)
+    {
+        RestoreDungeon();
+        bGuardianDefeated = true;
+        PendingGuardian = -1;
+        Toast = TEXT("GUARDIAN DEFEATED: THE DESCENT OPENS");
+        ToastTime = 2.5f;
+        return;
+    }
+    if (bUse && !bInBossArena && PendingGuardian >= 0 &&
+        IsExitReady() && FVector2D::Distance(Hero, Exit) < 1.8f)
+    {
+        EnterBossArena();
+        return;
+    }
     if (bUse && bMerchantSpawned && FVector2D::Distance(Hero, Merchant) < 1.65f)
     {
         Phase = EAVPhase::Shop;
@@ -1171,7 +1211,7 @@ void AAVGameMode::PollInput(float DeltaSeconds)
     {
         // One-time lore artifact, reward and nearby map discovery.
     }
-    else if (bUse && IsExitReady() && FVector2D::Distance(Hero, Exit) < 1.7f)
+    else if (bUse && !bInBossArena && IsExitReady() && FVector2D::Distance(Hero, Exit) < 1.7f)
     {
         {
             ++Floor;
@@ -1694,7 +1734,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         {
             switch (P.Type)
             {
-            case 0: Gold += P.Amount; break;
+            case 0: Gold += P.Amount; PackGold += P.Amount; break;
             case 1: HP = FMath::Min(MaxHP, HP + P.Amount); break;
             case 2: Stamina = FMath::Min(MaxStamina, Stamina + P.Amount); break;
             case 3: ++Potions; break;
@@ -1751,7 +1791,7 @@ void AAVGameMode::Tick(float DeltaSeconds)
         if (ComboTime <= 0.f) Combo = 0;
         ToastTime = FMath::Max(0.f, ToastTime - DT);
         RefreshAwareness(DT);
-        UpdateCombat(DT);
+        if (!bInSafeCamp && !bInLobby) UpdateCombat(DT);
         if (Phase != EAVPhase::Playing) break;
 
         PoisonTime = FMath::Max(0.f, PoisonTime - DT);
