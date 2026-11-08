@@ -390,6 +390,33 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
             Put(12, 13, Highlight);
         }
     }
+    else if (Type >= 104 && Type <= 106) // salvageable enemy equipment
+    {
+        if (Type == 104) // chestplate
+        {
+            Box(4, 4, 11, 12, Outline);
+            Box(5, 4, 10, 11, Metal);
+            Box(6, 5, 9, 9, DarkMetal);
+            Box(7, 5, 8, 7, White);
+            Box(3, 6, 4, 9, Metal); Box(11, 6, 12, 9, Metal);
+        }
+        else if (Type == 105) // bow
+        {
+            for (int32 Y = 2; Y <= 13; ++Y) Put(11, Y, White);
+            Box(5, 3, 7, 5, Rust); Box(4, 6, 5, 9, Rust);
+            Box(5, 10, 7, 12, Rust); Box(7, 12, 10, 13, Rust);
+            Box(7, 2, 10, 3, Rust); Box(3, 7, 13, 8, Metal);
+            Put(13, 7, White);
+        }
+        else // enchanted blade
+        {
+            Box(7, 2, 8, 10, PixelColor(175, 105, 227));
+            Box(7, 1, 8, 3, White);
+            Box(4, 10, 11, 11, Metal);
+            Box(7, 12, 8, 14, Rust);
+            Put(6, 5, Fire); Put(9, 7, Fire);
+        }
+    }
     else if (Type == 23) // wandering merchant
     {
         Box(3, 12, 12, 14, Shadow);
@@ -533,7 +560,7 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
 void AAVHUD::InitSprites()
 {
     if (Sprites.Num() > 0) return;
-    for (int32 I = 0; I <= 103; ++I) Sprites.Add(MakeSprite(I));
+    for (int32 I = 0; I <= 106; ++I) Sprites.Add(MakeSprite(I));
     for (int32 Biome = 0; Biome < 3; ++Biome)
         for (int32 Variant = 0; Variant < FAVArt::VariantsPerBiome; ++Variant)
             BiomeTiles.Add(FAVArt::BuildTile(Biome, Variant));
@@ -899,7 +926,8 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         if (!Game.IsVisibleAt(P.Pos)) continue;
         const FVector2D Pt = P.Pos + FVector2D(0.f, -0.11f * FMath::Sin(P.Time * 5.2f));
         Sprite(P.Type == 0 ? 5 : P.Type == 1 ? 6 : P.Type == 2 ? 7 :
-               P.Type == 3 ? 8 : 12, Pt, P.Type == 4 ? 0.9f : 0.7f);
+               P.Type == 3 ? 8 : P.Type >= 8 && P.Type <= 10 ? 96 + P.Type : 12,
+               Pt, P.Type >= 8 ? 0.9f : P.Type == 4 ? 0.9f : 0.7f);
     }
     for (const FAVBolt& Bolt : Game.Bolts)
         if (Game.IsVisibleAt(Bolt.Pos))
@@ -964,10 +992,23 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         if (E.Type >= 15)
             Rect(Pt.X - 8.f * Scale, Pt.Y - 13.f * Scale,
                  16.f * Scale, 2.f * Scale, Marker);
-        if (E.Equipment != 0)
-            Rect(Pt.X + 7.f * Scale, Pt.Y - 12.f * Scale,
-                 4.f * Scale, 7.f * Scale,
-                 E.Equipment == 1 ? FLinearColor(0.65f, 0.69f, 0.75f, 1.f) : GoldColor);
+        if (E.Equipment == 1)
+        {
+            Rect(Pt.X - 6.f * Scale, Pt.Y - 1.f * Scale,
+                 12.f * Scale, 8.f * Scale, FLinearColor(0.52f, 0.57f, 0.65f, 0.85f));
+            Rect(Pt.X - 2.f * Scale, Pt.Y + 1.f * Scale,
+                 4.f * Scale, 3.f * Scale, FLinearColor(0.82f, 0.86f, 0.88f, 1.f));
+        }
+        else if (E.Equipment == 2)
+        {
+            Rect(Pt.X + 8.f * Scale, Pt.Y - 9.f * Scale,
+                 3.f * Scale, 15.f * Scale, FLinearColor(0.69f, 0.42f, 0.21f, 1.f));
+            Rect(Pt.X + 11.f * Scale, Pt.Y - 7.f * Scale,
+                 1.f * Scale, 11.f * Scale, Pale);
+        }
+        else if (E.Equipment == 3)
+            Rect(Pt.X + 8.f * Scale, Pt.Y - 10.f * Scale,
+                 4.f * Scale, 14.f * Scale, GoldColor);
         Text(FString::Printf(TEXT("Lv.%d"), E.Level),
              Pt.X - 12.f * Scale, Pt.Y - (bBoss ? 37.f : 29.f) * Scale, Pale, 0.68f);
         if (E.HP < E.MaxHP || bBoss || E.bElite)
