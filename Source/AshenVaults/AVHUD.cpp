@@ -697,6 +697,7 @@ void AAVHUD::InitSprites()
     };
     HeroAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Characters/HeroAtlas.png"));
     EquipmentAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Icons/EquipmentAtlas.png"));
+    BossAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Bosses/BossAtlas.png"));
     for(int32 Biome=0;Biome<4;++Biome) {
         AuthoredAtlases.Add(FAVImageLoader::LoadPNG(Atlases[Biome]));
         // Procedural fallback remains deterministic when the PNG is absent.
@@ -1229,8 +1230,36 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         const float EnemyBob = FMath::Sin(Game.RunTime *
             (E.Type == 5 ? 15.f : 7.f) + E.Id * 0.7f) *
             (E.Type == 10 ? 0.12f : 0.045f);
-        Sprite(SpriteType, E.Pos + FVector2D(0.f, EnemyBob),
-               Radius, E.Flash > 0.f ? 0.55f : 1.f);
+        const bool bGuardian=E.Type==3 || E.Type==8 || E.Type==9 || E.Type==56;
+        if(bGuardian && BossAtlas)
+        {
+            const int32 Row=E.Type==8?0:E.Type==9?1:E.Type==3?2:3;
+            const int32 Frame=E.HP<E.MaxHP*0.45f?
+                4+(FMath::FloorToInt(Game.RunTime*4.f)%2):
+                (bCasting?2+(FMath::FloorToInt(Game.RunTime*12.f)%2):
+                            FMath::FloorToInt(Game.RunTime*2.f)%2);
+            const FVector2D BP=Screen(E.Pos+FVector2D(0.f,EnemyBob));
+            const float Size=75.f*Scale;
+            const FLinearColor Aura=E.Type==8?
+                FLinearColor(0.67f,0.32f,0.71f,0.07f):
+                E.Type==9?FLinearColor(1.f,0.36f,0.13f,0.07f):
+                E.Type==56?FLinearColor(0.92f,0.13f,0.23f,0.07f):
+                FLinearColor(0.30f,0.81f,0.55f,0.07f);
+            if(Game.VisualQuality>=1)
+                for(int32 Halo=3;Halo>0;--Halo) {
+                    const float H=Size*(1.f+Halo*0.24f);
+                    Rect(BP.X-H*0.5f,BP.Y-H*0.55f,H,H*0.83f,
+                         FLinearColor(Aura.R,Aura.G,Aura.B,Aura.A/Halo));
+                }
+            DrawTexture(BossAtlas,BP.X-Size*0.5f,BP.Y-Size*0.54f,
+                        Size,Size,Frame/6.f,Row/4.f,1.f/6.f,1.f/4.f,
+                        FLinearColor(1.f,1.f,1.f,E.Flash>0.f?0.65f:1.f),
+                        BLEND_Translucent,1.f,false,0.f,
+                        FVector2D::ZeroVector);
+        }
+        else
+            Sprite(SpriteType,E.Pos+FVector2D(0.f,EnemyBob),
+                   Radius,E.Flash>0.f?0.55f:1.f);
         if(Game.CurrentBiome()==3 && E.Type>=34 && E.Type<=56 &&
            (E.bMiniBoss || E.Type==56 ||
             FVector2D::Distance(E.Pos,Game.Hero)<2.4f)) {
