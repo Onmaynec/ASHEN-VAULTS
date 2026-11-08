@@ -1196,18 +1196,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             Bolt.Damage = FMath::RoundToInt(Spec.Damage * FAVContent::LevelDamageMultiplier(E.Level) *
                 (E.bElite ? 1.35f : 1.f) * (E.Equipment == 3 ? 1.25f : 1.f));
             Bolt.Status = (E.Type == 6 ? 1 : E.Type == 9 ? 2 : 0);
-            if (bTargetEnemy)
-            {
-                for (int32 J = Enemies.Num() - 1; J >= 0; --J)
-                {
-                    if (J == I || Enemies[J].Faction == E.Faction ||
-                        FVector2D::Distance(Enemies[J].Pos, Target) > 0.6f) continue;
-                    Enemies[J].HP -= Bolt.Damage;
-                    break;
-                }
-                E.Cooldown = 1.5f;
-                continue;
-            }
+            Bolt.Faction = E.Faction;
             Bolts.Add(Bolt);
 
             if (Spec.Boss)
@@ -1278,20 +1267,39 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         }
         else
         {
-            const float T = LenSq > KINDA_SMALL_NUMBER ?
-                FMath::Clamp(FVector2D::DotProduct(Hero - Old, Segment) / LenSq, 0.f, 1.f) : 0.f;
-            if (FVector2D::Distance(Old + Segment * T, Hero) < 0.43f)
+            bool bHit = false;
+            // Enemy bolts collide with members of the opposing faction.
+            for (int32 J = Enemies.Num() - 1; J >= 0; --J)
             {
-                const bool bVulnerable = Invulnerability <= 0.f;
-                const int32 Status = Bolt.Status;
-                DamageHero(Bolt.Damage, Bolt.Pos);
-                if (bVulnerable && Phase != EAVPhase::Dead)
-                {
-                    if (Status == 1) PoisonTime = FMath::Max(PoisonTime, 4.2f);
-                    if (Status == 2) BurnTime = FMath::Max(BurnTime, 3.3f);
-                }
-                Bolts.RemoveAtSwap(I);
+                FAVEnemy& Victim = Enemies[J];
+                if (Victim.Faction == Bolt.Faction || Victim.HP <= 0.f) continue;
+                const float T = LenSq > KINDA_SMALL_NUMBER ?
+                    FMath::Clamp(FVector2D::DotProduct(Victim.Pos - Old, Segment) / LenSq, 0.f, 1.f) : 0.f;
+                if (FVector2D::Distance(Old + Segment * T, Victim.Pos) > 0.42f) continue;
+                Victim.HP -= Bolt.Damage;
+                Victim.Flash = 0.15f;
+                AddEffect(Victim.Pos, 2, 0.5f);
+                bHit = true;
+                break;
             }
+            if (!bHit)
+            {
+                const float T = LenSq > KINDA_SMALL_NUMBER ?
+                    FMath::Clamp(FVector2D::DotProduct(Hero - Old, Segment) / LenSq, 0.f, 1.f) : 0.f;
+                if (FVector2D::Distance(Old + Segment * T, Hero) < 0.43f)
+                {
+                    const bool bVulnerable = Invulnerability <= 0.f;
+                    const int32 Status = Bolt.Status;
+                    DamageHero(Bolt.Damage, Bolt.Pos);
+                    if (bVulnerable && Phase != EAVPhase::Dead)
+                    {
+                        if (Status == 1) PoisonTime = FMath::Max(PoisonTime, 4.2f);
+                        if (Status == 2) BurnTime = FMath::Max(BurnTime, 3.3f);
+                    }
+                    bHit = true;
+                }
+            }
+            if (bHit) Bolts.RemoveAtSwap(I);
         }
     }
 
