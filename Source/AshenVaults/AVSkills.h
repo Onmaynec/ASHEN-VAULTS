@@ -17,6 +17,9 @@ class FAVSkills
 {
 public:
     static constexpr int32 Count=39;
+    // Skill node IDs (not EffectId): stable across saves.
+    static constexpr int32 ArcanistSphereSkillId=28;
+    static constexpr int32 ArcanistRuneWaveSkillId=29;
     static const FAVSkillSpec* Find(int32 Id);
     static const char* Description(int32 Id);
     static bool CanLearn(int32 Id,int32 Hero,int32 Level,const uint8* Ranks,int32 RankCount,int32 Points);

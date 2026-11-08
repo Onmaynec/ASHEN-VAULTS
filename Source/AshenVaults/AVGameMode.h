@@ -297,7 +297,7 @@ public:
     int32 BiomeCycle() const { return (Floor - 1) / (FloorsPerBiome * 4); }
     bool IsGuardianFloor() const { return BiomeDepth() == FloorsPerBiome; }
     int32 ShopPrice(int32 Slot) const;
-    void NewRun(bool bSameSeed = false);
+    void NewRun(bool bSameSeed = false, bool bKeepExistingCheckpoint = false);
     void StartFromMenu(bool bContinue,int32 SelectedHero);
     int32 SkillIdAt(int32 Selection) const;
     int32 SkillRank(int32 Id) const;
@@ -344,6 +344,7 @@ private:
     void EnterBossArena();
     void EnterLobby();
     void ResumeFromLobby();
+    void InvalidateCheckpoint();
     void SaveCheckpoint();
     void LoadCheckpointWorld();
     void MakeSafeRoom(bool bLobby);
