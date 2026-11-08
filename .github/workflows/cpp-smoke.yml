@@ -8,6 +8,8 @@ on:
       - 'Source/AshenVaults/AVArt.h'
       - 'Source/AshenVaults/AVContent.cpp'
       - 'Source/AshenVaults/AVContent.h'
+      - 'Source/AshenVaults/AVEncounters.cpp'
+      - 'Source/AshenVaults/AVEncounters.h'
       - 'Source/AshenVaults/AVFortressLayout.cpp'
       - 'Source/AshenVaults/AVFortressLayout.h'
       - 'Source/AshenVaults/AVEquipment.cpp'
@@ -24,6 +26,8 @@ on:
       - 'Source/AshenVaults/AVArt.h'
       - 'Source/AshenVaults/AVContent.cpp'
       - 'Source/AshenVaults/AVContent.h'
+      - 'Source/AshenVaults/AVEncounters.cpp'
+      - 'Source/AshenVaults/AVEncounters.h'
       - 'Source/AshenVaults/AVFortressLayout.cpp'
       - 'Source/AshenVaults/AVFortressLayout.h'
       - 'Source/AshenVaults/AVEquipment.cpp'
@@ -61,5 +65,7 @@ jobs:
         run: bash Tests/Standalone/run_fortress.sh
       - name: Depth scaling and class balance regression
         run: bash Tests/Standalone/run_balance.sh
+      - name: Procedural combat rooms and Arcanist spell mapping
+        run: bash Tests/Standalone/run_encounters.sh
 
 # Does NOT build Unreal Engine, run UHT, or verify Windows packaging.
