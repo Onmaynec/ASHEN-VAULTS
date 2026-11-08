@@ -805,6 +805,7 @@ void AAVGameMode::KillEnemy(int32 Index)
         ToastTime = 1.5f;
     }
     GrantExperience(bBoss ? 22 + Floor * 5 : (3 + Floor) * (Dead.bElite ? 2 : 1));
+    if (Dead.Equipment != 0) ++PackMaterials;
     if (Dead.Equipment != 0 && RNG.FRand() < 0.14f)
     {
         FAVPickup Gear;
@@ -953,7 +954,7 @@ void AAVGameMode::EnterBossArena()
 
 void AAVGameMode::SellPack()
 {
-    Gold += PackGold + PackMaterials * FMath::Max(1, 3 + Floor / 5);
+    Gold += PackMaterials * FMath::Max(1, 3 + Floor / 5);
     PackGold = 0; PackMaterials = 0;
 }
 
@@ -1734,7 +1735,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         {
             switch (P.Type)
             {
-            case 0: Gold += P.Amount; PackGold += P.Amount; break;
+            case 0: Gold += P.Amount; break;
             case 1: HP = FMath::Min(MaxHP, HP + P.Amount); break;
             case 2: Stamina = FMath::Min(MaxStamina, Stamina + P.Amount); break;
             case 3: ++Potions; break;
