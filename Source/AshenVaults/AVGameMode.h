@@ -214,6 +214,8 @@ public:
     FVector2D SafeCampDoor = FVector2D::ZeroVector;
     int32 PendingGuardian = -1;
     int32 PackGold = 0, PackMaterials = 0;
+    int32 BackpackArmor = 0, BackpackBows = 0, BackpackWeapons = 0;
+    int32 EquippedSlotsMask = 0;
     int32 WeaponUpgrade = 0, ArmorUpgrade = 0;
     FAVWorldSnapshot StoredWorld;
     bool bWorldStored = false;
