@@ -25,6 +25,8 @@ struct FAVEnemy
     float PathRefresh = 0.f;
     FVector2D CachedPathDirection = FVector2D::ZeroVector;
     float AttackWindup = 0.f;
+    float PhaseShiftTime = 0.f;
+    bool bPhaseShifted = false;
     FVector2D LockedTarget = FVector2D::ZeroVector;
     int32 AttackPattern = 0;
     bool bMiniBoss = false;
