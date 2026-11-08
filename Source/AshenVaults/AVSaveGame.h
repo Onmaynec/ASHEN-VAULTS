@@ -52,6 +52,7 @@ public:
     UPROPERTY(SaveGame) int32 CheckpointSkillPoints = 0;
     UPROPERTY(SaveGame) bool bCheckpointFreeRespecUsed = false;
     UPROPERTY(SaveGame) bool bCheckpointLastStandUsed = false;
+    UPROPERTY(SaveGame) bool bCheckpointMagicBarrierUsed = false;
     // Cold-restart world snapshot: preserve the exact generated dungeon floor.
     UPROPERTY(SaveGame) TArray<uint8> CheckpointTiles;
     UPROPERTY(SaveGame) TArray<uint8> CheckpointExplored;
