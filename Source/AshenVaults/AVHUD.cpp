@@ -1251,6 +1251,13 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
         Game.Floor, BiomeName, Game.BiomeDepth(), Game.Level, Game.Kills, Game.Gold),
         214.f * Scale, 10.f * Scale, Pale, 0.86f);
 
+    if (Game.bInSafeCamp)
+        Text(TEXT("PEACEFUL CAMP"), Canvas->SizeX * 0.70f, 10.f * Scale, Mint, 0.95f);
+    else if (Game.bInLobby)
+        Text(TEXT("HOME / LOBBY"), Canvas->SizeX * 0.70f, 10.f * Scale, Mint, 0.95f);
+    else if (Game.bInBossArena)
+        Text(TEXT("GUARDIAN ARENA"), Canvas->SizeX * 0.70f, 10.f * Scale, Blood, 0.95f);
+
     const float Y = Canvas->SizeY - 74.f * Scale;
     Rect(0.f, Y, Canvas->SizeX, 74.f * Scale, FLinearColor(0.018f, 0.025f, 0.041f, 0.94f));
     Bar(P, Y + 10.f * Scale, 225.f * Scale, 17.f * Scale, Game.HP / Game.MaxHP, Blood,
