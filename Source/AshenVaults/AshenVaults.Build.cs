@@ -7,7 +7,9 @@ public class AshenVaults : ModuleRules
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         PublicDependencyModuleNames.AddRange(new string[]
         {
-            "Core", "CoreUObject", "Engine", "InputCore", "Paper2D"
+            "Core", "CoreUObject", "Engine", "InputCore", "Paper2D",
+            "UMG", "Slate", "SlateCore", "ImageWrapper"
         });
+        PrivateDependencyModuleNames.AddRange(new string[] { "Projects" });
     }
 }

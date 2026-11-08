@@ -4,6 +4,9 @@
 #include "AVEquipment.h"
 #include "AVSkills.h"
 #include "AVArt.h"
+#include "AVImageLoader.h"
+#include "Materials/MaterialInterface.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "AVDungeonNavigation.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
@@ -505,6 +508,54 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
             Box(6, 5, 9, 10, PixelColor(160, 53, 62)); Put(7, 4, White);
         }
     }
+    else if(Type>=228 && Type<=243)
+    {
+        const int32 Item=Type-228;
+        const int32 Region=Item/4,Style=Item%4;
+        const FColor Body=Region==0?PixelColor(114,105,99):
+            Region==1?PixelColor(67,122,75):
+            Region==2?PixelColor(133,86,69):PixelColor(81,84,94);
+        const FColor Detail=Region==0?PixelColor(190,169,145):
+            Region==1?PixelColor(142,203,106):
+            Region==2?PixelColor(229,133,74):PixelColor(175,63,66);
+        if(Style==0) // bone pile / fungi / embers / torn banner
+        {
+            Box(2,10,13,14,Shadow);
+            Box(3,8,12,12,Body);
+            Box(5,6,10,8,Detail);
+            Put(5,9,White);Put(10,6,White);
+            Box(7,11,9,12,DarkMetal);
+        }
+        else if(Style==1) // coffins / stalks / hanging chain / weapon rack
+        {
+            Box(3,4,12,14,Shadow);
+            Box(5,3,10,13,Body);
+            Box(6,4,9,5,Detail);
+            Box(4,8,5,13,DarkMetal);
+            Box(11,8,12,13,DarkMetal);
+            Put(7,10,White);Put(10,11,Detail);
+        }
+        else if(Style==2) // ancient carving / roots / lava / broken statue
+        {
+            Box(3,12,12,14,Shadow);
+            Box(6,3,10,13,Body);
+            Box(5,5,11,8,Detail);
+            Box(7,8,9,12,DarkMetal);
+            Put(8,4,White);Put(6,7,White);
+        }
+        else // candles / spores / ingots / caged torch
+        {
+            Box(5,8,10,14,DarkMetal);
+            Box(4,11,11,13,Body);
+            Box(6,3,9,9,Detail);
+            Put(7,2,White);Put(8,3,Fire);
+            Put(10,5,Detail);
+        }
+        if(Region==3) {
+            Box(2,12,13,14,DarkMetal);
+            Put(3,4,Detail);Put(12,4,Detail);
+        }
+    }
     else if (Type == 181) // magic sphere
     {
         Box(5,4,10,11,PixelColor(112,66,164));
@@ -686,11 +737,34 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
 
 void AAVHUD::InitSprites()
 {
-    if (Sprites.Num() > 0) return;
-    for (int32 I = 0; I <= 227; ++I) Sprites.Add(MakeSprite(I));
-    for (int32 Biome = 0; Biome < 4; ++Biome)
-        for (int32 Variant = 0; Variant < FAVArt::VariantsPerBiome; ++Variant)
-            BiomeTiles.Add(FAVArt::BuildTile(Biome, Variant));
+    if(Sprites.Num()>0)return;
+    for(int32 I=0;I<=243;++I) Sprites.Add(MakeSprite(I));
+    const TCHAR* Atlases[4]={
+        TEXT("AVVisuals/Tiles/CryptAtlas.png"),
+        TEXT("AVVisuals/Tiles/SporeAtlas.png"),
+        TEXT("AVVisuals/Tiles/FoundryAtlas.png"),
+        TEXT("AVVisuals/Tiles/BastionAtlas.png")
+    };
+    HeroAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Characters/HeroAtlas.png"));
+    EquipmentAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Icons/EquipmentAtlas.png"));
+    BossAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Bosses/BossAtlas.png"));
+    EnemyAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Enemies/EnemyAtlas.png"));
+    KenneyDecorAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Kenney/TinyDungeonDecor.png"));
+    UMaterialInterface* PixelShader=LoadObject<UMaterialInterface>(
+        nullptr,TEXT("/Game/AVVisuals/Materials/M_AV_PixelSurface.M_AV_PixelSurface"));
+    for(int32 Biome=0;Biome<4;++Biome) {
+        AuthoredAtlases.Add(FAVImageLoader::LoadPNG(Atlases[Biome]));
+        UMaterialInstanceDynamic* MID=PixelShader && AuthoredAtlases[Biome]?
+            UMaterialInstanceDynamic::Create(PixelShader,this):nullptr;
+        if(MID) {
+            MID->SetTextureParameterValue(TEXT("Albedo"),AuthoredAtlases[Biome]);
+            MID->SetVectorParameterValue(TEXT("Tint"),FLinearColor::White);
+        }
+        TileMaterials.Add(MID);
+        // Procedural fallback remains deterministic when the PNG is absent.
+        for(int32 Variant=0;Variant<FAVArt::VariantsPerBiome;++Variant)
+            BiomeTiles.Add(FAVArt::BuildTile(Biome,Variant));
+    }
 }
 
 void AAVHUD::Sprite(int32 Type, const FVector2D& Pos, float Size, float Alpha)
@@ -738,12 +812,24 @@ void AAVHUD::DrawDungeon(const AAVGameMode& Game)
             if (Game.IsFloor(X, Y))
             {
                 if (!Game.IsExploredCell(X, Y)) continue;
-                const int32 Variant = static_cast<int32>(Hash % 8u);
+                const int32 Variant = static_cast<int32>(Hash % static_cast<uint32>(FAVArt::FloorVariants));
                 const int32 Index = Biome * FAVArt::VariantsPerBiome + Variant;
-                if (BiomeTiles.IsValidIndex(Index) && BiomeTiles[Index])
-                    DrawTexture(BiomeTiles[Index], SX, SY, T + 0.5f, T + 0.5f,
-                                0.f, 0.f, 1.f, 1.f, FLinearColor::White,
-                                BLEND_Translucent, 1.f, false, 0.f,
+                if(AuthoredAtlases.IsValidIndex(Biome) && AuthoredAtlases[Biome])
+                {
+                    const float U=(Variant%7)/7.f;
+                    const float V=(Variant/7)/4.f;
+                    if(TileMaterials.IsValidIndex(Biome) && TileMaterials[Biome])
+                        DrawMaterial(TileMaterials[Biome],SX,SY,T+0.5f,T+0.5f,
+                                     U,V,1.f/7.f,1.f/4.f);
+                    else DrawTexture(AuthoredAtlases[Biome],SX,SY,T+0.5f,T+0.5f,
+                                U,V,1.f/7.f,1.f/4.f,FLinearColor::White,
+                                BLEND_Translucent,1.f,false,0.f,
+                                FVector2D::ZeroVector);
+                }
+                else if(BiomeTiles.IsValidIndex(Index) && BiomeTiles[Index])
+                    DrawTexture(BiomeTiles[Index],SX,SY,T+0.5f,T+0.5f,
+                                0.f,0.f,1.f,1.f,FLinearColor::White,
+                                BLEND_Translucent,1.f,false,0.f,
                                 FVector2D::ZeroVector);
                 if (!Game.IsVisibleCell(X, Y))
                     Rect(SX, SY, T + 0.5f, T + 0.5f,
@@ -760,12 +846,25 @@ void AAVHUD::DrawDungeon(const AAVGameMode& Game)
                         bVisibleNeighbour |= Game.IsVisibleCell(X + DX, Y + DY);
                     }
                 if (!bExploredNeighbour) continue;
-                const int32 Variant = 8 + static_cast<int32>(Hash % 4u);
+                const int32 Variant = FAVArt::FloorVariants +
+                    static_cast<int32>(Hash % static_cast<uint32>(FAVArt::WallVariants));
                 const int32 Index = Biome * FAVArt::VariantsPerBiome + Variant;
-                if (BiomeTiles.IsValidIndex(Index) && BiomeTiles[Index])
-                    DrawTexture(BiomeTiles[Index], SX, SY, T + 0.5f, T + 0.5f,
-                                0.f, 0.f, 1.f, 1.f, FLinearColor::White,
-                                BLEND_Translucent, 1.f, false, 0.f,
+                if(AuthoredAtlases.IsValidIndex(Biome) && AuthoredAtlases[Biome])
+                {
+                    const float U=(Variant%7)/7.f;
+                    const float V=(Variant/7)/4.f;
+                    if(TileMaterials.IsValidIndex(Biome) && TileMaterials[Biome])
+                        DrawMaterial(TileMaterials[Biome],SX,SY,T+0.5f,T+0.5f,
+                                     U,V,1.f/7.f,1.f/4.f);
+                    else DrawTexture(AuthoredAtlases[Biome],SX,SY,T+0.5f,T+0.5f,
+                                U,V,1.f/7.f,1.f/4.f,FLinearColor::White,
+                                BLEND_Translucent,1.f,false,0.f,
+                                FVector2D::ZeroVector);
+                }
+                else if(BiomeTiles.IsValidIndex(Index) && BiomeTiles[Index])
+                    DrawTexture(BiomeTiles[Index],SX,SY,T+0.5f,T+0.5f,
+                                0.f,0.f,1.f,1.f,FLinearColor::White,
+                                BLEND_Translucent,1.f,false,0.f,
                                 FVector2D::ZeroVector);
                 // Contact shadow behind masonry ledge gives 2.5D wall height.
                 if (Game.IsFloor(X, Y + 1))
@@ -806,7 +905,8 @@ void AAVHUD::DrawLighting(const AAVGameMode& Game)
             {
                 for (const FAVDecor& Decor : Game.Decorations)
                 {
-                    if ((Decor.Type != 1 && Decor.Type != 4 && Decor.Type != 6) ||
+                    if ((Decor.Type != 1 && Decor.Type != 4 && Decor.Type != 6 && Decor.Type != 10 &&
+                Decor.Type != 15 && Decor.Type != 19 && Decor.Type != 22 && Decor.Type != 27) ||
                         !Game.IsVisibleAt(Decor.Pos)) continue;
                     const float Distance = FVector2D::Distance(Cell, Decor.Pos);
                     if (Distance > 5.0f) continue;
@@ -848,13 +948,23 @@ void AAVHUD::DrawLighting(const AAVGameMode& Game)
                         WarmLight += 0.16f * FAVArt::LightFalloff(
                             FVector2D::Distance(Bolt.Pos, Cell), 2.6f);
             }
-            // Quantized illumination levels match nearest-neighbour pixel art.
-            Brightness = static_cast<float>(FMath::FloorToInt(
-                FMath::Clamp(Brightness + WarmLight, 0.f, 0.65f) * 9.f)) / 9.f;
-            if (Brightness <= 0.f) continue;
-            const float SX = Origin.X + X * T, SY = Origin.Y + Y * T;
-            Rect(SX, SY, T + 0.5f, T + 0.5f,
-                 FLinearColor(Color.R, Color.G, Color.B, Brightness * 0.44f));
+            // Pixel-quantized darkness preserves hard edges while animated
+            // light sources carve readable pools in every biome.
+            const float Total=FMath::Clamp(Brightness+WarmLight,0.f,0.92f);
+            Brightness=FMath::FloorToInt(Total*10.f)/10.f;
+            const float SX=Origin.X+X*T,SY=Origin.Y+Y*T;
+            const float Darkness=FMath::Clamp(0.64f-Brightness*1.05f,0.03f,0.64f);
+            Rect(SX,SY,T+0.5f,T+0.5f,
+                 FLinearColor(0.006f,0.01f,0.026f,Darkness));
+            if(Brightness>0.13f)
+                Rect(SX,SY,T+0.5f,T+0.5f,
+                    FLinearColor(Color.R,Color.G,Color.B,
+                                 FMath::Min(0.27f,Brightness*0.28f)));
+            // Tiny local highlight where the brightest lamps strike the floor.
+            if(WarmLight>0.18f && Game.VisualQuality==2)
+                Rect(SX+3.f*Scale,SY+3.f*Scale,T-6.f*Scale,T-6.f*Scale,
+                    FLinearColor(Color.R,Color.G,Color.B,
+                                 FMath::Min(0.12f,WarmLight*0.17f)));
         }
     }
 }
@@ -985,8 +1095,10 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         if (!Game.IsVisibleAt(Decor.Pos)) continue;
         const FVector2D Pt = Screen(Decor.Pos);
         const float S = Scale;
-        const bool bLuminous = Decor.Type == 1 || Decor.Type == 4 ||
-                              Decor.Type == 6 || Decor.Type == 10;
+        const bool bLuminous=Decor.Type==1 || Decor.Type==4 ||
+             Decor.Type==6 || Decor.Type==10 ||
+             Decor.Type==15 || Decor.Type==19 ||
+             Decor.Type==22 || Decor.Type==27;
         const bool bEcho = Decor.Type % 3 == 2;
         const float PulseIntensity = 0.5f + 0.5f *
             FMath::Sin(Game.RunTime * 5.5f + Decor.Phase);
@@ -1003,7 +1115,20 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         }
         const FVector2D Bob = Decor.Pos +
             FVector2D(0.f, bLuminous ? -PulseIntensity * 0.06f : 0.f);
-        Sprite(Decor.Type >= 9 ? 177 + Decor.Type - 9 : 26 + Decor.Type,
+        if(KenneyDecorAtlas && Decor.Type>=12 && Decor.Type<=27)
+        {
+            const int32 Index=Decor.Type-12;
+            const FVector2D CenterPoint=Screen(Bob);
+            const float Size=27.f*Scale;
+            DrawTexture(KenneyDecorAtlas,CenterPoint.X-Size*0.5f,
+                        CenterPoint.Y-Size*0.6f,Size,Size,
+                        (Index%4)/4.f,(Index/4)/4.f,
+                        1.f/4.f,1.f/4.f,FLinearColor::White,
+                        BLEND_Translucent,1.f,false,0.f,
+                        FVector2D::ZeroVector);
+        }
+        else Sprite(Decor.Type >= 12 ? 228 + Decor.Type - 12 :
+               Decor.Type >= 9 ? 177 + Decor.Type - 9 : 26 + Decor.Type,
                Bob, bEcho ? 1.32f : 1.12f,
                Decor.bActivated ? 0.45f : 1.f);
         if (bEcho && !Decor.bActivated)
@@ -1198,8 +1323,53 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         const float EnemyBob = FMath::Sin(Game.RunTime *
             (E.Type == 5 ? 15.f : 7.f) + E.Id * 0.7f) *
             (E.Type == 10 ? 0.12f : 0.045f);
-        Sprite(SpriteType, E.Pos + FVector2D(0.f, EnemyBob),
-               Radius, E.Flash > 0.f ? 0.55f : 1.f);
+        const bool bGuardian=E.Type==3 || E.Type==8 || E.Type==9 || E.Type==56;
+        if(bGuardian && BossAtlas)
+        {
+            const int32 Row=E.Type==8?0:E.Type==9?1:E.Type==3?2:3;
+            const int32 Frame=E.HP<E.MaxHP*0.45f?
+                4+(FMath::FloorToInt(Game.RunTime*4.f)%2):
+                (bCasting?2+(FMath::FloorToInt(Game.RunTime*12.f)%2):
+                            FMath::FloorToInt(Game.RunTime*2.f)%2);
+            const FVector2D BP=Screen(E.Pos+FVector2D(0.f,EnemyBob));
+            const float Size=75.f*Scale;
+            const FLinearColor Aura=E.Type==8?
+                FLinearColor(0.67f,0.32f,0.71f,0.07f):
+                E.Type==9?FLinearColor(1.f,0.36f,0.13f,0.07f):
+                E.Type==56?FLinearColor(0.92f,0.13f,0.23f,0.07f):
+                FLinearColor(0.30f,0.81f,0.55f,0.07f);
+            if(Game.VisualQuality>=1)
+                for(int32 Halo=3;Halo>0;--Halo) {
+                    const float H=Size*(1.f+Halo*0.24f);
+                    Rect(BP.X-H*0.5f,BP.Y-H*0.55f,H,H*0.83f,
+                         FLinearColor(Aura.R,Aura.G,Aura.B,Aura.A/Halo));
+                }
+            DrawTexture(BossAtlas,BP.X-Size*0.5f,BP.Y-Size*0.54f,
+                        Size,Size,Frame/6.f,Row/4.f,1.f/6.f,1.f/4.f,
+                        FLinearColor(1.f,1.f,1.f,E.Flash>0.f?0.65f:1.f),
+                        BLEND_Translucent,1.f,false,0.f,
+                        FVector2D::ZeroVector);
+        }
+        else if(EnemyAtlas && E.Type>=0 && E.Type<=56)
+        {
+            const bool Moving=E.MemoryTime>0.f || E.AlertTime>0.f ||
+                              E.Wander>0.f;
+            const int32 Frame=bCasting?1:(Moving?
+                FMath::FloorToInt(Game.RunTime*7.f+E.Id)%2:0);
+            const int32 Index=E.Type*2+Frame;
+            const float Size=29.f*Scale*Radius;
+            const FVector2D PtSprite=Screen(E.Pos+FVector2D(0.f,EnemyBob));
+            DrawTexture(EnemyAtlas,PtSprite.X-Size*0.5f,
+                        PtSprite.Y-Size*0.57f,Size,Size,
+                        (Index%12)/12.f,(Index/12)/10.f,
+                        1.f/12.f,1.f/10.f,
+                        FLinearColor(1.f,1.f,1.f,E.Flash>0.f?0.65f:1.f),
+                        BLEND_Translucent,1.f,false,0.f,
+                        FVector2D::ZeroVector);
+        }
+        else
+            Sprite(SpriteType,E.Pos+FVector2D(0.f,EnemyBob),
+                   Radius,E.Flash>0.f?0.55f:1.f);
         if(Game.CurrentBiome()==3 && E.Type>=34 && E.Type<=56 &&
            (E.bMiniBoss || E.Type==56 ||
             FVector2D::Distance(E.Pos,Game.Hero)<2.4f)) {
@@ -1283,9 +1453,26 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         (bWalking && (FMath::FloorToInt(Game.RunTime * 8.f) % 2 != 0) ? 175 : 174) :
         (bWalking && (FMath::FloorToInt(Game.RunTime * 8.f) % 2 != 0) ? 35 : 0);
     const float WalkBob = bWalking ? FMath::Sin(Game.RunTime * 16.f) * 0.045f : 0.f;
-    Sprite(WalkFrame, Game.Hero + FVector2D(0.f, WalkBob), 1.17f,
-           Game.Invulnerability > 0.f &&
-           FMath::Sin(Game.RunTime * 32.f) > 0.f ? 0.5f : 1.f);
+    const float HeroAlpha=Game.Invulnerability>0.f &&
+        FMath::Sin(Game.RunTime*32.f)>0.f?0.5f:1.f;
+    if(HeroAtlas)
+    {
+        const bool Attacking=Game.AttackCooldown>0.07f ||
+            Game.SpinCooldown>1.25f ||
+            (Game.HeroClass==3 && Game.KnifeCooldown>1.65f);
+        const int32 Frame=Game.DashTime>0.f?6+FMath::FloorToInt(Game.RunTime*14.f)%2:
+            Attacking?4+FMath::FloorToInt(Game.RunTime*12.f)%2:
+            bWalking?2+FMath::FloorToInt(Game.RunTime*9.f)%2:
+            FMath::FloorToInt(Game.RunTime*2.f)%2;
+        const FVector2D Position=Screen(Game.Hero+FVector2D(0.f,WalkBob));
+        const float Size=37.f*Scale;
+        DrawTexture(HeroAtlas,Position.X-Size*0.5f,Position.Y-Size*0.56f,
+                    Size,Size,Frame/8.f,Game.HeroClass/4.f,
+                    1.f/8.f,1.f/4.f,
+                    FLinearColor(1.f,1.f,1.f,HeroAlpha),
+                    BLEND_Translucent,1.f,false,0.f,FVector2D::ZeroVector);
+    }
+    else Sprite(WalkFrame,Game.Hero+FVector2D(0.f,WalkBob),1.17f,HeroAlpha);
 
     const FVector2D Arrow = Hp + Game.Aim * (18.f * Scale);
     Rect(Arrow.X - Scale, Arrow.Y - Scale, 3.f * Scale, 3.f * Scale, GoldColor);
@@ -1350,7 +1537,7 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
     else if ([&Game]()
     {
         for (const FAVDecor& Decor : Game.Decorations)
-            if (!Decor.bActivated && Decor.Type % 3 == 2 &&
+            if (!Decor.bActivated && Decor.Type < 12 && Decor.Type % 3 == 2 &&
                 FVector2D::Distance(Game.Hero, Decor.Pos) < 2.1f)
                 return true;
         return false;
@@ -1518,7 +1705,9 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
 
 void AAVHUD::DrawOverlay(const AAVGameMode& Game)
 {
-    if (Game.Phase == EAVPhase::Playing) return;
+    if(Game.Phase==EAVPhase::Playing) return;
+    if(Game.Phase==EAVPhase::Inventory){DrawInventoryWindow(Game);return;}
+    if(Game.Phase==EAVPhase::Skills){DrawTalentWindow(Game);return;}
     Rect(0.f,0.f,Canvas->SizeX,Canvas->SizeY,
          FLinearColor(0.01f,0.015f,0.025f,0.84f));
     if(Game.Phase == EAVPhase::Inventory || Game.Phase == EAVPhase::Skills)
@@ -1745,6 +1934,7 @@ void AAVHUD::DrawHUD()
     if (!Canvas) return;
     const AAVGameMode* Game = GetWorld() ? GetWorld()->GetAuthGameMode<AAVGameMode>() : nullptr;
     if (!Game) return;
+    if(Game->Phase==EAVPhase::MainMenu) return;
 
     InitSprites();
     Scale = FMath::Max(0.1f, FMath::Min(Canvas->SizeX / AAVGameMode::ViewW,
@@ -1758,6 +1948,7 @@ void AAVHUD::DrawHUD()
     DrawDungeon(*Game);
     DrawLighting(*Game);
     DrawActors(*Game);
+    DrawCombatVFX(*Game);
     DrawAtmosphere(*Game);
     if (Game->Invulnerability > 0.5f)
         Rect(0.f, 0.f, Canvas->SizeX, Canvas->SizeY,

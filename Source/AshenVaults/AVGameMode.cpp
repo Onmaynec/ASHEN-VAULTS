@@ -3,6 +3,8 @@
 #include "AVSkills.h"
 #include "AVFortressLayout.h"
 #include "AVHUD.h"
+#include "AVFrontendWidget.h"
+#include "Blueprint/UserWidget.h"
 #include "AVSaveGame.h"
 #include "AVDungeonNavigation.h"
 #include "AVContent.h"
@@ -59,6 +61,7 @@ void AAVGameMode::BeginPlay()
     {
         if (Save->bHasCheckpoint)
         {
+            bCanContinue = true;
             Floor = FMath::Max(1, Save->CheckpointFloor);
             MapW = CurrentBiome() == 3 ? 60 : 52;
             MapH = CurrentBiome() == 3 ? 44 : 38;
@@ -103,6 +106,40 @@ void AAVGameMode::BeginPlay()
             Toast = TEXT("HOME: PRESS E AT THE PORTAL TO RESUME");
             ToastTime = 3.f;
         }
+    }
+    Phase = EAVPhase::MainMenu;
+    if(APlayerController* PC=UGameplayStatics::GetPlayerController(this,0))
+    {
+        FrontendWidget=CreateWidget<UAVFrontendWidget>(PC,UAVFrontendWidget::StaticClass());
+        if(FrontendWidget)
+        {
+            FrontendWidget->AddToViewport(100);
+            FInputModeUIOnly Mode;
+            PC->SetInputMode(Mode);
+            PC->bShowMouseCursor=true;
+        }
+    }
+}
+
+void AAVGameMode::StartFromMenu(bool bContinue,int32 SelectedHero)
+{
+    if(bContinue && bCanContinue)
+    {
+        Phase=EAVPhase::Playing;
+        Toast=TEXT("DESCEND FROM THE UNDERGROUND CITY");
+        ToastTime=3.f;
+    }
+    else
+    {
+        HeroClass=FMath::Clamp(SelectedHero,0,3);
+        NewRun();
+        Toast=TEXT("THE DESCENT BEGINS");
+        ToastTime=2.f;
+    }
+    if(APlayerController* PC=UGameplayStatics::GetPlayerController(this,0))
+    {
+        PC->SetInputMode(FInputModeGameAndUI());
+        PC->bShowMouseCursor=true;
     }
 }
 
@@ -843,6 +880,27 @@ void AAVGameMode::GenerateFloor()
             if (!bNearTrap) Decorations.Add(Decor);
         }
     }
+    // v1.0 scenic dressing: four additional non-blocking props per biome.
+    // No puzzle interactions or collision changes; these simply give each
+    // combat room more visual character while keeping the exit traversable.
+    for(int32 RoomIndex=1;RoomIndex<Rooms.Num();++RoomIndex)
+    {
+        const FRoom& R=Rooms[RoomIndex];
+        const int32 Amount=RNG.RandRange(1,3);
+        for(int32 I=0;I<Amount;++I)
+        {
+            FAVDecor D;
+            D.Type=12+CurrentBiome()*4+RNG.RandRange(0,3);
+            D.Pos=FVector2D(R.X+RNG.FRandRange(2.f,FMath::Max(2.1f,float(R.W)-2.f)),
+                            R.Y+RNG.FRandRange(2.f,FMath::Max(2.1f,float(R.H)-2.f)));
+            D.Phase=RNG.FRandRange(0.f,6.2831853f);
+            if(!CanMove(D.Pos,0.34f))continue;
+            if(FVector2D::Distance(D.Pos,Exit)<2.2f ||
+               FVector2D::Distance(D.Pos,Hero)<1.8f ||
+               FVector2D::Distance(D.Pos,Shrine)<1.8f)continue;
+            Decorations.Add(D);
+        }
+    }
     RefreshAwareness(0.f, true);
 }
 
@@ -1186,7 +1244,7 @@ bool AAVGameMode::ActivateNearbyEcho()
 {
     for (FAVDecor& Decor : Decorations)
     {
-        if (Decor.bActivated || Decor.Type % 3 != 2 ||
+        if (Decor.bActivated || (Decor.Type >= 12 || Decor.Type % 3 != 2) ||
             FVector2D::Distance(Decor.Pos, Hero) >= 1.7f)
             continue;
         Decor.bActivated = true;
@@ -1775,6 +1833,13 @@ void AAVGameMode::PollInput(float DeltaSeconds)
     APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
     if (!PC) return;
 
+    if(Phase==EAVPhase::MainMenu)
+    {
+        // UMG owns input while the title screen is visible.
+        if(!FrontendWidget && PC->WasInputKeyJustPressed(EKeys::Enter))
+            StartFromMenu(bCanContinue,HeroClass);
+        return;
+    }
     const bool bPause = Pressed(PC, EKeys::Escape, PrevPause) || PC->WasInputKeyJustPressed(EKeys::P);
     const bool bRestart = Pressed(PC, EKeys::Enter, PrevEnter);
     const bool bReplay = Pressed(PC, EKeys::R, PrevReplay); // Retry after death; knife during play.
