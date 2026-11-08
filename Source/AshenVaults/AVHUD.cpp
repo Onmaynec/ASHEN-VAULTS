@@ -5,6 +5,8 @@
 #include "AVSkills.h"
 #include "AVArt.h"
 #include "AVImageLoader.h"
+#include "Materials/MaterialInterface.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "AVDungeonNavigation.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
@@ -747,8 +749,17 @@ void AAVHUD::InitSprites()
     EquipmentAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Icons/EquipmentAtlas.png"));
     BossAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Bosses/BossAtlas.png"));
     EnemyAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Enemies/EnemyAtlas.png"));
+    UMaterialInterface* PixelShader=LoadObject<UMaterialInterface>(
+        nullptr,TEXT("/Game/AVVisuals/Materials/M_AV_PixelSurface.M_AV_PixelSurface"));
     for(int32 Biome=0;Biome<4;++Biome) {
         AuthoredAtlases.Add(FAVImageLoader::LoadPNG(Atlases[Biome]));
+        UMaterialInstanceDynamic* MID=PixelShader && AuthoredAtlases[Biome]?
+            UMaterialInstanceDynamic::Create(PixelShader,this):nullptr;
+        if(MID) {
+            MID->SetTextureParameterValue(TEXT("Albedo"),AuthoredAtlases[Biome]);
+            MID->SetVectorParameterValue(TEXT("Tint"),FLinearColor::White);
+        }
+        TileMaterials.Add(MID);
         // Procedural fallback remains deterministic when the PNG is absent.
         for(int32 Variant=0;Variant<FAVArt::VariantsPerBiome;++Variant)
             BiomeTiles.Add(FAVArt::BuildTile(Biome,Variant));
@@ -806,7 +817,10 @@ void AAVHUD::DrawDungeon(const AAVGameMode& Game)
                 {
                     const float U=(Variant%7)/7.f;
                     const float V=(Variant/7)/4.f;
-                    DrawTexture(AuthoredAtlases[Biome],SX,SY,T+0.5f,T+0.5f,
+                    if(TileMaterials.IsValidIndex(Biome) && TileMaterials[Biome])
+                        DrawMaterial(TileMaterials[Biome],SX,SY,T+0.5f,T+0.5f,
+                                     U,V,1.f/7.f,1.f/4.f);
+                    else DrawTexture(AuthoredAtlases[Biome],SX,SY,T+0.5f,T+0.5f,
                                 U,V,1.f/7.f,1.f/4.f,FLinearColor::White,
                                 BLEND_Translucent,1.f,false,0.f,
                                 FVector2D::ZeroVector);
@@ -838,7 +852,10 @@ void AAVHUD::DrawDungeon(const AAVGameMode& Game)
                 {
                     const float U=(Variant%7)/7.f;
                     const float V=(Variant/7)/4.f;
-                    DrawTexture(AuthoredAtlases[Biome],SX,SY,T+0.5f,T+0.5f,
+                    if(TileMaterials.IsValidIndex(Biome) && TileMaterials[Biome])
+                        DrawMaterial(TileMaterials[Biome],SX,SY,T+0.5f,T+0.5f,
+                                     U,V,1.f/7.f,1.f/4.f);
+                    else DrawTexture(AuthoredAtlases[Biome],SX,SY,T+0.5f,T+0.5f,
                                 U,V,1.f/7.f,1.f/4.f,FLinearColor::White,
                                 BLEND_Translucent,1.f,false,0.f,
                                 FVector2D::ZeroVector);
