@@ -1559,7 +1559,8 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
     }
     else if (Pattern == 3 || Pattern == 8 || Pattern == 9) // existing bosses: new signature phase attack
     {
-        const int32 Count = Pattern == 3 ? 12 : Pattern == 8 ? 8 : 10;
+        const int32 Count = Pattern == 3 ? (bFrenzy ? 18 : 12) :
+            Pattern == 8 ? (bFrenzy ? 12 : 8) : (bFrenzy ? 16 : 10);
         const int32 Status = Pattern == 9 ? 2 : 0;
         for (int32 K = 0; K < Count; ++K)
         {
@@ -1567,7 +1568,7 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
             SpawnEnemyBolt(E, FVector2D(FMath::Cos(A), FMath::Sin(A)),
                            Pattern == 8 ? 5.8f : 7.0f, 0.55f, Status);
         }
-        E.AbilityCooldown = bFrenzy ? 3.3f : 5.6f;
+        E.AbilityCooldown = bFrenzy ? 2.8f : 5.6f;
         if (Pattern == 9) // Forge Tyrant: persistent molten ground
         {
             for (int32 K = -1; K <= 1; ++K)
@@ -1665,7 +1666,22 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         }
         if (E.PhaseShiftTime > 0.f)
         {
+            const float Previous = E.PhaseShiftTime;
             E.PhaseShiftTime = FMath::Max(0.f, E.PhaseShiftTime - DeltaSeconds);
+            if (Previous > 0.f && E.PhaseShiftTime == 0.f)
+            {
+                // Transformation finishes with a biome-specific visible pulse.
+                const int32 Shards = E.Type == 8 ? 8 : E.Type == 9 ? 12 : 16;
+                for (int32 K = 0; K < Shards; ++K)
+                {
+                    const float A = 6.2831853f * K / Shards;
+                    SpawnEnemyBolt(E, FVector2D(FMath::Cos(A), FMath::Sin(A)),
+                                   E.Type == 8 ? 5.0f : 6.5f, 0.38f,
+                                   E.Type == 9 ? 2 : 0);
+                }
+                AddEffect(E.Pos, 1, 2.5f);
+                E.Cooldown = 1.0f;
+            }
             continue; // Transformation is a distinct non-attacking animation phase.
         }
         E.Cooldown -= DeltaSeconds;
