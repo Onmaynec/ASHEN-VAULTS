@@ -20,6 +20,21 @@ float FAVContent::LevelDamageMultiplier(int32 Level)
     return 1.f + 0.085f * (Level > 1 ? Level - 1 : 0);
 }
 
+float FAVContent::ScaledEnemyHealth(int32 Type, int32 Floor, int32 Level)
+{
+    // Enemy level is already based on absolute depth; a second floor
+    // multiplier made health grow quadratically and eventually stalled runs.
+    return Enemy(Type, Floor).Health * LevelHealthMultiplier(Level);
+}
+
+int32 FAVContent::BanditGroupSize(int32 Floor)
+{
+    // Keep the hostile camp a distinct, demanding encounter without
+    // spawning dozens of units in a single chamber in late cycles.
+    const int32 Depth = Floor > 1 ? Floor - 1 : 0;
+    return 3 + FMath::Min(5, Depth / 4);
+}
+
 int32 FAVContent::Biome(int32 Floor)
 {
     return ((FMath::Max(1, Floor) - 1) / FloorsPerBiome) % BiomeCount;
@@ -108,8 +123,8 @@ FAVEnemySpec FAVContent::Enemy(int32 Type, int32 Floor)
     case 56: S = {650.f,1.7f,42.f,false,true}; break; // Commandant
     default: break;
     }
-    if (!S.Boss)
-        S.Health *= 1.f + 0.22f * (Floor > 1 ? Floor - 1 : 0);
+    // Health scaling belongs to ScaledEnemyHealth(), not the base spec.
+    (void)Floor;
     return S;
 }
 
