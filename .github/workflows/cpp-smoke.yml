@@ -8,6 +8,8 @@ on:
       - 'Source/AshenVaults/AVArt.h'
       - 'Source/AshenVaults/AVContent.cpp'
       - 'Source/AshenVaults/AVContent.h'
+      - 'Source/AshenVaults/AVFortressLayout.cpp'
+      - 'Source/AshenVaults/AVFortressLayout.h'
       - 'Source/AshenVaults/AVEquipment.cpp'
       - 'Source/AshenVaults/AVEquipment.h'
       - 'Source/AshenVaults/AVSkills.cpp'
@@ -22,6 +24,8 @@ on:
       - 'Source/AshenVaults/AVArt.h'
       - 'Source/AshenVaults/AVContent.cpp'
       - 'Source/AshenVaults/AVContent.h'
+      - 'Source/AshenVaults/AVFortressLayout.cpp'
+      - 'Source/AshenVaults/AVFortressLayout.h'
       - 'Source/AshenVaults/AVDungeonNavigation.cpp'
       - 'Source/AshenVaults/AVDungeonNavigation.h'
       - 'Tests/Standalone/**'
@@ -49,5 +53,7 @@ jobs:
         run: bash Tests/Standalone/run_art.sh
       - name: v0.9.0 equipment and class skill tables
         run: bash Tests/Standalone/run_v09.sh
+      - name: Black Bastion randomized layout connectivity
+        run: bash Tests/Standalone/run_fortress.sh
 
 # Does NOT build Unreal Engine, run UHT, or verify Windows packaging.
