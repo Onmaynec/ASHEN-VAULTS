@@ -1745,6 +1745,7 @@ void AAVHUD::DrawHUD()
     if (!Canvas) return;
     const AAVGameMode* Game = GetWorld() ? GetWorld()->GetAuthGameMode<AAVGameMode>() : nullptr;
     if (!Game) return;
+    if(Game->Phase==EAVPhase::MainMenu) return;
 
     InitSprites();
     Scale = FMath::Max(0.1f, FMath::Min(Canvas->SizeX / AAVGameMode::ViewW,
