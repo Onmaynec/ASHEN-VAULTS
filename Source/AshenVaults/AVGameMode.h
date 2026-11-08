@@ -284,6 +284,7 @@ private:
     void EnterLobby();
     void ResumeFromLobby();
     void SaveCheckpoint();
+    void LoadCheckpointWorld();
     void MakeSafeRoom(bool bLobby);
     void ForgeUpgrade(int32 Slot);
     void SellPack();
