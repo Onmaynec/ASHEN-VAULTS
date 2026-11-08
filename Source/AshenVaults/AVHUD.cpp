@@ -390,6 +390,95 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
             Put(12, 13, Highlight);
         }
     }
+    else if (Type >= 128 && Type <= 173) // Bastion 18 enemies + 4 mini-bosses + Commandant, two walk poses
+    {
+        const int32 Kind = 34 + (Type - 128) / 2;
+        const bool Walking = (Type & 1) != 0;
+        const bool Giant = Kind == 42 || Kind == 48 || Kind == 54 || Kind == 56;
+        const bool Armored = Kind == 34 || Kind == 35 || Kind == 36 || Kind == 38 ||
+                             Kind == 44 || Kind == 48 || Kind == 50 || Kind == 53 || Kind == 56;
+        const bool Beast = Kind == 40 || Kind == 41 || Kind == 43;
+        const bool Mage = Kind == 46 || Kind == 47 || Kind == 49 || Kind == 50 || Kind == 55;
+        const bool Mini = Kind >= 52 && Kind <= 55;
+        const FColor Base = Armored ? PixelColor(68, 71, 82) :
+            Beast ? PixelColor(106, 75, 70) :
+            Mage ? PixelColor(94, 54, 82) : PixelColor(100, 78, 77);
+        const FColor Trim = Armored ? PixelColor(169, 156, 144) :
+            Beast ? PixelColor(170, 91, 79) :
+            Mage ? PixelColor(170, 88, 125) : PixelColor(174, 114, 103);
+        const FColor Glow = PixelColor(232, 77, 72);
+        Box(4, 12, 11, 14, Shadow);
+        if (Beast)
+        {
+            Box(3, 7, 12, 11, Base);
+            Box(9, 5, 13, 9, Trim);
+            Put(11, 7, Glow); Put(12, 7, White);
+            Box(3, 11, 5, Walking ? 12 : 14, Base);
+            Box(10, Walking ? 12 : 11, 12, 14, Base);
+            Put(5, 5, Trim); Put(10, 4, Trim);
+        }
+        else
+        {
+            Box(Giant ? 2 : 4, 7, Giant ? 13 : 11, 12, Outline);
+            Box(Giant ? 3 : 5, 7, Giant ? 12 : 10, 11, Base);
+            Box(5, 3, 10, 7, Outline); Box(6, 4, 9, 6, Trim);
+            Box(4, 12, 6, Walking ? 13 : 14, Base);
+            Box(9, Walking ? 12 : 11, 11, 14, Base);
+            Box(2, 8, 4, 11, Base); Box(11, 8, 13, 11, Base);
+            Put(6, 5, Glow); Put(9, 5, Glow);
+            if (Armored) { Box(4, 2, 11, 3, Trim); Box(5, 8, 10, 8, Trim); }
+            if (Mage) { Box(4, 2, 11, 4, Base); Put(13, 6, Glow); Put(13, 4, Trim); }
+            if (Kind == 35 || Kind == 38 || Kind == 53) { Box(13, 3, 14, 13, Trim); Put(13, 2, White); }
+            if (Kind == 36 || Kind == 53) { Box(1, 7, 4, 12, Trim); Box(2, 8, 3, 11, DarkMetal); }
+            if (Kind == 37 || Kind == 45) { Box(11, 8, 15, 9, Trim); Put(15, 8, White); }
+            if (Kind == 39 || Kind == 51) { Put(4, 2, Glow); Put(11, 2, Glow); }
+            if (Giant) { Box(1, 7, 3, 13, Trim); Box(12, 7, 14, 13, Trim); }
+            if (Kind == 56) { Box(3, 2, 12, 3, Glow); Put(4, 0, White); Put(8, 0, White); Put(12, 0, White); }
+        }
+        if (Mini) { Put(3, 2, Glow); Put(12, 2, Glow); }
+        if (Walking) { Put(3, 13, Trim); Put(12, 13, Trim); }
+    }
+    else if (Type == 174 || Type == 175) // Marksman, idle/walk
+    {
+        const bool Walking = Type == 175;
+        const FColor Leather = PixelColor(82, 79, 62);
+        const FColor Cloak = PixelColor(58, 86, 68);
+        Box(4, 13, 11, 14, Shadow);
+        Box(4, 8, 11, 12, Cloak);
+        Box(5, 4, 10, 8, Outline);
+        Box(6, 5, 9, 7, PixelColor(154, 132, 102));
+        Box(4, 3, 11, 5, Cloak);
+        Put(6, 6, White); Put(9, 6, White);
+        Box(5, 11, 7, Walking ? 12 : 14, Leather);
+        Box(9, Walking ? 11 : 12, 11, Walking ? 14 : 13, Leather);
+        Box(12, 3, 12, 12, Rust); // bow
+        Put(13, 4, White); Put(13, 11, White);
+        Box(10, 8, 14, 8, Metal);
+    }
+    else if (Type == 176) // Arrow
+    {
+        Box(2, 7, 12, 8, Rust);
+        Box(11, 6, 14, 9, Metal);
+        Put(1, 6, White); Put(1, 9, White);
+    }
+    else if (Type >= 177 && Type <= 179) // Bastion statue / torch / seal
+    {
+        if (Type == 177) {
+            Box(3, 12, 12, 14, Shadow); Box(5, 4, 10, 12, DarkMetal);
+            Box(6, 3, 9, 6, Metal); Box(4, 7, 11, 10, PixelColor(74, 77, 83));
+        } else if (Type == 178) {
+            Box(6, 7, 9, 14, Metal); Box(4, 10, 11, 12, DarkMetal);
+            Box(6, 3, 9, 8, Fire); Put(7, 2, White); Put(8, 2, White);
+        } else {
+            Box(3, 12, 12, 14, Shadow); Box(5, 3, 10, 12, DarkMetal);
+            Box(6, 5, 9, 10, PixelColor(160, 53, 62)); Put(7, 4, White);
+        }
+    }
+    else if (Type == 180) // equipment bag
+    {
+        Box(4, 7, 11, 13, Rust); Box(5, 4, 10, 9, PixelColor(170, 119, 75));
+        Box(6, 3, 9, 4, GoldColor.ToFColor(true)); Put(7, 10, White);
+    }
     else if (Type >= 104 && Type <= 106) // salvageable enemy equipment
     {
         if (Type == 104) // chestplate
@@ -560,8 +649,8 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
 void AAVHUD::InitSprites()
 {
     if (Sprites.Num() > 0) return;
-    for (int32 I = 0; I <= 106; ++I) Sprites.Add(MakeSprite(I));
-    for (int32 Biome = 0; Biome < 3; ++Biome)
+    for (int32 I = 0; I <= 180; ++I) Sprites.Add(MakeSprite(I));
+    for (int32 Biome = 0; Biome < 4; ++Biome)
         for (int32 Variant = 0; Variant < FAVArt::VariantsPerBiome; ++Variant)
             BiomeTiles.Add(FAVArt::BuildTile(Biome, Variant));
 }
@@ -583,10 +672,10 @@ void AAVHUD::DrawDungeon(const AAVGameMode& Game)
 {
     const float T = AAVGameMode::TilePixels * Scale;
     const int32 MinX = FMath::Max(0, FMath::FloorToInt(-Origin.X / T) - 1);
-    const int32 MaxX = FMath::Min(AAVGameMode::MapW - 1,
+    const int32 MaxX = FMath::Min(Game.MapW - 1,
         FMath::CeilToInt((Canvas->SizeX - Origin.X) / T) + 1);
     const int32 MinY = FMath::Max(0, FMath::FloorToInt(-Origin.Y / T) - 1);
-    const int32 MaxY = FMath::Min(AAVGameMode::MapH - 1,
+    const int32 MaxY = FMath::Min(Game.MapH - 1,
         FMath::CeilToInt((Canvas->SizeY - Origin.Y) / T) + 1);
     const int32 Biome = Game.CurrentBiome();
     for (int32 Y = MinY; Y <= MaxY; ++Y)
@@ -648,10 +737,10 @@ void AAVHUD::DrawLighting(const AAVGameMode& Game)
     const float T = AAVGameMode::TilePixels * Scale;
     const FLinearColor Color = FAVArt::LightColor(Game.CurrentBiome());
     const int32 MinX = FMath::Max(0, FMath::FloorToInt(-Origin.X / T) - 1);
-    const int32 MaxX = FMath::Min(AAVGameMode::MapW - 1,
+    const int32 MaxX = FMath::Min(Game.MapW - 1,
         FMath::CeilToInt((Canvas->SizeX - Origin.X) / T) + 1);
     const int32 MinY = FMath::Max(0, FMath::FloorToInt(-Origin.Y / T) - 1);
-    const int32 MaxY = FMath::Min(AAVGameMode::MapH - 1,
+    const int32 MaxY = FMath::Min(Game.MapH - 1,
         FMath::CeilToInt((Canvas->SizeY - Origin.Y) / T) + 1);
     for (int32 Y = MinY; Y <= MaxY; ++Y)
     {
@@ -672,7 +761,7 @@ void AAVHUD::DrawLighting(const AAVGameMode& Game)
                     if (Distance > 5.0f) continue;
                     if (Game.VisualQuality == 2 &&
                         !FAVDungeonNavigation::LineOfSight(
-                             Game.Tiles, AAVGameMode::MapW, AAVGameMode::MapH,
+                             Game.Tiles, Game.MapW, Game.MapH,
                              Decor.Pos, Cell))
                         continue;
                     const float Flicker = 0.85f + 0.15f *
@@ -687,7 +776,7 @@ void AAVHUD::DrawLighting(const AAVGameMode& Game)
                 {
                     if (FVector2D::Distance(Effect.Pos, Cell) > 3.0f) continue;
                     if (!FAVDungeonNavigation::LineOfSight(
-                          Game.Tiles, AAVGameMode::MapW, AAVGameMode::MapH,
+                          Game.Tiles, Game.MapW, Game.MapH,
                           Effect.Pos, Cell))
                         continue;
                     Brightness += 0.20f * FAVArt::LightFalloff(
@@ -729,7 +818,8 @@ void AAVHUD::DrawAtmosphere(const AAVGameMode& Game)
     const FLinearColor Palette = Biome == 0 ?
         FLinearColor(0.66f, 0.68f, 0.74f, 0.38f) :
         Biome == 1 ? FLinearColor(0.44f, 0.93f, 0.52f, 0.48f) :
-                     FLinearColor(1.f, 0.58f, 0.26f, 0.55f);
+        Biome == 2 ? FLinearColor(1.f, 0.58f, 0.26f, 0.55f) :
+                     FLinearColor(0.74f, 0.28f, 0.26f, 0.55f);
     for (int32 I = 0; I < Count; ++I)
     {
         const uint32 H = FAVArt::Hash(I, Game.Floor, static_cast<uint32>(Game.RunSeed));
@@ -861,7 +951,8 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         }
         const FVector2D Bob = Decor.Pos +
             FVector2D(0.f, bLuminous ? -PulseIntensity * 0.06f : 0.f);
-        Sprite(26 + Decor.Type, Bob, bEcho ? 1.32f : 1.12f,
+        Sprite(Decor.Type >= 9 ? 177 + Decor.Type - 9 : 26 + Decor.Type,
+               Bob, bEcho ? 1.32f : 1.12f,
                Decor.bActivated ? 0.45f : 1.f);
         if (bEcho && !Decor.bActivated)
         {
@@ -975,18 +1066,19 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         if (!Game.IsVisibleAt(P.Pos)) continue;
         const FVector2D Pt = P.Pos + FVector2D(0.f, -0.11f * FMath::Sin(P.Time * 5.2f));
         Sprite(P.Type == 0 ? 5 : P.Type == 1 ? 6 : P.Type == 2 ? 7 :
-               P.Type == 3 ? 8 : P.Type >= 8 && P.Type <= 10 ? 96 + P.Type : 12,
+               P.Type == 3 ? 8 : P.Type >= 8 && P.Type <= 10 ? 96 + P.Type : P.Type == 11 ? 180 : 12,
                Pt, P.Type >= 8 ? 0.9f : P.Type == 4 ? 0.9f : 0.7f);
     }
     for (const FAVBolt& Bolt : Game.Bolts)
         if (Game.IsVisibleAt(Bolt.Pos))
-            Sprite(Bolt.bFriendly ? 15 : 10, Bolt.Pos, Bolt.bFriendly ? 0.7f : 0.55f);
+            Sprite(Bolt.bFriendly ? (Bolt.Visual != 0 ? 176 : 15) : 10,
+                   Bolt.Pos, Bolt.bFriendly ? 0.7f : 0.55f);
 
     for (const FAVEnemy& E : Game.Enemies)
     {
         if (!Game.IsVisibleAt(E.Pos)) continue;
         const FVector2D Pt = Screen(E.Pos);
-        const bool bBoss = E.Type == 3 || E.Type == 8 || E.Type == 9 || E.bMiniBoss;
+        const bool bBoss = E.Type == 3 || E.Type == 8 || E.Type == 9 || E.Type == 56 || E.bMiniBoss;
         const float Radius = bBoss ? 1.65f : (E.Type == 7 || E.Type == 23 || E.Type == 24) ? 1.3f : 1.f;
         Rect(Pt.X - 9.f * Scale * Radius, Pt.Y + 7.f * Scale * Radius,
              18.f * Scale * Radius, 3.f * Scale,
@@ -1012,7 +1104,9 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
             Rect(Pt.X + 7.f * Scale * Radius, Pt.Y - Lift,
                  5.f * Scale * Radius, 7.f * Scale * Radius, CastColor);
         }
-        const int32 SpriteType = E.Type >= 11 ?
+        const int32 SpriteType = E.Type >= 34 ?
+            128 + (E.Type - 34) * 2 + (FMath::FloorToInt(Game.RunTime * 6.f + E.Id) % 2) :
+            E.Type >= 11 ?
             ((FMath::FloorToInt(Game.RunTime * (E.Type == 15 ? 10.f : 6.f) + E.Id) % 2) == 0 ?
              36 + E.Type : 70 + E.Type) : E.Type == 0 ? 1 : E.Type == 1 ? 2 :
             E.Type == 2 ? 3 : E.Type == 3 ? 4 : E.Type == 4 ? 16 :
@@ -1091,8 +1185,9 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
                    1.12f, 0.30f / Trail);
     }
     const bool bWalking = Game.HeroVelocity.Size() > 0.2f;
-    const int32 WalkFrame = bWalking && (FMath::FloorToInt(Game.RunTime * 8.f) % 2 != 0)
-        ? 35 : 0;
+    const int32 WalkFrame = Game.HeroClass == 3 ?
+        (bWalking && (FMath::FloorToInt(Game.RunTime * 8.f) % 2 != 0) ? 175 : 174) :
+        (bWalking && (FMath::FloorToInt(Game.RunTime * 8.f) % 2 != 0) ? 35 : 0);
     const float WalkBob = bWalking ? FMath::Sin(Game.RunTime * 16.f) * 0.045f : 0.f;
     Sprite(WalkFrame, Game.Hero + FVector2D(0.f, WalkBob), 1.17f,
            Game.Invulnerability > 0.f &&
@@ -1186,15 +1281,15 @@ void AAVHUD::Bar(float X, float Y, float W, float H, float Fraction,
 void AAVHUD::DrawMiniMap(const AAVGameMode& Game)
 {
     const float Unit = 2.65f * Scale;
-    const float X0 = Canvas->SizeX - (AAVGameMode::MapW * Unit + 21.f * Scale);
+    const float X0 = Canvas->SizeX - (Game.MapW * Unit + 21.f * Scale);
     const float Y0 = 48.f * Scale;
-    const float W = AAVGameMode::MapW * Unit;
-    const float H = AAVGameMode::MapH * Unit;
+    const float W = Game.MapW * Unit;
+    const float H = Game.MapH * Unit;
     Rect(X0 - 7.f * Scale, Y0 - 17.f * Scale, W + 14.f * Scale, H + 23.f * Scale,
          FLinearColor(0.025f, 0.034f, 0.055f, 0.9f));
     Text(TEXT("THE VAULT"), X0, Y0 - 16.f * Scale, Pale, 0.85f);
-    for (int32 Y = 0; Y < AAVGameMode::MapH; ++Y)
-        for (int32 X = 0; X < AAVGameMode::MapW; ++X)
+    for (int32 Y = 0; Y < Game.MapH; ++Y)
+        for (int32 X = 0; X < Game.MapW; ++X)
             if (Game.IsExploredCell(X, Y))
                 Rect(X0 + X * Unit, Y0 + Y * Unit, Unit * 0.87f, Unit * 0.87f,
                      Game.IsVisibleCell(X, Y) ?
@@ -1246,7 +1341,8 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
     Text(TEXT("ASHEN VAULTS"), P, 10.f * Scale, GoldColor, 1.2f);
     const TCHAR* BiomeName = Game.CurrentBiome() == 0 ? TEXT("ASHEN CRYPT") :
                              Game.CurrentBiome() == 1 ? TEXT("SPORE HOLLOWS") :
-                                                        TEXT("EMBER FOUNDRY");
+                             Game.CurrentBiome() == 2 ? TEXT("EMBER FOUNDRY") :
+                                                        TEXT("BLACK BASTION");
     Text(FString::Printf(TEXT("DEPTH %d  |  %s %d/5  |  LVL %d  |  KILLS %d  |  GOLD %d"),
         Game.Floor, BiomeName, Game.BiomeDepth(), Game.Level, Game.Kills, Game.Gold),
         214.f * Scale, 10.f * Scale, Pale, 0.86f);
@@ -1268,19 +1364,21 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
         (float)Game.XP / FMath::Max(1, Game.NextXP()), Aether,
         FString::Printf(TEXT("XP  %d / %d"), Game.XP, Game.NextXP()));
 
-    Text(TEXT("LMB   SLASH"), 280.f * Scale, (Y / Scale + 11.f) * Scale, Pale, 0.95f);
-    Text(TEXT("Q / RMB   SPIN"), 280.f * Scale, Y + 34.f * Scale,
-         Game.Stamina >= (Game.HasRelic(3) ? 24.f : 32.f) &&
+    Text(Game.HeroClass == 3 ? TEXT("LMB   SHOOT") : TEXT("LMB   SLASH"), 280.f * Scale, (Y / Scale + 11.f) * Scale, Pale, 0.95f);
+    Text(Game.HeroClass == 3 ? TEXT("Q / RMB  VOLLEY") : TEXT("Q / RMB   SPIN"), 280.f * Scale, Y + 34.f * Scale,
+         Game.Stamina >= (Game.HasRelic(3) ? 24.f : Game.HeroClass == 3 ? 30.f : 32.f) &&
          Game.SpinCooldown <= 0.f ? Mint : Pale, 0.95f);
-    Text(TEXT("R   THROW BLADE"), 447.f * Scale, Y + 11.f * Scale,
-         Game.KnifeCooldown <= 0.f && Game.Stamina >= 18.f ? Mint : Pale, 0.95f);
+    Text(Game.HeroClass == 3 ? TEXT("R   PIERCE") : TEXT("R   THROW BLADE"), 447.f * Scale, Y + 11.f * Scale,
+         Game.KnifeCooldown <= 0.f && Game.Stamina >= (Game.HeroClass == 3 ? 20.f : 18.f) ? Mint : Pale, 0.95f);
     Text(FString::Printf(TEXT("F   POTION x%d"), Game.Potions),
          447.f * Scale, Y + 34.f * Scale, Game.Potions > 0 ? GoldColor : Pale, 0.95f);
     Text(Game.IsExitReady() ? TEXT("E   EXIT READY") :
          FString::Printf(TEXT("FOES %d  |  CACHE %d"),
              Game.EnemiesRemaining(), Game.UnopenedChests()),
          646.f * Scale, Y + 11.f * Scale, Game.IsExitReady() ? Mint : Blood, 0.95f);
-    Text(FString::Printf(TEXT("RELICS %d   ECHOES %d"), Game.RelicCount, Game.Echoes),
+    Text(Game.HeroClass == 3 ?
+         FString::Printf(TEXT("RELICS %d  AIM x%d"), Game.RelicCount, Game.ShotSeries) :
+         FString::Printf(TEXT("RELICS %d   ECHOES %d"), Game.RelicCount, Game.Echoes),
          646.f * Scale, Y + 34.f * Scale, Pale, 0.83f);
     Text(FString::Printf(TEXT("GEAR %d  ARMOR %.0f%%  RANGED +%.0f"),
          Game.EquippedGear, Game.ArmorRating * 100.f, Game.RangedBonus),
@@ -1299,9 +1397,10 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
     // Show the active floor guardian even when it moves behind fog.
     for (const FAVEnemy& Boss : Game.Enemies)
     {
-        if (Boss.Type != 3 && Boss.Type != 8 && Boss.Type != 9) continue;
+        if (Boss.Type != 3 && Boss.Type != 8 && Boss.Type != 9 && Boss.Type != 56) continue;
         const TCHAR* Name = Boss.Type == 8 ? TEXT("THE BONE REGENT") :
                             Boss.Type == 9 ? TEXT("FORGE TYRANT") :
+                            Boss.Type == 56 ? TEXT("THE COMMANDANT") :
                                              TEXT("THE VAULT WARDEN");
         const float X = Canvas->SizeX * 0.5f - 195.f * Scale;
         const float BossY = Canvas->SizeY - 110.f * Scale;
