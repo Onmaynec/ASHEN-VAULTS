@@ -230,6 +230,21 @@ void AAVGameMode::GenerateFloor()
         Merchant = Rooms[1].Center();
         bMerchantSpawned = true;
     }
+    // Sparse interior stone pillars create cover and alternate routes.
+    // Keep spawn, merchant, exit and shrine chambers unobstructed.
+    for (int32 I = 2; I < Rooms.Num() - 1; ++I)
+    {
+        if (I == Rooms.Num() / 2 || RNG.FRand() > 0.45f) continue;
+        const FRoom& R = Rooms[I];
+        if (R.W < 8 || R.H < 7) continue;
+        const int32 PX = R.X + 2 + RNG.RandRange(0, R.W - 6);
+        const int32 PY = R.Y + 2 + RNG.RandRange(0, R.H - 6);
+        if (FVector2D::Distance(FVector2D(PX + 0.5f, PY + 0.5f), R.Center()) < 2.f)
+            continue;
+        Tiles[PY * MapW + PX] = 0;
+        if (R.W >= 10 && RNG.RandRange(0, 1) == 1)
+            Tiles[PY * MapW + PX + 1] = 0;
+    }
     // Rooms remain connected by the carved corridors. Keep traps away from
     // spawn, stairs and the shrine, so none of the interactions become blocked.
     for (int32 I = 1; I < Rooms.Num(); ++I)
