@@ -211,6 +211,10 @@ public:
     float DashBonusTime = 0.f;
     float RevengeTime = 0.f;
     int32 BasicAttackSequence = 0;
+    int32 MeleeSwingCount = 0;
+    int32 BlooddrinkerHitCount = 0;
+    float ChainCooldown = 0.f;
+    float GuardWhirlTime = 0.f;
 
     EAVPhase Phase = EAVPhase::Playing;
     FVector2D Hero = FVector2D(4.f, 4.f);
