@@ -1204,8 +1204,8 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
     const TCHAR* BiomeName = Game.CurrentBiome() == 0 ? TEXT("ASHEN CRYPT") :
                              Game.CurrentBiome() == 1 ? TEXT("SPORE HOLLOWS") :
                                                         TEXT("EMBER FOUNDRY");
-    Text(FString::Printf(TEXT("DEPTH %d/%d  %s  |  LVL %d  |  KILLS %d  |  GOLD %d"),
-        Game.Floor, AAVGameMode::FinalFloor, BiomeName, Game.Level, Game.Kills, Game.Gold),
+    Text(FString::Printf(TEXT("DEPTH %d  |  %s %d/5  |  LVL %d  |  KILLS %d  |  GOLD %d"),
+        Game.Floor, BiomeName, Game.BiomeDepth(), Game.Level, Game.Kills, Game.Gold),
         214.f * Scale, 10.f * Scale, Pale, 0.86f);
 
     const float Y = Canvas->SizeY - 74.f * Scale;
@@ -1351,8 +1351,8 @@ void AAVHUD::DrawOverlay(const AAVGameMode& Game)
         Text(Won ? TEXT("THE VAULT IS SILENT") : TEXT("YOU HAVE FALLEN"),
              Left + (Won ? 125.f : 153.f) * Scale, Top + 28.f * Scale,
              Won ? Mint : Blood, 1.4f);
-        Text(FString::Printf(TEXT("DEPTH %d / %d    KILLS %d    GOLD %d"),
-             Game.Floor, AAVGameMode::FinalFloor, Game.Kills, Game.Gold),
+        Text(FString::Printf(TEXT("DEPTH %d    KILLS %d    GOLD %d"),
+             Game.Floor, Game.Kills, Game.Gold),
              Left + 133.f * Scale, Top + 92.f * Scale, Pale, 1.f);
         Text(FString::Printf(TEXT("BEST DEPTH %d    BEST KILLS %d"),
              Game.BestFloor, Game.BestKills),
