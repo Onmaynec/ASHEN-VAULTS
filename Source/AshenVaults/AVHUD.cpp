@@ -695,6 +695,7 @@ void AAVHUD::InitSprites()
         TEXT("AVVisuals/Tiles/FoundryAtlas.png"),
         TEXT("AVVisuals/Tiles/BastionAtlas.png")
     };
+    HeroAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Characters/HeroAtlas.png"));
     for(int32 Biome=0;Biome<4;++Biome) {
         AuthoredAtlases.Add(FAVImageLoader::LoadPNG(Atlases[Biome]));
         // Procedural fallback remains deterministic when the PNG is absent.
@@ -1312,9 +1313,26 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         (bWalking && (FMath::FloorToInt(Game.RunTime * 8.f) % 2 != 0) ? 175 : 174) :
         (bWalking && (FMath::FloorToInt(Game.RunTime * 8.f) % 2 != 0) ? 35 : 0);
     const float WalkBob = bWalking ? FMath::Sin(Game.RunTime * 16.f) * 0.045f : 0.f;
-    Sprite(WalkFrame, Game.Hero + FVector2D(0.f, WalkBob), 1.17f,
-           Game.Invulnerability > 0.f &&
-           FMath::Sin(Game.RunTime * 32.f) > 0.f ? 0.5f : 1.f);
+    const float HeroAlpha=Game.Invulnerability>0.f &&
+        FMath::Sin(Game.RunTime*32.f)>0.f?0.5f:1.f;
+    if(HeroAtlas)
+    {
+        const bool Attacking=Game.AttackCooldown>0.07f ||
+            Game.SpinCooldown>1.25f ||
+            (Game.HeroClass==3 && Game.KnifeCooldown>1.65f);
+        const int32 Frame=Game.DashTime>0.f?6+FMath::FloorToInt(Game.RunTime*14.f)%2:
+            Attacking?4+FMath::FloorToInt(Game.RunTime*12.f)%2:
+            bWalking?2+FMath::FloorToInt(Game.RunTime*9.f)%2:
+            FMath::FloorToInt(Game.RunTime*2.f)%2;
+        const FVector2D Position=Screen(Game.Hero+FVector2D(0.f,WalkBob));
+        const float Size=37.f*Scale;
+        DrawTexture(HeroAtlas,Position.X-Size*0.5f,Position.Y-Size*0.56f,
+                    Size,Size,Frame/8.f,Game.HeroClass/4.f,
+                    1.f/8.f,1.f/4.f,
+                    FLinearColor(1.f,1.f,1.f,HeroAlpha),
+                    BLEND_Translucent,1.f,false,0.f,FVector2D::ZeroVector);
+    }
+    else Sprite(WalkFrame,Game.Hero+FVector2D(0.f,WalkBob),1.17f,HeroAlpha);
 
     const FVector2D Arrow = Hp + Game.Aim * (18.f * Scale);
     Rect(Arrow.X - Scale, Arrow.Y - Scale, 3.f * Scale, 3.f * Scale, GoldColor);
