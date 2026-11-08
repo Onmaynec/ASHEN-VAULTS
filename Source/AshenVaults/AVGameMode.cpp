@@ -600,7 +600,11 @@ void AAVGameMode::Strike(bool bSpin)
         if (!bSpin && FVector2D::DotProduct(SafeDirection(Delta), Aim) < 0.10f) continue;
         // Fix: sword swings can no longer hit actors through solid stone walls.
         if (!FAVDungeonNavigation::LineOfSight(Tiles, MapW, MapH, Hero, Enemy.Pos)) continue;
-        Enemy.HP -= Damage;
+        // Crypt guards and armored enemies block frontal strikes.
+        const bool bShield = Enemy.Type == 20 || Enemy.Equipment == 1;
+        const bool bFacing = FVector2D::DotProduct(SafeDirection(Hero - Enemy.Pos),
+                                                   SafeDirection(Enemy.LastSeenHero - Enemy.Pos)) > 0.25f;
+        Enemy.HP -= bShield && bFacing ? Damage * 0.58f : Damage;
         Enemy.Flash = 0.16f;
         Enemy.Knockback += SafeDirection(Delta) * (Enemy.Type == 3 ? 1.f : 5.f);
         AddEffect(Enemy.Pos, 2, 0.55f);
@@ -1176,6 +1180,17 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             const FVector2D Away = E.Pos - Enemies[J].Pos;
             if (Away.SizeSquared() > 0.01f && Away.SizeSquared() < 0.6f)
                 DesiredVelocity += SafeDirection(Away) * Speed * 0.35f;
+        }
+        // Pack hunters converge quickly, while crypt guards advance as a shield wall.
+        if ((E.Type == 15 || E.Type == 22 || E.Type == 5) && bSeesTarget && Distance < 6.f)
+            DesiredVelocity += Direction * Speed * 0.22f;
+        if ((E.Type == 20 || E.Type == 1) && Distance < 3.2f)
+            DesiredVelocity *= 0.78f;
+        if ((E.Type == 17 || E.Type == 11 || E.Type == 30) &&
+            bSeesTarget && Distance > 2.f && Distance < 6.f)
+        {
+            const FVector2D Side(-Direction.Y, Direction.X);
+            DesiredVelocity += Side * (E.Id % 2 ? 1.f : -1.f) * Speed * 0.36f;
         }
         E.Pos = MoveWithCollision(E.Pos, DesiredVelocity + E.Knockback,
                                   DeltaSeconds, Spec.Boss ? 0.47f : 0.26f);
