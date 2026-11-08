@@ -749,6 +749,7 @@ void AAVHUD::InitSprites()
     EquipmentAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Icons/EquipmentAtlas.png"));
     BossAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Bosses/BossAtlas.png"));
     EnemyAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Enemies/EnemyAtlas.png"));
+    KenneyDecorAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Kenney/TinyDungeonDecor.png"));
     UMaterialInterface* PixelShader=LoadObject<UMaterialInterface>(
         nullptr,TEXT("/Game/AVVisuals/Materials/M_AV_PixelSurface.M_AV_PixelSurface"));
     for(int32 Biome=0;Biome<4;++Biome) {
@@ -1114,7 +1115,19 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         }
         const FVector2D Bob = Decor.Pos +
             FVector2D(0.f, bLuminous ? -PulseIntensity * 0.06f : 0.f);
-        Sprite(Decor.Type >= 12 ? 228 + Decor.Type - 12 :
+        if(KenneyDecorAtlas && Decor.Type>=12 && Decor.Type<=27)
+        {
+            const int32 Index=Decor.Type-12;
+            const FVector2D CenterPoint=Screen(Bob);
+            const float Size=27.f*Scale;
+            DrawTexture(KenneyDecorAtlas,CenterPoint.X-Size*0.5f,
+                        CenterPoint.Y-Size*0.6f,Size,Size,
+                        (Index%4)/4.f,(Index/4)/4.f,
+                        1.f/4.f,1.f/4.f,FLinearColor::White,
+                        BLEND_Translucent,1.f,false,0.f,
+                        FVector2D::ZeroVector);
+        }
+        else Sprite(Decor.Type >= 12 ? 228 + Decor.Type - 12 :
                Decor.Type >= 9 ? 177 + Decor.Type - 9 : 26 + Decor.Type,
                Bob, bEcho ? 1.32f : 1.12f,
                Decor.bActivated ? 0.45f : 1.f);
