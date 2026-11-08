@@ -909,9 +909,26 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
                 FLinearColor(0.38f, 0.14f, 0.17f, 0.85f));
         Rect(Pt.X - 8.f * Scale, Pt.Y - 8.f * Scale,
              16.f * Scale, 16.f * Scale, Ink);
-        for (int32 I = -1; I <= 1; ++I)
-            Rect(Pt.X + (I * 5.f - 1.f) * Scale, Pt.Y - 5.f * Scale,
-                 3.f * Scale, 11.f * Scale, TrapColor);
+        if (Trap.Type == 0) // spike teeth
+        {
+            for (int32 I = -1; I <= 1; ++I)
+                Rect(Pt.X + (I * 5.f - 1.f) * Scale, Pt.Y - 5.f * Scale,
+                     3.f * Scale, 11.f * Scale, TrapColor);
+        }
+        else if (Trap.Type == 1) // flaming vent
+        {
+            Rect(Pt.X - 6.f * Scale, Pt.Y - 6.f * Scale,
+                 12.f * Scale, 12.f * Scale, FLinearColor(0.46f, 0.22f, 0.1f, 1.f));
+            Rect(Pt.X - 3.f * Scale, Pt.Y - 5.f * Scale,
+                 6.f * Scale, 10.f * Scale, TrapColor);
+        }
+        else // dart mechanism
+        {
+            Rect(Pt.X - 6.f * Scale, Pt.Y - 3.f * Scale,
+                 12.f * Scale, 6.f * Scale, TrapColor);
+            Rect(Pt.X - 2.f * Scale, Pt.Y - 7.f * Scale,
+                 4.f * Scale, 14.f * Scale, FLinearColor(0.67f, 0.7f, 0.74f, 1.f));
+        }
         if (Armed)
         {
             Rect(Pt.X - 14.f * Scale, Pt.Y - 14.f * Scale,
