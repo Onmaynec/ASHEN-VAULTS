@@ -698,6 +698,7 @@ void AAVHUD::InitSprites()
     HeroAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Characters/HeroAtlas.png"));
     EquipmentAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Icons/EquipmentAtlas.png"));
     BossAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Bosses/BossAtlas.png"));
+    EnemyAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Enemies/EnemyAtlas.png"));
     for(int32 Biome=0;Biome<4;++Biome) {
         AuthoredAtlases.Add(FAVImageLoader::LoadPNG(Atlases[Biome]));
         // Procedural fallback remains deterministic when the PNG is absent.
@@ -1263,6 +1264,23 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
                 }
             DrawTexture(BossAtlas,BP.X-Size*0.5f,BP.Y-Size*0.54f,
                         Size,Size,Frame/6.f,Row/4.f,1.f/6.f,1.f/4.f,
+                        FLinearColor(1.f,1.f,1.f,E.Flash>0.f?0.65f:1.f),
+                        BLEND_Translucent,1.f,false,0.f,
+                        FVector2D::ZeroVector);
+        }
+        else if(EnemyAtlas && E.Type>=0 && E.Type<=56)
+        {
+            const bool Moving=E.MemoryTime>0.f || E.AlertTime>0.f ||
+                              E.Wander>0.f;
+            const int32 Frame=bCasting?1:(Moving?
+                FMath::FloorToInt(Game.RunTime*7.f+E.Id)%2:0);
+            const int32 Index=E.Type*2+Frame;
+            const float Size=29.f*Scale*Radius;
+            const FVector2D PtSprite=Screen(E.Pos+FVector2D(0.f,EnemyBob));
+            DrawTexture(EnemyAtlas,PtSprite.X-Size*0.5f,
+                        PtSprite.Y-Size*0.57f,Size,Size,
+                        (Index%12)/12.f,(Index/12)/10.f,
+                        1.f/12.f,1.f/10.f,
                         FLinearColor(1.f,1.f,1.f,E.Flash>0.f?0.65f:1.f),
                         BLEND_Translucent,1.f,false,0.f,
                         FVector2D::ZeroVector);
