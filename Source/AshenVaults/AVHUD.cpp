@@ -1918,6 +1918,7 @@ void AAVHUD::DrawHUD()
     DrawDungeon(*Game);
     DrawLighting(*Game);
     DrawActors(*Game);
+    DrawCombatVFX(*Game);
     DrawAtmosphere(*Game);
     if (Game->Invulnerability > 0.5f)
         Rect(0.f, 0.f, Canvas->SizeX, Canvas->SizeY,
