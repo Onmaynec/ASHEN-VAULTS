@@ -35,7 +35,10 @@ int main()
     assert(FAVContent::Enemy(9, 4).Boss);
     assert(FAVContent::Enemy(6, 3).Ranged);
     assert(!FAVContent::Enemy(7, 5).Ranged);
-    assert(FAVContent::Enemy(7, 6).Health > FAVContent::Enemy(7, 5).Health);
+    // Base enemy health is now independent of floor: level handles depth.
+    assert(FAVContent::Enemy(7, 6).Health == FAVContent::Enemy(7, 5).Health);
+    assert(FAVContent::ScaledEnemyHealth(7, 6, FAVContent::EnemyLevel(6, 50)) >
+           FAVContent::ScaledEnemyHealth(7, 5, FAVContent::EnemyLevel(5, 50)));
     assert(FAVContent::EnemyLevel(6, 99) > FAVContent::EnemyLevel(1, 0));
     assert(FAVContent::LevelHealthMultiplier(10) > FAVContent::LevelHealthMultiplier(1));
     assert(FAVContent::LevelDamageMultiplier(10) > FAVContent::LevelDamageMultiplier(1));
