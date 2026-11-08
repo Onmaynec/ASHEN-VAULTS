@@ -912,6 +912,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
     for (int32 I = Enemies.Num() - 1; I >= 0; --I)
     {
         if (Phase != EAVPhase::Playing) return;
+        if (Enemies[I].HP <= 0.f) { KillEnemy(I); continue; }
         FAVEnemy& E = Enemies[I];
         const FAVEnemySpec Spec = FAVContent::Enemy(E.Type, Floor);
         E.Cooldown -= DeltaSeconds;
@@ -976,9 +977,21 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             {
                 E.Telegraph = 0.f;
                 // Enemies cannot swing through walls, either.
-                if (FVector2D::Distance(E.Pos, Hero) < Reach + 0.16f &&
-                    FAVDungeonNavigation::LineOfSight(Tiles, MapW, MapH, E.Pos, Hero))
-                    DamageHero(Spec.Damage * (E.bElite ? 1.35f : 1.f), E.Pos);
+                if (Distance < Reach + 0.16f && bSeesTarget)
+                {
+                    const float Damage = Spec.Damage * FAVContent::LevelDamageMultiplier(E.Level) *
+                        (E.bElite ? 1.35f : 1.f) * (E.Equipment == 3 ? 1.25f : 1.f);
+                    if (bTargetEnemy)
+                    {
+                        for (int32 J = 0; J < Enemies.Num(); ++J)
+                        {
+                            if (J != I && Enemies[J].Faction != E.Faction &&
+                                FVector2D::Distance(Enemies[J].Pos, Target) < 0.6f)
+                            { Enemies[J].HP -= Damage; break; }
+                        }
+                    }
+                    else DamageHero(Damage, E.Pos);
+                }
                 E.Cooldown = Spec.Boss ? 1.15f : E.Type == 7 ? 1.6f :
                              E.Type == 1 ? 1.4f : 1.08f;
             }
@@ -991,7 +1004,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         if (bRangedAttack)
         {
             // Fix: ranged enemies require actual line of sight, not distance alone.
-            if (!FAVDungeonNavigation::LineOfSight(Tiles, MapW, MapH, E.Pos, Hero))
+            if (!FAVDungeonNavigation::LineOfSight(Tiles, MapW, MapH, E.Pos, Target))
             {
                 E.Cooldown = 0.20f;
                 continue;
@@ -1009,7 +1022,6 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                     if (J == I || Enemies[J].Faction == E.Faction ||
                         FVector2D::Distance(Enemies[J].Pos, Target) > 0.6f) continue;
                     Enemies[J].HP -= Bolt.Damage;
-                    if (Enemies[J].HP <= 0.f) KillEnemy(J);
                     break;
                 }
                 E.Cooldown = 1.5f;
