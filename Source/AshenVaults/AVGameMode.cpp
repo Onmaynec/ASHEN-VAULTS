@@ -1107,6 +1107,13 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
             if (CanMove(Blink, 0.47f)) E.Pos = Blink;
         }
     }
+    else if (Pattern == 0 && E.bElite) // reinforced ashling: close-range triple slash
+    {
+        if (D < 3.5f)
+            for (int32 K = -1; K <= 1; ++K)
+                SpawnEnemyBolt(E, Dir + Side * (K * 0.4f), 6.6f, 0.6f);
+        E.AbilityCooldown = 4.4f;
+    }
     else if (Pattern == 23 || Pattern == 24 || Pattern == 7) // golem ground slam
     {
         if (D < 3.5f)
@@ -1266,7 +1273,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             continue;
         }
         if (E.AbilityCooldown <= 0.f && bSeesTarget && Distance < 8.0f &&
-            (E.bMiniBoss || Spec.Boss || E.Type == 7 || E.Type == 23 ||
+            (E.bMiniBoss || Spec.Boss || (E.bElite && E.Type == 0) || E.Type == 7 || E.Type == 23 ||
              E.Type == 24 || E.Type == 19 || E.Type == 12 || E.Type == 21 ||
              E.Type == 6 || E.Type == 18 || E.Type == 14))
         {
