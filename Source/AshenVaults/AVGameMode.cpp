@@ -718,8 +718,8 @@ void AAVGameMode::KillEnemy(int32 Index)
         Gear.Amount = Dead.Equipment == 3 ? 3 : 1;
         Pickups.Add(Gear);
     }
-    AddEffect(Dead.Pos, 3, bBoss ? 2.2f : 0.9f);
-    DropLoot(Dead.Pos, bBoss);
+    AddEffect(Dead.Pos, 3, bBoss ? 2.2f : Dead.bMiniBoss ? 1.7f : 0.9f);
+    DropLoot(Dead.Pos, bBoss || Dead.bMiniBoss);
     if (Dead.bElite)
     {
         FAVPickup Shard;
@@ -732,7 +732,7 @@ void AAVGameMode::KillEnemy(int32 Index)
     if (RNG.FRand() < (bBoss ? 0.85f : 0.075f))
     {
         FAVPickup Upgrade;
-        Upgrade.Pos = Pos;
+        Upgrade.Pos = Dead.Pos;
         Upgrade.Type = RNG.RandRange(5, 7);
         Upgrade.Amount = 1;
         Pickups.Add(Upgrade);
