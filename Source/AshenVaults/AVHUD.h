@@ -57,4 +57,5 @@ private:
     void DrawTalentWindow(const AAVGameMode& Game);
     void DrawEquipmentIcon(int32 ItemId, float X, float Y, float Size);
     void DrawGothicPanel(float X,float Y,float Width,float Height);
+    void DrawCombatVFX(const AAVGameMode& Game);
 };
