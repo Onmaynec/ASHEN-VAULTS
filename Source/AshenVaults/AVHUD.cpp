@@ -1023,6 +1023,17 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
             (E.Type == 10 ? 0.12f : 0.045f);
         Sprite(SpriteType, E.Pos + FVector2D(0.f, EnemyBob),
                Radius, E.Flash > 0.f ? 0.55f : 1.f);
+        if (E.PhaseShiftTime > 0.f)
+        {
+            const float TransformPulse = 0.4f + 0.6f * FMath::Sin(Game.RunTime * 28.f);
+            const float HaloRadius = (18.f + 13.f * E.PhaseShiftTime / 1.5f) * Scale;
+            Rect(Pt.X - HaloRadius, Pt.Y - HaloRadius,
+                 HaloRadius * 2.f, 3.f * Scale,
+                 FLinearColor(0.9f, 0.08f, 0.12f, TransformPulse));
+            Rect(Pt.X - HaloRadius, Pt.Y + HaloRadius,
+                 HaloRadius * 2.f, 3.f * Scale,
+                 FLinearColor(0.9f, 0.08f, 0.12f, TransformPulse));
+        }
         if (bTransformed)
         {
             // Visible phase mutation: glowing red eyes and additional limbs.
