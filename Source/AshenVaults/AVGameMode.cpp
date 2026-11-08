@@ -2766,8 +2766,11 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             FVector2D::Distance(Hero, Hazard.Pos) > 1.f ||
             Invulnerability > 0.f) continue;
         Hazard.Cooldown = 1.25f;
-        if (Hazard.Type == 0) PoisonTime = FMath::Max(PoisonTime, 4.0f);
-        else BurnTime = FMath::Max(BurnTime, 3.f);
+        const float StatusFactor=FMath::Clamp(1.f-
+            (GearStat(AVStatusResistPercent)+10.f*SkillRank(1))*0.01f,
+            0.4f,1.f);
+        if(Hazard.Type==0) PoisonTime=FMath::Max(PoisonTime,4.f*StatusFactor);
+        else BurnTime=FMath::Max(BurnTime,3.f*StatusFactor);
         AddEffect(Hazard.Pos, 2, 0.6f);
     }
 
