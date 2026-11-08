@@ -738,7 +738,7 @@ void AAVHUD::DrawDungeon(const AAVGameMode& Game)
             if (Game.IsFloor(X, Y))
             {
                 if (!Game.IsExploredCell(X, Y)) continue;
-                const int32 Variant = static_cast<int32>(Hash % 8u);
+                const int32 Variant = static_cast<int32>(Hash % static_cast<uint32>(FAVArt::FloorVariants));
                 const int32 Index = Biome * FAVArt::VariantsPerBiome + Variant;
                 if (BiomeTiles.IsValidIndex(Index) && BiomeTiles[Index])
                     DrawTexture(BiomeTiles[Index], SX, SY, T + 0.5f, T + 0.5f,
@@ -760,7 +760,8 @@ void AAVHUD::DrawDungeon(const AAVGameMode& Game)
                         bVisibleNeighbour |= Game.IsVisibleCell(X + DX, Y + DY);
                     }
                 if (!bExploredNeighbour) continue;
-                const int32 Variant = 8 + static_cast<int32>(Hash % 4u);
+                const int32 Variant = FAVArt::FloorVariants +
+                    static_cast<int32>(Hash % static_cast<uint32>(FAVArt::WallVariants));
                 const int32 Index = Biome * FAVArt::VariantsPerBiome + Variant;
                 if (BiomeTiles.IsValidIndex(Index) && BiomeTiles[Index])
                     DrawTexture(BiomeTiles[Index], SX, SY, T + 0.5f, T + 0.5f,
