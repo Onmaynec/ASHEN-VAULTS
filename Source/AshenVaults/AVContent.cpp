@@ -22,16 +22,13 @@ float FAVContent::LevelDamageMultiplier(int32 Level)
 
 int32 FAVContent::Biome(int32 Floor)
 {
-    if (Floor <= 2) return 0; // Ashen Crypt
-    if (Floor <= 4) return 1; // Spore Hollows
-    return 2;                 // Ember Foundry
+    return ((FMath::Max(1, Floor) - 1) / 5) % 3; // Five floors per biome, cycling indefinitely
 }
 
 int32 FAVContent::Boss(int32 Floor)
 {
-    if (Floor == 2) return 8; // Bone Regent
-    if (Floor == 4) return 9; // Forge Tyrant
-    if (Floor == 6) return 3; // Vault Warden
+    if (Floor < 1 || Floor % 5 != 0) return -1;
+    return Biome(Floor) == 0 ? 8 : Biome(Floor) == 1 ? 9 : 3;
     return -1;
 }
 
