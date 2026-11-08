@@ -1,9 +1,9 @@
 #include "AVContent.h"
 
-float FAVContent::HeroHealth(int32 Id) { return Id == 1 ? 82.f : Id == 2 ? 75.f : 115.f; }
-float FAVContent::HeroStamina(int32 Id) { return Id == 1 ? 120.f : Id == 2 ? 135.f : 100.f; }
-float FAVContent::HeroAttack(int32 Id) { return Id == 1 ? 22.f : Id == 2 ? 16.f : 18.f; }
-float FAVContent::HeroSpeed(int32 Id) { return Id == 1 ? 5.7f : Id == 2 ? 4.6f : 4.8f; }
+float FAVContent::HeroHealth(int32 Id) { return Id == 1 ? 82.f : Id == 2 ? 75.f : Id == 3 ? 90.f : 115.f; }
+float FAVContent::HeroStamina(int32 Id) { return Id == 1 ? 120.f : Id == 2 ? 135.f : Id == 3 ? 115.f : 100.f; }
+float FAVContent::HeroAttack(int32 Id) { return Id == 1 ? 22.f : Id == 2 ? 16.f : Id == 3 ? 19.f : 18.f; }
+float FAVContent::HeroSpeed(int32 Id) { return Id == 1 ? 5.7f : Id == 2 ? 4.6f : Id == 3 ? 5.1f : 4.8f; }
 
 int32 FAVContent::EnemyLevel(int32 Floor, int32 Roll)
 {
@@ -22,14 +22,13 @@ float FAVContent::LevelDamageMultiplier(int32 Level)
 
 int32 FAVContent::Biome(int32 Floor)
 {
-    return ((FMath::Max(1, Floor) - 1) / 5) % 3; // Five floors per biome, cycling indefinitely
+    return ((FMath::Max(1, Floor) - 1) / FloorsPerBiome) % BiomeCount;
 }
 
 int32 FAVContent::Boss(int32 Floor)
 {
     if (Floor < 1 || Floor % 5 != 0) return -1;
-    return Biome(Floor) == 0 ? 8 : Biome(Floor) == 1 ? 9 : 3;
-    return -1;
+    return Biome(Floor) == 0 ? 8 : Biome(Floor) == 1 ? 9 : Biome(Floor) == 2 ? 3 : 56;
 }
 
 int32 FAVContent::EnemyRoll(int32 Floor, int32 Percentile)
@@ -39,7 +38,8 @@ int32 FAVContent::EnemyRoll(int32 Floor, int32 Percentile)
     {
     case 0: return P < 17 ? 0 : P < 30 ? 15 : P < 43 ? 16 : P < 55 ? 17 : P < 65 ? 18 : P < 74 ? 19 : P < 82 ? 20 : P < 89 ? 1 : P < 95 ? 11 : 5;
     case 1: return P < 17 ? 5 : P < 31 ? 6 : P < 44 ? 21 : P < 57 ? 22 : P < 69 ? 23 : P < 79 ? 12 : P < 88 ? 2 : P < 94 ? 16 : 1;
-    default: return P < 18 ? 7 : P < 33 ? 10 : P < 47 ? 24 : P < 59 ? 22 : P < 72 ? 13 : P < 83 ? 14 : P < 91 ? 23 : 1;
+    case 2: return P < 18 ? 7 : P < 33 ? 10 : P < 47 ? 24 : P < 59 ? 22 : P < 72 ? 13 : P < 83 ? 14 : P < 91 ? 23 : 1;
+    default: return 34 + P * 18 / 100; // Black Bastion: all 18 archetypes
     }
 }
 
@@ -82,6 +82,30 @@ FAVEnemySpec FAVContent::Enemy(int32 Type, int32 Floor)
     case 31: S = { 205.f, 1.9f, 24.f, true, false }; break; // Cinder Shaman
     case 32: S = { 250.f, 1.5f, 28.f, true, false }; break; // Iron Tyrant
     case 33: S = { 45.f, 2.65f, 17.f, false, false }; break; // Bandit Raider
+    // Black Bastion (34..51), four minibosses (52..55), Commandant (56).
+    case 34: S = {46.f,2.2f,17.f,false,false}; break; // Black Infantry
+    case 35: S = {42.f,1.9f,18.f,false,false}; break; // Pikeman
+    case 36: S = {82.f,1.25f,21.f,false,false}; break; // Shieldbearer
+    case 37: S = {37.f,1.55f,18.f,true,false}; break; // Crossbowman
+    case 38: S = {63.f,1.45f,22.f,false,false}; break; // Halberdier
+    case 39: S = {50.f,2.9f,20.f,false,false}; break; // Berserker
+    case 40: S = {45.f,3.35f,16.f,false,false}; break; // Armored Hound
+    case 41: S = {50.f,2.7f,18.f,false,false}; break; // Gargoyle
+    case 42: S = {110.f,1.02f,27.f,false,false}; break; // Bonebreaker
+    case 43: S = {28.f,3.3f,14.f,false,false}; break; // Crawler
+    case 44: S = {88.f,1.85f,23.f,false,false}; break; // Possessed Knight
+    case 45: S = {49.f,2.7f,20.f,true,false}; break; // Dark Hunter
+    case 46: S = {44.f,1.7f,21.f,true,false}; break; // Battle Mage
+    case 47: S = {48.f,1.5f,16.f,true,false}; break; // Summoner
+    case 48: S = {96.f,1.35f,26.f,false,false}; break; // Punisher
+    case 49: S = {52.f,1.6f,17.f,true,false}; break; // Blood Priest
+    case 50: S = {87.f,1.42f,23.f,true,false}; break; // Seal Sentinel
+    case 51: S = {44.f,3.0f,20.f,false,false}; break; // Ravager
+    case 52: S = {200.f,1.9f,32.f,false,false}; break; // Executioner
+    case 53: S = {220.f,1.6f,34.f,false,false}; break; // Guard Captain
+    case 54: S = {290.f,1.05f,40.f,false,false}; break; // Siege Golem
+    case 55: S = {190.f,2.2f,32.f,true,false}; break; // Inquisitor
+    case 56: S = {650.f,1.7f,42.f,false,true}; break; // Commandant
     default: break;
     }
     if (!S.Boss)
