@@ -696,6 +696,7 @@ void AAVHUD::InitSprites()
         TEXT("AVVisuals/Tiles/BastionAtlas.png")
     };
     HeroAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Characters/HeroAtlas.png"));
+    EquipmentAtlas=FAVImageLoader::LoadPNG(TEXT("AVVisuals/Icons/EquipmentAtlas.png"));
     for(int32 Biome=0;Biome<4;++Biome) {
         AuthoredAtlases.Add(FAVImageLoader::LoadPNG(Atlases[Biome]));
         // Procedural fallback remains deterministic when the PNG is absent.
@@ -1565,7 +1566,9 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
 
 void AAVHUD::DrawOverlay(const AAVGameMode& Game)
 {
-    if (Game.Phase == EAVPhase::Playing) return;
+    if(Game.Phase==EAVPhase::Playing) return;
+    if(Game.Phase==EAVPhase::Inventory){DrawInventoryWindow(Game);return;}
+    if(Game.Phase==EAVPhase::Skills){DrawTalentWindow(Game);return;}
     Rect(0.f,0.f,Canvas->SizeX,Canvas->SizeY,
          FLinearColor(0.01f,0.015f,0.025f,0.84f));
     if(Game.Phase == EAVPhase::Inventory || Game.Phase == EAVPhase::Skills)
