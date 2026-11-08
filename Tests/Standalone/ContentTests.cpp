@@ -36,6 +36,21 @@ int main()
     for (int32 Type = 15; Type < FAVContent::EnemyCount; ++Type)
         assert(FAVContent::Enemy(Type, 3).Health > 0.f);
     assert(FAVContent::MiniBossCount == 7);
+    assert(FAVContent::PickupCount == 11);
+    for (int32 Floor = 1; Floor <= 6; ++Floor)
+    {
+        assert(FAVContent::EnemyLevel(Floor, 0) == 1 + (Floor - 1) * 2);
+        assert(FAVContent::EnemyLevel(Floor, 99) == 3 + (Floor - 1) * 2);
+        for (int32 Type = 26; Type <= 32; ++Type)
+        {
+            const FAVEnemySpec Mini = FAVContent::Enemy(Type, Floor);
+            assert(Mini.Health > 100.f && Mini.Damage > 0.f);
+        }
+    }
+    assert(FAVContent::Enemy(15, 1).Speed > FAVContent::Enemy(16, 1).Speed);
+    assert(FAVContent::Enemy(24, 5).Health > FAVContent::Enemy(23, 5).Health);
+    assert(FAVContent::Enemy(25, 3).Ranged);
+    assert(!FAVContent::Enemy(33, 3).Ranged);
     assert(FAVContent::ShopPrice(0, 6) > FAVContent::ShopPrice(0, 1));
     std::cout << "PASS: 6 floors, 3 biomes, 3 bosses, archetypes and shop prices\n";
     return 0;
