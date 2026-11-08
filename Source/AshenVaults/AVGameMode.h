@@ -5,7 +5,9 @@
 #include "AVGameMode.generated.h"
 
 UENUM()
-enum class EAVPhase : uint8 { Playing, Upgrade, Relic, Shop, Paused, Dead, Victory, Inventory, Skills };
+enum class EAVPhase : uint8 { Playing, Upgrade, Relic, Shop, Paused, Dead, Victory, Inventory, Skills, MainMenu };
+
+class UAVFrontendWidget;
 
 USTRUCT()
 struct FAVEnemy
@@ -219,6 +221,8 @@ public:
     bool bMagicBarrierUsed = false;
 
     EAVPhase Phase = EAVPhase::Playing;
+    bool bCanContinue = false;
+    UPROPERTY(Transient) UAVFrontendWidget* FrontendWidget = nullptr;
     FVector2D Hero = FVector2D(4.f, 4.f);
     FVector2D HeroVelocity = FVector2D::ZeroVector;
     FVector2D Aim = FVector2D(1.f, 0.f);
@@ -294,6 +298,7 @@ public:
     bool IsGuardianFloor() const { return BiomeDepth() == FloorsPerBiome; }
     int32 ShopPrice(int32 Slot) const;
     void NewRun(bool bSameSeed = false);
+    void StartFromMenu(bool bContinue,int32 SelectedHero);
     int32 SkillIdAt(int32 Selection) const;
     int32 SkillRank(int32 Id) const;
     float GearStat(int32 Stat) const;
