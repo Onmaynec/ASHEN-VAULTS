@@ -2,13 +2,11 @@
 
 #include "CoreMinimal.h"
 
-/** Data-only combat balancing for the 0.4 content expansion.
- * Keep this independent from the HUD and UObjects so balance can be tested
- * with a small stand-alone C++ harness as well as inside UE4.27.
- *
- * IDs: 0 Ashling; 1 Sentinel; 2 Seer; 3 Vault Warden (final boss);
- * 4 Mimic; 5 Grave Hound; 6 Sporecaller; 7 Cinder Golem;
- * 8 Bone Regent (boss); 9 Forge Tyrant (boss); 10 Void Wisp.
+/** Pure-data combat balancing for v0.7.1, standalone-testable without UE4.
+ * Enemy IDs 0..14: original creatures and three story bosses.
+ * 15..24: rats, undead, spellcasters, guards and stone/iron golems.
+ * 25 and 33: bandit archer and raider; 26..32: seven minibosses.
+ * Levels scale by dungeon depth and randomized spawn tier.
  */
 struct FAVEnemySpec
 {
