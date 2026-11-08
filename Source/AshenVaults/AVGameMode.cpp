@@ -212,6 +212,24 @@ void AAVGameMode::GenerateFloor()
         }
         Rooms.Add(R);
     }
+    // Extra loops create alternate approaches rather than a single linear chain.
+    for (int32 I = 0; I + 3 < Rooms.Num(); I += 3)
+    {
+        FVector2D A = Rooms[I].Center(), B = Rooms[I + 3].Center();
+        int32 X = FMath::FloorToInt(A.X), Y = FMath::FloorToInt(A.Y);
+        const int32 BX = FMath::FloorToInt(B.X), BY = FMath::FloorToInt(B.Y);
+        while (X != BX)
+        {
+            Tiles[Y * MapW + X] = 1;
+            X += BX > X ? 1 : -1;
+        }
+        while (Y != BY)
+        {
+            Tiles[Y * MapW + X] = 1;
+            Y += BY > Y ? 1 : -1;
+        }
+        Tiles[Y * MapW + X] = 1;
+    }
     if (Rooms.Num() == 0)
     {
         for (int32 Y = 4; Y <= 13; ++Y)
@@ -266,6 +284,7 @@ void AAVGameMode::GenerateFloor()
                 continue;
             FAVTrap Trap;
             Trap.Pos = Candidate;
+            Trap.Type = RNG.RandRange(0, 2);
             Traps.Add(Trap);
             break;
         }
@@ -1380,10 +1399,27 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             if (Trap.Windup <= 0.f)
             {
                 Trap.Windup = 0.f;
-                Trap.Cooldown = 2.8f;
-                AddEffect(Trap.Pos, 2, 0.8f);
-                if (FVector2D::Distance(Trap.Pos, Hero) < 0.88f)
+                Trap.Cooldown = Trap.Type == 0 ? 2.8f : 3.7f;
+                AddEffect(Trap.Pos, 2, Trap.Type == 1 ? 1.4f : 0.8f);
+                if (Trap.Type == 0 && FVector2D::Distance(Trap.Pos, Hero) < 0.88f)
                     DamageHero(14.f + Floor * 3.f, Trap.Pos);
+                else if (Trap.Type == 1)
+                {
+                    if (FVector2D::Distance(Trap.Pos, Hero) < 1.5f)
+                    {
+                        BurnTime = FMath::Max(BurnTime, 3.5f);
+                        DamageHero(10.f + Floor * 2.f, Trap.Pos);
+                    }
+                }
+                else if (Trap.Type == 2)
+                {
+                    FAVBolt Dart;
+                    Dart.Pos = Trap.Pos;
+                    Dart.Velocity = SafeDirection(Hero - Trap.Pos) * 10.f;
+                    Dart.Damage = 8 + Floor * 2;
+                    Dart.Time = 1.1f;
+                    Bolts.Add(Dart);
+                }
             }
         }
         else if (Trap.Cooldown <= 0.f &&
