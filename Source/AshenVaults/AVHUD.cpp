@@ -506,6 +506,54 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
             Box(6, 5, 9, 10, PixelColor(160, 53, 62)); Put(7, 4, White);
         }
     }
+    else if(Type>=228 && Type<=243)
+    {
+        const int32 Item=Type-228;
+        const int32 Region=Item/4,Style=Item%4;
+        const FColor Body=Region==0?PixelColor(114,105,99):
+            Region==1?PixelColor(67,122,75):
+            Region==2?PixelColor(133,86,69):PixelColor(81,84,94);
+        const FColor Detail=Region==0?PixelColor(190,169,145):
+            Region==1?PixelColor(142,203,106):
+            Region==2?PixelColor(229,133,74):PixelColor(175,63,66);
+        if(Style==0) // bone pile / fungi / embers / torn banner
+        {
+            Box(2,10,13,14,Shadow);
+            Box(3,8,12,12,Body);
+            Box(5,6,10,8,Detail);
+            Put(5,9,White);Put(10,6,White);
+            Box(7,11,9,12,DarkMetal);
+        }
+        else if(Style==1) // coffins / stalks / hanging chain / weapon rack
+        {
+            Box(3,4,12,14,Shadow);
+            Box(5,3,10,13,Body);
+            Box(6,4,9,5,Detail);
+            Box(4,8,5,13,DarkMetal);
+            Box(11,8,12,13,DarkMetal);
+            Put(7,10,White);Put(10,11,Detail);
+        }
+        else if(Style==2) // ancient carving / roots / lava / broken statue
+        {
+            Box(3,12,12,14,Shadow);
+            Box(6,3,10,13,Body);
+            Box(5,5,11,8,Detail);
+            Box(7,8,9,12,DarkMetal);
+            Put(8,4,White);Put(6,7,White);
+        }
+        else // candles / spores / ingots / caged torch
+        {
+            Box(5,8,10,14,DarkMetal);
+            Box(4,11,11,13,Body);
+            Box(6,3,9,9,Detail);
+            Put(7,2,White);Put(8,3,Fire);
+            Put(10,5,Detail);
+        }
+        if(Region==3) {
+            Box(2,12,13,14,DarkMetal);
+            Put(3,4,Detail);Put(12,4,Detail);
+        }
+    }
     else if (Type == 181) // magic sphere
     {
         Box(5,4,10,11,PixelColor(112,66,164));
@@ -688,7 +736,7 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
 void AAVHUD::InitSprites()
 {
     if(Sprites.Num()>0)return;
-    for(int32 I=0;I<=227;++I) Sprites.Add(MakeSprite(I));
+    for(int32 I=0;I<=243;++I) Sprites.Add(MakeSprite(I));
     const TCHAR* Atlases[4]={
         TEXT("AVVisuals/Tiles/CryptAtlas.png"),
         TEXT("AVVisuals/Tiles/SporeAtlas.png"),
@@ -839,7 +887,8 @@ void AAVHUD::DrawLighting(const AAVGameMode& Game)
             {
                 for (const FAVDecor& Decor : Game.Decorations)
                 {
-                    if ((Decor.Type != 1 && Decor.Type != 4 && Decor.Type != 6 && Decor.Type != 10) ||
+                    if ((Decor.Type != 1 && Decor.Type != 4 && Decor.Type != 6 && Decor.Type != 10 &&
+                Decor.Type != 15 && Decor.Type != 19 && Decor.Type != 22 && Decor.Type != 27) ||
                         !Game.IsVisibleAt(Decor.Pos)) continue;
                     const float Distance = FVector2D::Distance(Cell, Decor.Pos);
                     if (Distance > 5.0f) continue;
@@ -1028,8 +1077,10 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         if (!Game.IsVisibleAt(Decor.Pos)) continue;
         const FVector2D Pt = Screen(Decor.Pos);
         const float S = Scale;
-        const bool bLuminous = Decor.Type == 1 || Decor.Type == 4 ||
-                              Decor.Type == 6 || Decor.Type == 10;
+        const bool bLuminous=Decor.Type==1 || Decor.Type==4 ||
+             Decor.Type==6 || Decor.Type==10 ||
+             Decor.Type==15 || Decor.Type==19 ||
+             Decor.Type==22 || Decor.Type==27;
         const bool bEcho = Decor.Type % 3 == 2;
         const float PulseIntensity = 0.5f + 0.5f *
             FMath::Sin(Game.RunTime * 5.5f + Decor.Phase);
@@ -1046,7 +1097,8 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         }
         const FVector2D Bob = Decor.Pos +
             FVector2D(0.f, bLuminous ? -PulseIntensity * 0.06f : 0.f);
-        Sprite(Decor.Type >= 9 ? 177 + Decor.Type - 9 : 26 + Decor.Type,
+        Sprite(Decor.Type >= 12 ? 228 + Decor.Type - 12 :
+               Decor.Type >= 9 ? 177 + Decor.Type - 9 : 26 + Decor.Type,
                Bob, bEcho ? 1.32f : 1.12f,
                Decor.bActivated ? 0.45f : 1.f);
         if (bEcho && !Decor.bActivated)
@@ -1455,7 +1507,7 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
     else if ([&Game]()
     {
         for (const FAVDecor& Decor : Game.Decorations)
-            if (!Decor.bActivated && Decor.Type % 3 == 2 &&
+            if (!Decor.bActivated && Decor.Type < 12 && Decor.Type % 3 == 2 &&
                 FVector2D::Distance(Game.Hero, Decor.Pos) < 2.1f)
                 return true;
         return false;
