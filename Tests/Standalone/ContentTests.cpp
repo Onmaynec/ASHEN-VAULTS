@@ -1,6 +1,7 @@
 #include "AVContent.h"
 #include <cassert>
 #include <iostream>
+#include <string>
 
 int main()
 {
@@ -52,6 +53,12 @@ int main()
         assert(FAVContent::Enemy(Type, 18).Health > 100.f);
     }
     assert(FAVContent::Enemy(56, 20).Boss);
+    for (int Type=34;Type<=51;++Type) {
+        assert(FAVContent::BastionVariantName(Type,0)[0]!=0);
+        assert(FAVContent::BastionVariantName(Type,1)[0]!=0);
+        assert(std::string(FAVContent::BastionVariantName(Type,0)) !=
+               std::string(FAVContent::BastionVariantName(Type,1)));
+    }
     for (int32 P = 0; P < 100; ++P) {
         const int32 Type = FAVContent::EnemyRoll(16, P);
         assert(Type >= 34 && Type <= 51);
