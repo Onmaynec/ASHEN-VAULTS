@@ -39,6 +39,7 @@ public:
     static float HeroStamina(int32 HeroId);
     static float HeroAttack(int32 HeroId);
     static float HeroSpeed(int32 HeroId);
+    static float BasicAttackInterval(int32 HeroId, float AttackSpeedPercent);
     static int32 Biome(int32 Floor);
     static int32 Boss(int32 Floor);
     static int32 EnemyRoll(int32 Floor, int32 Percentile);
