@@ -76,6 +76,7 @@ struct FAVTrap
 {
     GENERATED_BODY()
     FVector2D Pos = FVector2D::ZeroVector;
+    int32 Type = 0; // 0 spikes, 1 flame vent, 2 dart launcher
     float Windup = 0.f;
     float Cooldown = 0.f;
 };
