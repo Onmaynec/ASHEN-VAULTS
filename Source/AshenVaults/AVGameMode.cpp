@@ -447,8 +447,13 @@ void AAVGameMode::GenerateFloor()
     if (Rooms.Num() > 2 && RNG.FRand() < 0.36f)
     {
         const FRoom& Approach = Rooms[1];
-        SafeCampDoor = FVector2D(Approach.X + 0.5f, Approach.Y + Approach.H * 0.5f);
-        bHasSafeCampDoor = CanMove(SafeCampDoor, 0.2f);
+        // Portal is anchored in the room's northern wall, not in its floor.
+        const int32 DoorX = Approach.X + Approach.W / 2;
+        const int32 DoorY = Approach.Y - 1;
+        SafeCampDoor = FVector2D(DoorX + 0.5f, DoorY + 0.5f);
+        bHasSafeCampDoor = DoorY > 0 && DoorX > 0 &&
+            DoorX < MapW - 1 && Tiles[DoorY * MapW + DoorX] == 0 &&
+            Tiles[(DoorY + 1) * MapW + DoorX] == 1;
     }
     // Add a couple of guaranteed recovery pickups away from the spawn.
     for (int32 I = 1; I < Rooms.Num(); I += 3)
