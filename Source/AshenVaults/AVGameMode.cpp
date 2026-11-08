@@ -948,8 +948,10 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 DesiredVelocity = -Direction * Speed;
             else if (Distance > (bCaster ? 5.3f :
                                  Spec.Ranged && !bMeleeBoss ? 4.9f : Reach * 0.8f))
-                DesiredVelocity = FAVDungeonNavigation::FlowDirection(
-                    Tiles, FlowDistances, MapW, MapH, E.Pos, Pursuit) * Speed;
+                DesiredVelocity = bTargetEnemy || !bSeesTarget ?
+                    SafeDirection(Pursuit - E.Pos) * Speed :
+                    FAVDungeonNavigation::FlowDirection(
+                        Tiles, FlowDistances, MapW, MapH, E.Pos, Hero) * Speed;
         }
         E.DodgeCooldown = FMath::Max(0.f, E.DodgeCooldown - DeltaSeconds);
         if (bSeesTarget && Distance < 4.f && E.DodgeCooldown <= 0.f &&
