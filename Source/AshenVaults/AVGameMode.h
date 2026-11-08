@@ -215,6 +215,8 @@ public:
     int32 BlooddrinkerHitCount = 0;
     float ChainCooldown = 0.f;
     float GuardWhirlTime = 0.f;
+    float ShieldCooldown = 0.f;
+    bool bMagicBarrierUsed = false;
 
     EAVPhase Phase = EAVPhase::Playing;
     FVector2D Hero = FVector2D(4.f, 4.f);
