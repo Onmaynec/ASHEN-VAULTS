@@ -1112,6 +1112,114 @@ void AAVGameMode::SaveCheckpoint()
     UGameplayStatics::SaveGameToSlot(Save, TEXT("AshenVaultsRecord"), 0);
 }
 
+void AAVGameMode::LoadCheckpointWorld()
+{
+    UAVSaveGame* Save = Cast<UAVSaveGame>(
+        UGameplayStatics::LoadGameFromSlot(TEXT("AshenVaultsRecord"), 0));
+    if (!Save || !Save->bHasCheckpoint) { GenerateFloor(); return; }
+    GenerateFloor();
+    if (Save->CheckpointTiles.Num() != MapW * MapH) return;
+    Tiles = Save->CheckpointTiles;
+    Explored = Save->CheckpointExplored.Num() == MapW * MapH ?
+        Save->CheckpointExplored : Explored;
+    Visible.Init(0, MapW * MapH);
+    FlowDistances.Init(-1, MapW * MapH);
+    Hero = Save->CheckpointHero; Exit = Save->CheckpointExit;
+    Shrine = Save->CheckpointShrine; Merchant = Save->CheckpointMerchant;
+    SafeCampDoor = Save->CheckpointSafeCampDoor;
+    bHasSafeCampDoor = Save->bCheckpointHasSafeCamp;
+    bShrineUsed = Save->bCheckpointShrineUsed;
+    bBanditCamp = Save->bCheckpointBanditCamp;
+    bGuardianDefeated = Save->bCheckpointGuardianDefeated;
+    PendingGuardian = Save->CheckpointGuardian;
+    PackMaterials = Save->CheckpointPackMaterials;
+    BackpackArmor = Save->CheckpointPackArmor;
+    BackpackBows = Save->CheckpointPackBows;
+    BackpackWeapons = Save->CheckpointPackWeapons;
+    ShopPurchased[0] = Save->bCheckpointShopPurchased0;
+    ShopPurchased[1] = Save->bCheckpointShopPurchased1;
+    ShopPurchased[2] = Save->bCheckpointShopPurchased2;
+    Enemies.Reset();
+    const TArray<float>& ED = Save->CheckpointEnemyData;
+    for (int32 I = 0; I + 29 < ED.Num(); I += 30)
+    {
+        FAVEnemy E;
+        E.Pos = FVector2D(ED[I], ED[I + 1]); E.Type = int32(ED[I + 2]);
+        E.Level = int32(ED[I + 3]); E.Equipment = int32(ED[I + 4]);
+        E.Faction = int32(ED[I + 5]);
+        E.LastSeenHero = FVector2D(ED[I + 6], ED[I + 7]);
+        E.MemoryTime = ED[I + 8]; E.DodgeCooldown = ED[I + 9];
+        E.AbilityCooldown = ED[I + 10]; E.AlertTime = ED[I + 11];
+        E.PathRefresh = ED[I + 12];
+        E.CachedPathDirection = FVector2D(ED[I + 13], ED[I + 14]);
+        E.AttackWindup = ED[I + 15];
+        E.LockedTarget = FVector2D(ED[I + 16], ED[I + 17]);
+        E.AttackPattern = int32(ED[I + 18]); E.bMiniBoss = ED[I + 19] != 0.f;
+        E.HP = ED[I + 20]; E.MaxHP = ED[I + 21]; E.Cooldown = ED[I + 22];
+        E.Flash = ED[I + 23]; E.Wander = ED[I + 24];
+        E.Telegraph = ED[I + 25]; E.bElite = ED[I + 26] != 0.f;
+        E.Id = int32(ED[I + 27]); E.PhaseShiftTime = ED[I + 28];
+        E.bPhaseShifted = ED[I + 29] != 0.f;
+        Enemies.Add(E);
+    }
+    Pickups.Reset();
+    const TArray<float>& PD = Save->CheckpointPickupData;
+    for (int32 I = 0; I + 4 < PD.Num(); I += 5)
+    {
+        FAVPickup P; P.Pos = FVector2D(PD[I], PD[I + 1]);
+        P.Type = int32(PD[I + 2]); P.Amount = int32(PD[I + 3]);
+        P.Time = PD[I + 4]; Pickups.Add(P);
+    }
+    Chests.Reset();
+    const TArray<float>& CD = Save->CheckpointChestData;
+    for (int32 I = 0; I + 3 < CD.Num(); I += 4)
+    {
+        FAVChest C; C.Pos = FVector2D(CD[I], CD[I + 1]);
+        C.bOpened = CD[I + 2] != 0.f; C.bMimic = CD[I + 3] != 0.f;
+        Chests.Add(C);
+    }
+    Traps.Reset();
+    const TArray<float>& TD = Save->CheckpointTrapData;
+    for (int32 I = 0; I + 4 < TD.Num(); I += 5)
+    {
+        FAVTrap T; T.Pos = FVector2D(TD[I], TD[I + 1]);
+        T.Type = int32(TD[I + 2]); T.Windup = TD[I + 3];
+        T.Cooldown = TD[I + 4]; Traps.Add(T);
+    }
+    Hazards.Reset();
+    const TArray<float>& HD = Save->CheckpointHazardData;
+    for (int32 I = 0; I + 3 < HD.Num(); I += 4)
+    {
+        FAVHazard H; H.Pos = FVector2D(HD[I], HD[I + 1]);
+        H.Type = int32(HD[I + 2]); H.Cooldown = HD[I + 3]; Hazards.Add(H);
+    }
+    Props.Reset();
+    const TArray<float>& PR = Save->CheckpointPropData;
+    for (int32 I = 0; I + 3 < PR.Num(); I += 4)
+    {
+        FAVProp P; P.Pos = FVector2D(PR[I], PR[I + 1]);
+        P.HP = PR[I + 2]; P.Type = int32(PR[I + 3]); Props.Add(P);
+    }
+    Decorations.Reset();
+    const TArray<float>& DD = Save->CheckpointDecorData;
+    for (int32 I = 0; I + 4 < DD.Num(); I += 5)
+    {
+        FAVDecor D; D.Pos = FVector2D(DD[I], DD[I + 1]);
+        D.Type = int32(DD[I + 2]); D.bActivated = DD[I + 3] != 0.f;
+        D.Phase = DD[I + 4]; Decorations.Add(D);
+    }
+    CampDoors.Reset();
+    for (int32 I = 0; I + 1 < Save->CheckpointCampDoorData.Num(); I += 2)
+        CampDoors.Add(FVector2D(Save->CheckpointCampDoorData[I],
+                                Save->CheckpointCampDoorData[I + 1]));
+    CampWalls.Reset();
+    for (int32 I = 0; I + 1 < Save->CheckpointCampWallData.Num(); I += 2)
+        CampWalls.Add(FVector2D(Save->CheckpointCampWallData[I],
+                                Save->CheckpointCampWallData[I + 1]));
+    LastVisionX = -1; LastVisionY = -1;
+    RefreshAwareness(0.f, true);
+}
+
 void AAVGameMode::EnterLobby()
 {
     if (bInBossArena) return;
@@ -1129,7 +1237,7 @@ void AAVGameMode::ResumeFromLobby()
     if (!bInLobby) return;
     bInLobby = false;
     if (bWorldStored) RestoreDungeon();
-    else GenerateFloor(); // Cold restart: reproducible floor from saved seed.
+    else LoadCheckpointWorld(); // Cold restart: restore exact saved dungeon state.
     Toast = TEXT("DESCENT RESUMED");
     ToastTime = 2.5f;
 }
