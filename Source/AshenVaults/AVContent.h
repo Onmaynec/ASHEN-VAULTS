@@ -20,7 +20,7 @@ struct FAVEnemySpec
 class FAVContent
 {
 public:
-    static constexpr int32 FinalFloor = 6;
+    static constexpr int32 FloorsPerBiome = 5;
     static constexpr int32 RelicCount = 6;
     static constexpr int32 BiomeCount = 3;
     static constexpr int32 HeroCount = 3;
