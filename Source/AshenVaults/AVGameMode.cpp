@@ -1,4 +1,6 @@
 #include "AVGameMode.h"
+#include "AVEquipment.h"
+#include "AVSkills.h"
 #include "AVHUD.h"
 #include "AVSaveGame.h"
 #include "AVDungeonNavigation.h"
@@ -156,6 +158,213 @@ FVector2D AAVGameMode::MoveWithCollision(const FVector2D& From, const FVector2D&
         if (CanMove(Candidate, Radius)) Next.Y = Candidate.Y;
     }
     return Next;
+}
+
+
+int32 AAVGameMode::SkillIdAt(int32 Selection) const
+{
+    return Selection >= 0 && Selection < 15 ? Selection :
+           Selection >= 15 && Selection < 21 ? 15 + FMath::Clamp(HeroClass, 0, 3) * 6 + Selection - 15 : -1;
+}
+
+int32 AAVGameMode::SkillRank(int32 Id) const
+{
+    return LearnedSkills.IsValidIndex(Id) ? int32(LearnedSkills[Id]) : 0;
+}
+
+float AAVGameMode::GearStat(int32 Stat) const
+{
+    float Result = 0.f;
+    int32 Sets[6] = {0,0,0,0,0,0};
+    for (int32 ItemId : EquipmentSlots)
+    {
+        const FAVEquipmentSpec* I = FAVEquipment::Find(ItemId);
+        if (!I) continue;
+        if (I->StatA == Stat) Result += I->ValueA;
+        if (I->StatB == Stat) Result += I->ValueB;
+        if (I->SetId > 0 && I->SetId <= 5) ++Sets[I->SetId];
+    }
+    // Each thematic set has one 3-piece bonus, regardless of the other sets.
+    if (Stat == AVArmorPercent) Result += Sets[1] >= 3 ? 5.f : 0.f;
+    if (Stat == AVAttackSpeedPercent) Result += Sets[2] >= 3 ? 8.f : 0.f;
+    if (Stat == AVAbilityDamagePercent) Result += Sets[3] >= 3 ? 8.f : 0.f;
+    if (Stat == AVRangedDamagePercent) Result += Sets[4] >= 3 ? 10.f : 0.f;
+    if (Stat == AVHealthFlat) Result += Sets[5] >= 3 ? 20.f : 0.f;
+    return Result;
+}
+
+bool AAVGameMode::HasGearPerk(int32 Perk) const
+{
+    for (int32 Id : EquipmentSlots)
+    {
+        const FAVEquipmentSpec* I = FAVEquipment::Find(Id);
+        if (I && I->PerkId == Perk) return true;
+    }
+    return false;
+}
+
+FString AAVGameMode::GearName(int32 ItemId) const
+{
+    const FAVEquipmentSpec* S = FAVEquipment::Find(ItemId);
+    if (!S) return TEXT("EMPTY");
+    FString Name = FString(UTF8_TO_TCHAR(S->CodeName));
+    Name.ReplaceInline(TEXT("_"), TEXT(" "));
+    return Name.ToUpper();
+}
+
+void AAVGameMode::RebuildCharacterBonuses()
+{
+    // Base attributes continue to contain the old level, forge, and relic bonuses.
+    // Remove the previous equipment/skill delta first; never stack on re-equip.
+    const float BaseHP = MaxHP - EquipmentAppliedHP;
+    const float BaseStamina = MaxStamina - EquipmentAppliedStamina;
+    const float BaseAttack = AttackPower - EquipmentAppliedAttack;
+    const float BaseSpeed = MoveSpeed - EquipmentAppliedSpeed;
+    const float BaseArmor = ArmorRating - EquipmentAppliedArmor;
+    EquipmentAppliedHP = GearStat(AVHealthFlat) + BaseHP * (0.06f * SkillRank(0));
+    EquipmentAppliedStamina = GearStat(AVStaminaFlat) + 10.f * SkillRank(11);
+    // Hero-specific skill 30 adds another stamina tier.
+    if (HeroClass == 2) EquipmentAppliedStamina += 10.f * SkillRank(30);
+    EquipmentAppliedAttack = GearStat(AVAttackFlat);
+    EquipmentAppliedSpeed = BaseSpeed * (GearStat(AVMoveSpeedPercent) +
+        3.f * SkillRank(10)) * 0.01f;
+    EquipmentAppliedArmor = FMath::Min(0.45f, BaseArmor +
+        (GearStat(AVArmorPercent) + 2.f * SkillRank(15)) * 0.01f) - BaseArmor;
+    MaxHP = BaseHP + EquipmentAppliedHP;
+    MaxStamina = BaseStamina + EquipmentAppliedStamina;
+    AttackPower = BaseAttack + EquipmentAppliedAttack;
+    MoveSpeed = BaseSpeed + EquipmentAppliedSpeed;
+    ArmorRating = FMath::Clamp(BaseArmor + EquipmentAppliedArmor, 0.f, 0.45f);
+    HP = FMath::Min(HP, MaxHP);
+    Stamina = FMath::Min(Stamina, MaxStamina);
+}
+
+float AAVGameMode::BasicAttackInterval() const
+{
+    const float Speed = FMath::Clamp(1.f + GearStat(AVAttackSpeedPercent) * 0.01f, 0.45f, 2.f);
+    return FMath::Max(0.33f, (HeroClass == 3 ? 0.52f : 0.33f) / Speed);
+}
+
+float AAVGameMode::ProjectileSpeedMultiplier() const
+{
+    const float Skill = HeroClass == 3 ? 7.f * SkillRank(33) : 0.f;
+    return FMath::Clamp(1.f + (GearStat(AVProjectileSpeedPercent) + Skill +
+        (HasGearPerk(4) ? 10.f : 0.f)) * 0.01f, 0.8f, 1.8f);
+}
+
+float AAVGameMode::ModifiedAttackDamage(float Damage, const FAVEnemy& Target,
+                                       bool bRanged, bool bAbility)
+{
+    float Percent = bRanged ? GearStat(AVRangedDamagePercent) : GearStat(AVMeleeDamagePercent);
+    Percent += bAbility ? GearStat(AVAbilityDamagePercent) + 6.f * SkillRank(27) :
+                          4.f * SkillRank(5);
+    if (bAbility && HeroClass == 1 && !bRanged) Percent += 10.f * SkillRank(23);
+    if (bAbility && HeroClass == 1 && bRanged) Percent += 12.f * SkillRank(22);
+    if (Target.bMiniBoss || FAVContent::Enemy(Target.Type, Floor).Boss)
+        Percent += GearStat(AVBossDamagePercent) + 8.f * SkillRank(8);
+    if (Target.HP < Target.MaxHP * 0.20f && HasGearPerk(8)) Percent += 12.f;
+    if (Target.HP < Target.MaxHP * 0.30f && HasGearPerk(2)) Percent += 20.f;
+    if (HeroClass == 1 && Target.HP < Target.MaxHP * 0.25f) Percent += 28.f * SkillRank(26);
+    if (HeroClass == 3 && Target.Id == ShotTargetId && bRanged)
+        Percent += 5.f * SkillRank(34);
+    if (RewardDamageTime > 0.f) Percent += 10.f;
+    if (RevengeTime > 0.f) Percent += 8.f * SkillRank(18);
+    if (!bAbility && (++BasicAttackSequence % 4) == 0) Percent += 7.f * SkillRank(7);
+    if (HeroClass == 1 && DashBonusTime > 0.f) Percent += 3.f * SkillRank(21);
+    const float CritChance = FMath::Clamp(0.05f + GearStat(AVCriticalPercent)*0.01f +
+        0.03f*SkillRank(6), 0.f, 0.40f);
+    if (RNG.FRand() < CritChance) Percent += 50.f;
+    return FMath::Max(1.f, Damage * (1.f + Percent * 0.01f));
+}
+
+void AAVGameMode::EquipInventoryItem(int32 Index)
+{
+    if (!InventoryItems.IsValidIndex(Index)) return;
+    const int32 ItemId = InventoryItems[Index];
+    if (!FAVEquipment::CanEquip(ItemId, HeroClass)) {
+        Toast = TEXT("NOT FOR THIS CLASS"); ToastTime=2.f; return;
+    }
+    const FAVEquipmentSpec* Item = FAVEquipment::Find(ItemId);
+    if (!Item) return;
+    int32 Slot = Item->Slot;
+    if (Slot == AVAccessory && EquipmentSlots.IsValidIndex(7) &&
+        EquipmentSlots[6] >= 0 && EquipmentSlots[7] < 0) Slot = 7;
+    if (!EquipmentSlots.IsValidIndex(Slot)) return;
+    if (EquipmentSlots[Slot] >= 0) InventoryItems.Add(EquipmentSlots[Slot]);
+    EquipmentSlots[Slot] = ItemId;
+    InventoryItems.RemoveAt(Index);
+    GearSelection = FMath::Clamp(GearSelection, 0, FMath::Max(0, InventoryItems.Num()-1));
+    RebuildCharacterBonuses();
+    Toast = TEXT("EQUIPPED: ") + GearName(ItemId);
+    ToastTime = 2.3f;
+}
+
+void AAVGameMode::UnequipSlot(int32 Slot)
+{
+    if (!EquipmentSlots.IsValidIndex(Slot) || EquipmentSlots[Slot] < 0 ||
+        InventoryItems.Num() >= 48) return;
+    const int32 Id = EquipmentSlots[Slot];
+    EquipmentSlots[Slot] = -1;
+    InventoryItems.Add(Id);
+    RebuildCharacterBonuses();
+    Toast = TEXT("UNEQUIPPED: ") + GearName(Id);
+    ToastTime = 2.f;
+}
+
+void AAVGameMode::LearnSkill(int32 Selection)
+{
+    const int32 Id = SkillIdAt(Selection);
+    if (Id < 0 || !FAVSkills::CanLearn(Id, HeroClass, Level,
+        LearnedSkills.GetData(), LearnedSkills.Num(), SkillPoints)) {
+        Toast = TEXT("SKILL LOCKED OR NO POINTS"); ToastTime=2.f; return;
+    }
+    ++LearnedSkills[Id];
+    --SkillPoints;
+    RebuildCharacterBonuses();
+    Toast = TEXT("SKILL UNLOCKED"); ToastTime = 2.f;
+}
+
+void AAVGameMode::ResetSkills()
+{
+    if (!bInLobby && !bInSafeCamp) {
+        Toast=TEXT("RESPEC IN TOWN OR CAMP"); ToastTime=2.f; return;
+    }
+    const int32 Cost = bFreeRespecUsed ? 20 + Level * 5 : 0;
+    if (Gold < Cost) { Toast=TEXT("NOT ENOUGH GOLD"); ToastTime=2.f; return; }
+    Gold -= Cost;
+    bFreeRespecUsed = true;
+    LearnedSkills.Init(0, FAVSkills::Count);
+    SkillPoints = FAVSkills::AwardedPointsAtLevel(Level);
+    RebuildCharacterBonuses();
+    Toast=TEXT("SKILLS RESET"); ToastTime=2.f;
+}
+
+void AAVGameMode::SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity)
+{
+    // Prefer current-class gear (including universal); depth limits early legends.
+    const int32 Rarity = FMath::Max(MinimumRarity, FAVEquipment::RarityRoll(RNG.RandRange(0,99)));
+    const int32 MaxTier = Floor < 6 ? AVRare : Floor < 11 ? AVEpic : AVLegendary;
+    TArray<int32> Candidates;
+    for (int32 I=0; I<FAVEquipment::Count; ++I) {
+        const FAVEquipmentSpec* Item = FAVEquipment::Find(I);
+        if (!Item || Item->Rarity > MaxTier ||
+            Item->Rarity < FMath::Min(Rarity,MaxTier)) continue;
+        if (Item->RequiredHero == HeroClass || Item->RequiredHero == -1)
+            Candidates.Add(I);
+    }
+    if (Candidates.Num() == 0)
+        for(int32 I=0;I<FAVEquipment::Count;++I) {
+            const FAVEquipmentSpec* Item=FAVEquipment::Find(I);
+            if(Item && Item->Rarity<=MaxTier &&
+               (Item->RequiredHero==HeroClass || Item->RequiredHero==-1))
+                Candidates.Add(I);
+        }
+    if(Candidates.Num()==0) return;
+    FAVPickup Gear;
+    Gear.Pos=Pos;
+    Gear.Type=11;
+    Gear.Amount=Candidates[RNG.RandRange(0,Candidates.Num()-1)];
+    Pickups.Add(Gear);
 }
 
 void AAVGameMode::NewRun(bool bSameSeed)
