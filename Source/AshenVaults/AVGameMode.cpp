@@ -75,6 +75,24 @@ void AAVGameMode::BeginPlay()
             Stamina = Save->CheckpointStamina; MaxStamina = Save->CheckpointMaxStamina;
             AttackPower = Save->CheckpointAttack; MoveSpeed = Save->CheckpointSpeed;
             ArmorRating = Save->CheckpointArmor; RangedBonus = Save->CheckpointRanged;
+            EquipmentSlots.Init(-1,8); InventoryItems.Reset();
+            LearnedSkills.Init(0,FAVSkills::Count);
+            SkillPoints=FAVSkills::AwardedPointsAtLevel(Level);
+            if (Save->bCheckpointV09Data) {
+                if(Save->CheckpointEquipmentSlots.Num()==8)
+                    EquipmentSlots=Save->CheckpointEquipmentSlots;
+                for(int32 Id : Save->CheckpointInventoryItems)
+                    if(FAVEquipment::Find(Id) && InventoryItems.Num()<48)
+                        InventoryItems.Add(Id);
+                if(Save->CheckpointSkillRanks.Num()==FAVSkills::Count)
+                    LearnedSkills=Save->CheckpointSkillRanks;
+                SkillPoints=FMath::Clamp(Save->CheckpointSkillPoints,0,29);
+                bFreeRespecUsed=Save->bCheckpointFreeRespecUsed;
+                bLastStandUsed=Save->bCheckpointLastStandUsed;
+            }
+            for(int32& Id : EquipmentSlots)
+                if(Id>=0 && !FAVEquipment::CanEquip(Id,HeroClass)) Id=-1;
+            RebuildCharacterBonuses();
             // Do not overwrite the existing checkpoint while booting the lobby.
             bInLobby = true;
             bInSafeCamp = false;
@@ -370,6 +388,14 @@ void AAVGameMode::SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity)
 void AAVGameMode::NewRun(bool bSameSeed)
 {
     Floor = 1; Level = 1; XP = 0; Gold = 0; Kills = 0; Potions = 2;
+    EquipmentSlots.Init(-1, 8); InventoryItems.Reset();
+    LearnedSkills.Init(0, FAVSkills::Count);
+    SkillPoints=0; GearSelection=0; SkillSelection=0;
+    bFreeRespecUsed=false; bLastStandUsed=false;
+    EquipmentAppliedHP=0.f; EquipmentAppliedStamina=0.f;
+    EquipmentAppliedAttack=0.f; EquipmentAppliedSpeed=0.f; EquipmentAppliedArmor=0.f;
+    RewardDamageTime=0.f; DashBonusTime=0.f; RevengeTime=0.f;
+    BasicAttackSequence=0;
     MapW = 52; MapH = 38; ShotSeries = 0; ShotTargetId = -1;
     ShotCounter = 0; LastConnectedShotId = 0; VolleyCounter = 0;
     LastShotHitTime = -100.f;
@@ -399,6 +425,8 @@ void AAVGameMode::NewRun(bool bSameSeed)
 void AAVGameMode::GenerateFloor()
 {
     // Dimensions belong to the biome and never reshape previously generated floors.
+    ShotSeries=0; ShotTargetId=-1; LastShotHitTime=-100.f;
+    bLastStandUsed=false; RewardDamageTime=0.f;
     MapW = CurrentBiome() == 3 ? 60 : 52;
     MapH = CurrentBiome() == 3 ? 44 : 38;
     // Floor layouts are independent of combat loot RNG consumption.
@@ -1044,6 +1072,7 @@ bool AAVGameMode::OpenNearbyChest()
             Reward.Type = RNG.FRand() < 0.22f ? 4 : RNG.FRand() < 0.55f ? 3 : 1;
             Reward.Amount = Reward.Type == 4 ? 2 : Reward.Type == 3 ? 1 : 30;
             Pickups.Add(Reward);
+            if(RNG.FRand()<0.38f) SpawnGearDrop(Chest.Pos);
             Toast = TEXT("TREASURE FOUND!");
         }
         ToastTime = 2.3f;
@@ -1142,6 +1171,16 @@ void AAVGameMode::KillEnemy(int32 Index)
     }
     AddEffect(Dead.Pos, 3, bBoss ? 2.2f : Dead.bMiniBoss ? 1.7f : 0.9f);
     DropLoot(Dead.Pos, bBoss || Dead.bMiniBoss);
+    if (bBoss || (Dead.bMiniBoss && RNG.FRand()<0.8f) ||
+        (Dead.bElite && RNG.FRand()<0.28f) ||
+        (!Dead.bMiniBoss && !Dead.bElite && RNG.FRand()<0.075f))
+        SpawnGearDrop(Dead.Pos,bBoss || Dead.bMiniBoss ? AVRare : AVUncommon);
+    if(HasGearPerk(6)) HP=FMath::Min(MaxHP,HP+2.f);
+    if(Dead.bElite && HasGearPerk(9)) RewardDamageTime=8.f;
+    if(SkillRank(9)>0) {
+        SpinCooldown=FMath::Max(0.f,SpinCooldown-0.5f);
+        KnifeCooldown=FMath::Max(0.f,KnifeCooldown-0.5f);
+    }
     if (Dead.bElite)
     {
         FAVPickup Shard;
@@ -1177,9 +1216,11 @@ void AAVGameMode::SelectUpgrade(int32 Choice)
     if (Phase != EAVPhase::Upgrade) return;
     XP -= NextXP();
     ++Level;
+    if(Level<=30) ++SkillPoints;
     if (Choice == 0) { MaxHP += 25.f; HP = FMath::Min(MaxHP, HP + 40.f); }
     if (Choice == 1) AttackPower += 7.f;
     if (Choice == 2) { MoveSpeed += 0.55f; MaxStamina += 12.f; Stamina = MaxStamina; }
+    RebuildCharacterBonuses();
     Phase = XP >= NextXP() ? EAVPhase::Upgrade : EAVPhase::Playing;
 }
 
@@ -1299,8 +1340,13 @@ void AAVGameMode::SellPack()
 {
     Gold += PackMaterials * FMath::Max(1, 3 + Floor / 5) +
         BackpackArmor * 18 + BackpackBows * 15 + BackpackWeapons * 20;
-    PackGold = 0; PackMaterials = 0;
-    BackpackArmor = 0; BackpackBows = 0; BackpackWeapons = 0;
+    for(int32 Id : InventoryItems) {
+        const FAVEquipmentSpec* Item=FAVEquipment::Find(Id);
+        if(Item) Gold += (8 + 12 * Item->Rarity) * FMath::Max(1,1+Floor/5);
+    }
+    InventoryItems.Reset();
+    PackGold=0; PackMaterials=0;
+    BackpackArmor=0; BackpackBows=0; BackpackWeapons=0;
 }
 
 void AAVGameMode::ForgeUpgrade(int32 Slot)
@@ -1338,7 +1384,21 @@ void AAVGameMode::SaveCheckpoint()
     Save->CheckpointHP = HP; Save->CheckpointMaxHP = MaxHP;
     Save->CheckpointStamina = Stamina; Save->CheckpointMaxStamina = MaxStamina;
     Save->CheckpointAttack = AttackPower; Save->CheckpointSpeed = MoveSpeed;
-    Save->CheckpointArmor = ArmorRating; Save->CheckpointRanged = RangedBonus;
+    // v0.9.0 stores the base values, so gear and skills never double apply.
+    Save->CheckpointMaxHP=MaxHP-EquipmentAppliedHP;
+    Save->CheckpointMaxStamina=MaxStamina-EquipmentAppliedStamina;
+    Save->CheckpointAttack=AttackPower-EquipmentAppliedAttack;
+    Save->CheckpointSpeed=MoveSpeed-EquipmentAppliedSpeed;
+    Save->CheckpointArmor=ArmorRating-EquipmentAppliedArmor;
+    Save->CheckpointRanged=RangedBonus;
+    Save->bCheckpointV09Data=true;
+    Save->CheckpointMapWidth=MapW; Save->CheckpointMapHeight=MapH;
+    Save->CheckpointInventoryItems=InventoryItems;
+    Save->CheckpointEquipmentSlots=EquipmentSlots;
+    Save->CheckpointSkillRanks=LearnedSkills;
+    Save->CheckpointSkillPoints=SkillPoints;
+    Save->bCheckpointFreeRespecUsed=bFreeRespecUsed;
+    Save->bCheckpointLastStandUsed=bLastStandUsed;
     // Store the dungeon, not the peaceful camp or the lobby.
     const FAVWorldSnapshot* World = bWorldStored ? &StoredWorld : nullptr;
     const TArray<FAVEnemy>& SavedEnemies = World ? World->Enemies : Enemies;
@@ -2577,6 +2637,17 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 }
                 else { ++BackpackBows; Toast = TEXT("BOW STORED IN PACK"); }
                 ToastTime = 2.4f; break;
+            case 11:
+                if(InventoryItems.Num()>=48) {
+                    Toast=TEXT("PACK FULL: SELL GEAR AT CAMP"); ToastTime=2.f;
+                    continue;
+                }
+                if(FAVEquipment::Find(P.Amount)) {
+                    InventoryItems.Add(P.Amount);
+                    Toast=TEXT("GEAR FOUND: ")+GearName(P.Amount);
+                    ToastTime=3.f;
+                }
+                break;
             case 10:
                 if ((EquippedSlotsMask & 4) == 0)
                 {
