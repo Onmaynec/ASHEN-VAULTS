@@ -1022,7 +1022,10 @@ void AAVGameMode::RecordRun()
     BestFloor = FMath::Max(BestFloor, Floor);
     BestKills = FMath::Max(BestKills, Kills);
     LifetimeGold += Gold;
-    UAVSaveGame* Save = Cast<UAVSaveGame>(UGameplayStatics::CreateSaveGameObject(UAVSaveGame::StaticClass()));
+    UAVSaveGame* Save = Cast<UAVSaveGame>(
+        UGameplayStatics::LoadGameFromSlot(TEXT("AshenVaultsRecord"), 0));
+    if (!Save) Save = Cast<UAVSaveGame>(
+        UGameplayStatics::CreateSaveGameObject(UAVSaveGame::StaticClass()));
     if (Save)
     {
         Save->BestFloor = BestFloor; Save->BestKills = BestKills; Save->TotalGold = LifetimeGold;
