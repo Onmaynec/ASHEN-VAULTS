@@ -13,7 +13,14 @@ struct FAVEnemy
     GENERATED_BODY()
     FVector2D Pos = FVector2D::ZeroVector;
     FVector2D Knockback = FVector2D::ZeroVector;
-    int32 Type = 0; // 0 ashling, 1 armored sentinel, 2 seer, 3 warden
+    int32 Type = 0; // enemy archetype ID
+    int32 Level = 1;
+    int32 Equipment = 0; // 0 none, 1 armor, 2 bow, 3 enchanted weapon
+    int32 Faction = 0; // 0 dungeon, 1 bandits
+    FVector2D LastSeenHero = FVector2D::ZeroVector;
+    float MemoryTime = 0.f;
+    float DodgeCooldown = 0.f;
+    bool bMiniBoss = false;
     float HP = 10.f;
     float MaxHP = 10.f;
     float Cooldown = 0.f;
@@ -168,6 +175,8 @@ public:
     TArray<uint8> Explored;
     TArray<int32> FlowDistances;
     TArray<FAVEnemy> Enemies;
+    bool bBanditCamp = false;
+    FVector2D BanditCampCenter = FVector2D::ZeroVector;
     TArray<FAVPickup> Pickups;
     TArray<FAVBolt> Bolts;
     TArray<FAVTrap> Traps;
