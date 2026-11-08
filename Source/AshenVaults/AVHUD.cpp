@@ -4,6 +4,7 @@
 #include "AVEquipment.h"
 #include "AVSkills.h"
 #include "AVArt.h"
+#include "AVImageLoader.h"
 #include "AVDungeonNavigation.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
@@ -686,11 +687,20 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
 
 void AAVHUD::InitSprites()
 {
-    if (Sprites.Num() > 0) return;
-    for (int32 I = 0; I <= 227; ++I) Sprites.Add(MakeSprite(I));
-    for (int32 Biome = 0; Biome < 4; ++Biome)
-        for (int32 Variant = 0; Variant < FAVArt::VariantsPerBiome; ++Variant)
-            BiomeTiles.Add(FAVArt::BuildTile(Biome, Variant));
+    if(Sprites.Num()>0)return;
+    for(int32 I=0;I<=227;++I) Sprites.Add(MakeSprite(I));
+    const TCHAR* Atlases[4]={
+        TEXT("AVVisuals/Tiles/CryptAtlas.png"),
+        TEXT("AVVisuals/Tiles/SporeAtlas.png"),
+        TEXT("AVVisuals/Tiles/FoundryAtlas.png"),
+        TEXT("AVVisuals/Tiles/BastionAtlas.png")
+    };
+    for(int32 Biome=0;Biome<4;++Biome) {
+        AuthoredAtlases.Add(FAVImageLoader::LoadPNG(Atlases[Biome]));
+        // Procedural fallback remains deterministic when the PNG is absent.
+        for(int32 Variant=0;Variant<FAVArt::VariantsPerBiome;++Variant)
+            BiomeTiles.Add(FAVArt::BuildTile(Biome,Variant));
+    }
 }
 
 void AAVHUD::Sprite(int32 Type, const FVector2D& Pos, float Size, float Alpha)
@@ -740,10 +750,19 @@ void AAVHUD::DrawDungeon(const AAVGameMode& Game)
                 if (!Game.IsExploredCell(X, Y)) continue;
                 const int32 Variant = static_cast<int32>(Hash % static_cast<uint32>(FAVArt::FloorVariants));
                 const int32 Index = Biome * FAVArt::VariantsPerBiome + Variant;
-                if (BiomeTiles.IsValidIndex(Index) && BiomeTiles[Index])
-                    DrawTexture(BiomeTiles[Index], SX, SY, T + 0.5f, T + 0.5f,
-                                0.f, 0.f, 1.f, 1.f, FLinearColor::White,
-                                BLEND_Translucent, 1.f, false, 0.f,
+                if(AuthoredAtlases.IsValidIndex(Biome) && AuthoredAtlases[Biome])
+                {
+                    const float U=(Variant%7)/7.f;
+                    const float V=(Variant/7)/4.f;
+                    DrawTexture(AuthoredAtlases[Biome],SX,SY,T+0.5f,T+0.5f,
+                                U,V,1.f/7.f,1.f/4.f,FLinearColor::White,
+                                BLEND_Translucent,1.f,false,0.f,
+                                FVector2D::ZeroVector);
+                }
+                else if(BiomeTiles.IsValidIndex(Index) && BiomeTiles[Index])
+                    DrawTexture(BiomeTiles[Index],SX,SY,T+0.5f,T+0.5f,
+                                0.f,0.f,1.f,1.f,FLinearColor::White,
+                                BLEND_Translucent,1.f,false,0.f,
                                 FVector2D::ZeroVector);
                 if (!Game.IsVisibleCell(X, Y))
                     Rect(SX, SY, T + 0.5f, T + 0.5f,
@@ -763,10 +782,19 @@ void AAVHUD::DrawDungeon(const AAVGameMode& Game)
                 const int32 Variant = FAVArt::FloorVariants +
                     static_cast<int32>(Hash % static_cast<uint32>(FAVArt::WallVariants));
                 const int32 Index = Biome * FAVArt::VariantsPerBiome + Variant;
-                if (BiomeTiles.IsValidIndex(Index) && BiomeTiles[Index])
-                    DrawTexture(BiomeTiles[Index], SX, SY, T + 0.5f, T + 0.5f,
-                                0.f, 0.f, 1.f, 1.f, FLinearColor::White,
-                                BLEND_Translucent, 1.f, false, 0.f,
+                if(AuthoredAtlases.IsValidIndex(Biome) && AuthoredAtlases[Biome])
+                {
+                    const float U=(Variant%7)/7.f;
+                    const float V=(Variant/7)/4.f;
+                    DrawTexture(AuthoredAtlases[Biome],SX,SY,T+0.5f,T+0.5f,
+                                U,V,1.f/7.f,1.f/4.f,FLinearColor::White,
+                                BLEND_Translucent,1.f,false,0.f,
+                                FVector2D::ZeroVector);
+                }
+                else if(BiomeTiles.IsValidIndex(Index) && BiomeTiles[Index])
+                    DrawTexture(BiomeTiles[Index],SX,SY,T+0.5f,T+0.5f,
+                                0.f,0.f,1.f,1.f,FLinearColor::White,
+                                BLEND_Translucent,1.f,false,0.f,
                                 FVector2D::ZeroVector);
                 // Contact shadow behind masonry ledge gives 2.5D wall height.
                 if (Game.IsFloor(X, Y + 1))
