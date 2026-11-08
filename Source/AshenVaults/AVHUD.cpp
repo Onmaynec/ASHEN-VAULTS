@@ -1378,6 +1378,13 @@ void AAVHUD::DrawOverlay(const AAVGameMode& Game)
                  FString::Printf(TEXT("%d GOLD"), Game.ShopPrice(I)),
                  Left + 345.f * Scale, Y, Sold ? Aether : GoldColor, 0.9f);
         }
+        if (Game.bInSafeCamp)
+        {
+            Text(FString::Printf(TEXT("PACK: ARMOR %d  BOWS %d  WEAPONS %d  SALVAGE %d"),
+                 Game.BackpackArmor, Game.BackpackBows, Game.BackpackWeapons,
+                 Game.PackMaterials),
+                 Left + 33.f * Scale, Top + 183.f * Scale, GoldColor, 0.75f);
+        }
         Text(Game.bInSafeCamp ? TEXT("1/2/3 BUY   4 SELL PACK   E/ESC EXIT") : TEXT("1/2/3 BUY   E/ESC EXIT"),
              Left + 126.f * Scale, Top + 206.f * Scale, Mint, 0.89f);
         if (Game.ToastTime > 0.f)
