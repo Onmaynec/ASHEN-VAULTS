@@ -700,7 +700,8 @@ void AAVGameMode::Strike(bool bSpin)
         // Fix: sword swings can no longer hit actors through solid stone walls.
         if (!FAVDungeonNavigation::LineOfSight(Tiles, MapW, MapH, Hero, Enemy.Pos)) continue;
         // Crypt guards and armored enemies block frontal strikes.
-        const bool bShield = Enemy.Type == 20 || Enemy.Equipment == 1;
+        const bool bShield = Enemy.Type == 20 || Enemy.Type == 36 ||
+                             Enemy.Type == 53 || Enemy.Equipment == 1;
         const bool bFacing = FVector2D::DotProduct(SafeDirection(Hero - Enemy.Pos),
                                                    SafeDirection(Enemy.LastSeenHero - Enemy.Pos)) > 0.25f;
         Enemy.HP -= bShield && bFacing ? Damage * 0.58f : Damage;
@@ -1810,11 +1811,12 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         const FVector2D ToHero = Target - E.Pos;
         const float Distance = ToHero.Size();
         const FVector2D Direction = SafeDirection(ToHero);
-        const float Speed = Spec.Speed * (E.bElite ? 1.18f : 1.f);
+        const float Speed = Spec.Speed * (E.bElite ? 1.18f : 1.f) *
+            ((E.Type == 56 || E.Type == 39) && E.HP < E.MaxHP * 0.45f ? 1.27f : 1.f);
         const bool bCaster = (Spec.Ranged || E.Equipment == 2) && !Spec.Boss;
-        const bool bMeleeBoss = E.Type == 8;
+        const bool bMeleeBoss = E.Type == 8 || E.Type == 56;
         const float Reach = Spec.Boss ? (bMeleeBoss ? 2.0f : 1.6f) :
-                            (E.Type == 7 || E.Type == 13) ? 1.30f : 1.08f;
+                            (E.Type == 7 || E.Type == 13 || E.Type == 35 || E.Type == 38 || E.Type == 42) ? 1.30f : 1.08f;
         FVector2D DesiredVelocity = FVector2D::ZeroVector;
         if ((bSeesTarget || E.MemoryTime > 0.f) && E.Telegraph <= 0.f)
         {
@@ -1887,7 +1889,8 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         if (E.AbilityCooldown <= 0.f && bSeesTarget && Distance < 8.0f &&
             (E.bMiniBoss || Spec.Boss || (E.bElite && E.Type == 0) || E.Type == 7 || E.Type == 23 ||
              E.Type == 24 || E.Type == 19 || E.Type == 12 || E.Type == 21 ||
-             E.Type == 6 || E.Type == 18 || E.Type == 14))
+             E.Type == 6 || E.Type == 18 || E.Type == 14 ||
+             (E.Type >= 34 && E.Type <= 51)))
         {
             E.LockedTarget = Target;
             E.AttackWindup = E.bMiniBoss || Spec.Boss ? 0.85f : 0.55f;
@@ -1983,6 +1986,9 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         if (Bolt.Time <= 0.f || !CanMove(Bolt.Pos, 0.06f) ||
             !FAVDungeonNavigation::LineOfSight(Tiles, MapW, MapH, Old, Bolt.Pos))
         {
+            // A missed normal shot breaks the precision chain only if no newer shot connected.
+            if (Bolt.Visual == 1 && Bolt.ShotId > LastConnectedShotId)
+            { ShotSeries = 0; ShotTargetId = -1; }
             Bolts.RemoveAtSwap(I);
             continue;
         }
@@ -1994,11 +2000,35 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             for (int32 J = Enemies.Num() - 1; J >= 0; --J)
             {
                 FAVEnemy& E = Enemies[J];
+                if (Bolt.HitEnemyIds.Contains(E.Id)) continue;
                 const float T = LenSq > KINDA_SMALL_NUMBER ?
                     FMath::Clamp(FVector2D::DotProduct(E.Pos - Old, Segment) / LenSq, 0.f, 1.f) : 0.f;
                 const float Radius = FAVContent::Enemy(E.Type, Floor).Boss ? 0.76f : 0.47f;
                 if (FVector2D::Distance(Old + Segment * T, E.Pos) > Radius) continue;
-                E.HP -= Bolt.Damage;
+                // The three arrows from one volley may land at most twice on one target.
+                if (Bolt.Visual == 2 && E.LastVolleyId == Bolt.VolleyId &&
+                    E.VolleyHitCount >= 2) continue;
+                int32 Damage = Bolt.Damage;
+                if (Bolt.Visual == 1)
+                {
+                    const bool bSameTarget = ShotTargetId == E.Id &&
+                        RunTime - LastShotHitTime <= 4.f;
+                    ShotSeries = bSameTarget ? FMath::Min(4, ShotSeries + 1) : 1;
+                    ShotTargetId = E.Id;
+                    LastShotHitTime = RunTime;
+                    LastConnectedShotId = Bolt.ShotId;
+                    Damage = FMath::RoundToInt(Damage *
+                        (1.f + 0.08f * (ShotSeries - 1)));
+                }
+                if (Bolt.Visual == 2)
+                {
+                    if (E.LastVolleyId != Bolt.VolleyId)
+                    { E.LastVolleyId = Bolt.VolleyId; E.VolleyHitCount = 0; }
+                    ++E.VolleyHitCount;
+                }
+                Bolt.HitEnemyIds.Add(E.Id);
+                --Bolt.PierceRemaining;
+                E.HP -= Damage;
                 E.Flash = 0.16f;
                 E.Knockback += SafeDirection(E.Pos - Old) * 3.1f;
                 AddEffect(E.Pos, 2, 0.4f);
@@ -2006,7 +2036,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 bHit = true;
                 break;
             }
-            if (bHit) Bolts.RemoveAtSwap(I);
+            if (bHit && Bolt.PierceRemaining <= 0) Bolts.RemoveAtSwap(I);
         }
         else
         {
@@ -2056,7 +2086,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             if (Trap.Windup <= 0.f)
             {
                 Trap.Windup = 0.f;
-                Trap.Cooldown = Trap.Type == 0 ? 2.8f : 3.7f;
+                Trap.Cooldown = Trap.Type == 0 ? 2.8f : Trap.Type >= 3 ? 4.4f : 3.7f;
                 AddEffect(Trap.Pos, 2, Trap.Type == 1 ? 1.4f : 0.8f);
                 if (Trap.Type == 0 && FVector2D::Distance(Trap.Pos, Hero) < 0.88f)
                     DamageHero(14.f + Floor * 3.f, Trap.Pos);
@@ -2066,6 +2096,27 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                     {
                         BurnTime = FMath::Max(BurnTime, 3.5f);
                         DamageHero(10.f + Floor * 2.f, Trap.Pos);
+                    }
+                }
+                else if (Trap.Type >= 3 && Trap.Type <= 5)
+                {
+                    const float Radius = Trap.Type == 3 ? 1.4f :
+                                         Trap.Type == 4 ? 1.65f : 1.1f;
+                    if (FVector2D::Distance(Trap.Pos, Hero) < Radius)
+                        DamageHero((Trap.Type == 3 ? 26.f : 17.f) + Floor * 2.f, Trap.Pos);
+                }
+                else if (Trap.Type == 6)
+                {
+                    const FVector2D Dir = SafeDirection(Hero - Trap.Pos);
+                    const FVector2D Side(-Dir.Y, Dir.X);
+                    for (int32 K = -1; K <= 1; ++K)
+                    {
+                        FAVBolt Spear;
+                        Spear.Pos = Trap.Pos;
+                        Spear.Velocity = SafeDirection(Dir + Side * (K * 0.19f)) * 11.f;
+                        Spear.Damage = 10 + Floor * 2;
+                        Spear.Time = 1.f;
+                        Bolts.Add(Spear);
                     }
                 }
                 else if (Trap.Type == 2)
@@ -2081,7 +2132,8 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         }
         else if (Trap.Cooldown <= 0.f &&
                  FVector2D::Distance(Trap.Pos, Hero) < 0.78f)
-            Trap.Windup = 0.62f;
+            Trap.Windup = Trap.Type == 3 ? 1.f : Trap.Type == 4 ? 0.78f :
+                          Trap.Type == 5 ? 1.15f : Trap.Type == 6 ? 0.8f : 0.62f;
     }
 
     // Contact areas apply a temporary status, but not during a dodge iframe.
