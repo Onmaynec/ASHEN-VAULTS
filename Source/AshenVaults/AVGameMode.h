@@ -153,6 +153,9 @@ public:
     UPROPERTY(BlueprintReadOnly) float MaxStamina = 100.f;
     UPROPERTY(BlueprintReadOnly) float AttackPower = 18.f;
     UPROPERTY(BlueprintReadOnly) float MoveSpeed = 4.8f;
+    UPROPERTY(BlueprintReadOnly) float ArmorRating = 0.f;
+    UPROPERTY(BlueprintReadOnly) float RangedBonus = 0.f;
+    UPROPERTY(BlueprintReadOnly) int32 EquippedGear = 0;
 
     EAVPhase Phase = EAVPhase::Playing;
     FVector2D Hero = FVector2D(4.f, 4.f);
