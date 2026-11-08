@@ -890,6 +890,18 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
             Rect(Pt.X - 11.f * Scale, Pt.Y - 15.f * Scale, 22.f * Scale, 2.f * Scale, GoldColor);
             Rect(Pt.X - 13.f * Scale, Pt.Y - 13.f * Scale, 2.f * Scale, 22.f * Scale, GoldColor);
         }
+        if (E.AttackWindup > 0.f)
+        {
+            const float Pulse = 0.55f + 0.45f * FMath::Sin(Game.RunTime * 20.f);
+            const FLinearColor Danger(1.f, 0.25f + 0.3f * Pulse, 0.12f, 0.8f);
+            Rect(Pt.X - 14.f * Scale, Pt.Y + 12.f * Scale,
+                 28.f * Scale * FMath::Clamp(E.AttackWindup / 0.85f, 0.f, 1.f),
+                 3.f * Scale, Danger);
+            const FVector2D Aim = (E.LockedTarget - E.Pos).GetSafeNormal();
+            const FVector2D Marker = Pt + Aim * 17.f * Scale;
+            Rect(Marker.X - 3.f * Scale, Marker.Y - 3.f * Scale,
+                 6.f * Scale, 6.f * Scale, Danger);
+        }
         if (E.Telegraph > 0.f)
         {
             const FLinearColor Warning = FMath::Sin(Game.RunTime * 30.f) > 0.f ? Blood : GoldColor;
