@@ -14,6 +14,7 @@ struct FAVEnemy
     FVector2D Pos = FVector2D::ZeroVector;
     FVector2D Knockback = FVector2D::ZeroVector;
     int32 Type = 0; // enemy archetype ID
+    int32 Subclass = 0; // Bastion enemy variant (0 or 1), persisted
     int32 Level = 1;
     int32 Equipment = 0; // 0 none, 1 armor, 2 bow, 3 enchanted weapon
     int32 Faction = 0; // 0 dungeon, 1 bandits
