@@ -1139,6 +1139,8 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
     if (Pattern == 8 && Enemies.Num() < 110) // Bone Regent: raise two skeletons
     {
         const FVector2D SummonCenter = E.Pos;
+        const int32 SummonLevel = E.Level;
+        const int32 SummonCast = E.AttackPattern;
         for (int32 K = -1; K <= 1; K += 2)
         {
             const FVector2D Spawn = SummonCenter + Side * (K * 1.5f);
@@ -1146,12 +1148,12 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
             FAVEnemy Skeleton;
             Skeleton.Type = 17;
             Skeleton.Pos = Spawn;
-            Skeleton.Level = E.Level;
+            Skeleton.Level = SummonLevel;
             Skeleton.MaxHP = FAVContent::Enemy(17, Floor).Health *
                              FAVContent::LevelHealthMultiplier(Skeleton.Level);
             Skeleton.HP = Skeleton.MaxHP;
             Skeleton.Cooldown = 0.8f;
-            Skeleton.Id = 200000 + Kills + E.AttackPattern * 10 + K;
+            Skeleton.Id = 200000 + Kills + SummonCast * 10 + K;
             Enemies.Add(Skeleton);
         }
     }
