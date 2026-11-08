@@ -163,6 +163,7 @@ void AAVGameMode::GenerateFloor()
     HeroVelocity = FVector2D::ZeroVector;
     bMerchantSpawned = false;
     bBanditCamp = false;
+    CampDoors.Reset(); CampWalls.Reset();
     for (int32 I = 0; I < 3; ++I) ShopPurchased[I] = false;
     PoisonTime = 0.f; BurnTime = 0.f; StatusTick = 0.f;
     AttackCooldown = 0.f; KnifeCooldown = 0.f; SpinCooldown = 0.f;
@@ -324,6 +325,32 @@ void AAVGameMode::GenerateFloor()
         const FRoom& Camp = Rooms[RoomIndex];
         BanditCampCenter = Camp.Center();
         bBanditCamp = true;
+        // Rebuild this chamber as an enclosed hideout. Every former corridor
+        // entrance becomes an interactable wooden gate; other rim tiles are walls.
+        for (int32 Y = Camp.Y; Y < Camp.Y + Camp.H; ++Y)
+        {
+            for (int32 X = Camp.X; X < Camp.X + Camp.W; ++X)
+            {
+                const bool bRim = X == Camp.X || X == Camp.X + Camp.W - 1 ||
+                                  Y == Camp.Y || Y == Camp.Y + Camp.H - 1;
+                if (!bRim) continue;
+                const bool bCorridor =
+                    (X == Camp.X && IsFloor(X - 1, Y)) ||
+                    (X == Camp.X + Camp.W - 1 && IsFloor(X + 1, Y)) ||
+                    (Y == Camp.Y && IsFloor(X, Y - 1)) ||
+                    (Y == Camp.Y + Camp.H - 1 && IsFloor(X, Y + 1));
+                const FVector2D Point(X + 0.5f, Y + 0.5f);
+                Tiles[Y * MapW + X] = 0;
+                if (bCorridor) CampDoors.Add(Point);
+                else CampWalls.Add(Point);
+            }
+        }
+        // Keep at least one usable gate if the generated corridor touches a corner.
+        if (CampDoors.Num() == 0)
+        {
+            const int32 X = Camp.X + Camp.W / 2, Y = Camp.Y;
+            CampDoors.Add(FVector2D(X + 0.5f, Y + 0.5f));
+        }
         for (int32 I = 0; I < 3 + Floor / 2; ++I)
         {
             FAVEnemy Bandit;
@@ -594,6 +621,25 @@ void AAVGameMode::ThrowKnife()
     Blade.Damage = FMath::RoundToInt(AttackPower * (HasRelic(2) ? 1.12f : 0.83f));
     Bolts.Add(Blade);
     AddEffect(Hero, 0, 0.5f, FMath::Atan2(Aim.Y, Aim.X));
+}
+
+bool AAVGameMode::OpenNearbyCampDoor()
+{
+    for (int32 I = CampDoors.Num() - 1; I >= 0; --I)
+    {
+        if (FVector2D::Distance(Hero, CampDoors[I]) > 1.85f) continue;
+        const int32 X = FMath::FloorToInt(CampDoors[I].X);
+        const int32 Y = FMath::FloorToInt(CampDoors[I].Y);
+        Tiles[Y * MapW + X] = 1;
+        AddEffect(CampDoors[I], 3, 0.9f);
+        CampDoors.RemoveAtSwap(I);
+        FlowRefreshTime = 0.f;
+        RefreshAwareness(0.f, true);
+        Toast = TEXT("BANDIT GATE OPENED");
+        ToastTime = 2.f;
+        return true;
+    }
+    return false;
 }
 
 bool AAVGameMode::OpenNearbyChest()
@@ -903,6 +949,10 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         Toast = TEXT("SHRINE BLESSING  +35 HP  +2 DAMAGE");
         ToastTime = 2.6f;
         AddEffect(Shrine, 1, 1.6f);
+    }
+    else if (bUse && OpenNearbyCampDoor())
+    {
+        // Gates unlock the rival hideout and allow combat through the entrance.
     }
     else if (bUse && OpenNearbyChest())
     {
