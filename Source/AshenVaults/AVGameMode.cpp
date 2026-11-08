@@ -220,8 +220,31 @@ void AAVGameMode::GenerateFloor()
         }
         if (bOverlaps) continue;
         for (int32 Y = R.Y; Y < R.Y + R.H; ++Y)
+        {
             for (int32 X = R.X; X < R.X + R.W; ++X)
-                Tiles[Y * MapW + X] = 1;
+            {
+                bool bCarve = true;
+                if (CurrentBiome() == 1)
+                {
+                    // Spore Hollows: irregular rounded organic chambers.
+                    const float DX = (X + 0.5f - (R.X + R.W * 0.5f)) /
+                        FMath::Max(1.f, R.W * 0.5f);
+                    const float DY = (Y + 0.5f - (R.Y + R.H * 0.5f)) /
+                        FMath::Max(1.f, R.H * 0.5f);
+                    bCarve = DX * DX + DY * DY < 1.13f ||
+                        (FMath::Abs(DX) < 0.22f && FMath::Abs(DY) < 0.85f);
+                }
+                else if (CurrentBiome() == 2)
+                {
+                    // Ember Foundry: straight-sided halls with clipped corners.
+                    const int32 CornerX = FMath::Min(X - R.X, R.X + R.W - 1 - X);
+                    const int32 CornerY = FMath::Min(Y - R.Y, R.Y + R.H - 1 - Y);
+                    bCarve = CornerX + CornerY >= 2 ||
+                        (CornerX >= 1 && CornerY >= 1);
+                }
+                if (bCarve) Tiles[Y * MapW + X] = 1;
+            }
+        }
 
         if (Rooms.Num() > 0)
         {
