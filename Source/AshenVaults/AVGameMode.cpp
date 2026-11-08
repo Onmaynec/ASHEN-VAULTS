@@ -1182,7 +1182,7 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         return;
     }
     if (bUse && !bInBossArena && PendingGuardian >= 0 &&
-        IsExitReady() && FVector2D::Distance(Hero, Exit) < 1.8f)
+        FVector2D::Distance(Hero, Exit) < 1.8f)
     {
         EnterBossArena();
         return;
@@ -1399,6 +1399,19 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         if (Enemies[I].HP <= 0.f) { KillEnemy(I); continue; }
         FAVEnemy& E = Enemies[I];
         const FAVEnemySpec Spec = FAVContent::Enemy(E.Type, Floor);
+        if (Spec.Boss && !E.bPhaseShifted && E.HP <= E.MaxHP * 0.45f)
+        {
+            E.bPhaseShifted = true;
+            E.PhaseShiftTime = 1.5f;
+            E.AttackWindup = 0.f;
+            E.Telegraph = 0.f;
+            E.AbilityCooldown = FMath::Max(E.AbilityCooldown, 1.5f);
+        }
+        if (E.PhaseShiftTime > 0.f)
+        {
+            E.PhaseShiftTime = FMath::Max(0.f, E.PhaseShiftTime - DeltaSeconds);
+            continue; // Transformation is a distinct non-attacking animation phase.
+        }
         E.Cooldown -= DeltaSeconds;
         E.AbilityCooldown -= DeltaSeconds;
         E.PathRefresh -= DeltaSeconds;
