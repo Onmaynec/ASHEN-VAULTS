@@ -29,6 +29,7 @@ private:
     TArray<UTexture2D*> AuthoredAtlases; // 4 authored PNG atlases, 7x4 at 24px
     UPROPERTY(Transient) UTexture2D* HeroAtlas = nullptr;
     UPROPERTY(Transient) UTexture2D* EquipmentAtlas = nullptr;
+    UPROPERTY(Transient) UTexture2D* BossAtlas = nullptr;
 
     float Scale = 1.f;
     FVector2D Center = FVector2D::ZeroVector;
