@@ -288,7 +288,10 @@ float AAVGameMode::ModifiedAttackDamage(float Damage, const FAVEnemy& Target,
     if (RewardDamageTime > 0.f) Percent += 10.f;
     if (RevengeTime > 0.f) Percent += 8.f * SkillRank(18);
     if (!bAbility && (++BasicAttackSequence % 4) == 0) Percent += 7.f * SkillRank(7);
-    if (HeroClass == 1 && DashBonusTime > 0.f) Percent += 3.f * SkillRank(21);
+    if(HeroClass==1 && DashBonusTime>0.f) Percent+=3.f*SkillRank(21);
+    if(HeroClass==1 && LastKillBoostTime>0.f) Percent+=6.f*SkillRank(24);
+    if(HeroClass==3 && SkillRank(38)>0 && ShotSeries>=4 &&
+       bRanged && !bAbility) Percent+=50.f;
     const float CritChance = FMath::Clamp(0.05f + GearStat(AVCriticalPercent)*0.01f +
         0.03f*SkillRank(6), 0.f, 0.40f);
     if (RNG.FRand() < CritChance) Percent += 50.f;
@@ -925,10 +928,10 @@ void AAVGameMode::Strike(bool bSpin)
     if (Stamina < Cost || (bSpin ? SpinCooldown > 0.f : AttackCooldown > 0.f)) return;
     Stamina -= Cost;
     if (bSpin) SpinCooldown = 1.65f;
-    else AttackCooldown = 0.33f;
+    else AttackCooldown=BasicAttackInterval();
     AddEffect(Hero, bSpin ? 1 : 0, bSpin ? 2.2f : 1.75f, FMath::Atan2(Aim.Y, Aim.X));
     const float Range = bSpin ? 2.25f : 1.92f;
-    const float Damage = AttackPower * (bSpin ? (HasRelic(3) ? 2.f : 1.65f) : 1.f);
+    const float Damage=AttackPower*(bSpin?(HasRelic(3)?2.f:1.65f):1.f);
     for (int32 I = Enemies.Num() - 1; I >= 0; --I)
     {
         FAVEnemy& Enemy = Enemies[I];
@@ -943,13 +946,27 @@ void AAVGameMode::Strike(bool bSpin)
                              Enemy.Type == 53 || Enemy.Equipment == 1;
         const bool bFacing = FVector2D::DotProduct(SafeDirection(Hero - Enemy.Pos),
                                                    SafeDirection(Enemy.LastSeenHero - Enemy.Pos)) > 0.25f;
-        Enemy.HP -= bShield && bFacing ? Damage * 0.58f : Damage;
+        float HitDamage=ModifiedAttackDamage(Damage,Enemy,false,bSpin);
+        if(bShield && bFacing) HitDamage*=0.58f;
+        Enemy.HP-=HitDamage;
         Enemy.Flash = 0.16f;
-        Enemy.Knockback += SafeDirection(Delta) * (Enemy.Type == 3 ? 1.f : 5.f);
+        Enemy.Knockback += SafeDirection(Delta) *
+            (Enemy.Type == 3 ? 1.f : 5.f + (HasGearPerk(1) ? 2.f : 0.f));
         AddEffect(Enemy.Pos, 2, 0.55f);
         if (Enemy.HP <= 0.f) KillEnemy(I);
     }
-    if (Phase == EAVPhase::Playing) StrikeProps(bSpin, Damage);
+    if(HeroClass==0 && SkillRank(20)>0 && !bSpin &&
+       (BasicAttackSequence%3)==0)
+        for(int32 I=0;I<8;++I) {
+            const float A=6.2831853f*I/8.f;
+            FAVBolt Wave;
+            Wave.bFriendly=true; Wave.Pos=Hero;
+            Wave.Velocity=FVector2D(FMath::Cos(A),FMath::Sin(A))*7.f;
+            Wave.Time=0.35f;
+            Wave.Damage=FMath::RoundToInt(AttackPower*0.5f);
+            Bolts.Add(Wave);
+        }
+    if(Phase==EAVPhase::Playing) StrikeProps(bSpin,Damage);
 }
 
 void AAVGameMode::ShootArrow()
@@ -2550,17 +2567,20 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                     { E.LastVolleyId = Bolt.VolleyId; E.VolleyHitCount = 0; }
                     ++E.VolleyHitCount;
                 }
+                if(Bolt.Visual==3 && Bolt.HitEnemyIds.Num()>0)
+                    Damage=FMath::RoundToInt(Damage*0.45f);
+                Damage=FMath::RoundToInt(ModifiedAttackDamage(Damage,E,true,Bolt.Visual!=1));
                 Bolt.HitEnemyIds.Add(E.Id);
                 --Bolt.PierceRemaining;
-                E.HP -= Damage;
+                E.HP-=Damage;
                 E.Flash = 0.16f;
                 E.Knockback += SafeDirection(E.Pos - Old) * 3.1f;
                 AddEffect(E.Pos, 2, 0.4f);
                 if (E.HP <= 0.f) KillEnemy(J);
-                bHit = true;
-                break;
+                bHit=true;
+                if(Bolt.PierceRemaining<=0) break;
             }
-            if (bHit && Bolt.PierceRemaining <= 0) Bolts.RemoveAtSwap(I);
+            if(bHit && Bolt.PierceRemaining<=0) Bolts.RemoveAtSwap(I);
         }
         else
         {
@@ -2590,8 +2610,11 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                     DamageHero(Bolt.Damage, Bolt.Pos);
                     if (bVulnerable && Phase != EAVPhase::Dead)
                     {
-                        if (Status == 1) PoisonTime = FMath::Max(PoisonTime, 4.2f);
-                        if (Status == 2) BurnTime = FMath::Max(BurnTime, 3.3f);
+                        const float Resist=FMath::Clamp(1.f-
+                            (GearStat(AVStatusResistPercent)+10.f*SkillRank(1))*0.01f,
+                            0.4f,1.f);
+                        if(Status==1) PoisonTime=FMath::Max(PoisonTime,4.2f*Resist);
+                        if(Status==2) BurnTime=FMath::Max(BurnTime,3.3f*Resist);
                     }
                     bHit = true;
                 }
