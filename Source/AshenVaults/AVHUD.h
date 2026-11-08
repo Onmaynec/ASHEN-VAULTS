@@ -27,6 +27,7 @@ private:
     TArray<UTexture2D*> BiomeTiles; // fallback/generated variants
     UPROPERTY(Transient)
     TArray<UTexture2D*> AuthoredAtlases; // 4 authored PNG atlases, 7x4 at 24px
+    UPROPERTY(Transient) UTexture2D* HeroAtlas = nullptr;
 
     float Scale = 1.f;
     FVector2D Center = FVector2D::ZeroVector;
