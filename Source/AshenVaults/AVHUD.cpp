@@ -1507,9 +1507,15 @@ void AAVHUD::DrawOverlay(const AAVGameMode& Game)
                 const FAVEquipmentSpec* S=FAVEquipment::Find(
                     Game.InventoryItems[Game.GearSelection]);
                 if(S)
-                    Text(FString::Printf(TEXT("BONUSES: %d +%.1f / %d +%.1f"),
-                         S->StatA,S->ValueA,S->StatB,S->ValueB),
-                         Left+379.f*Scale,Top+357.f*Scale,Pale,0.77f);
+                {
+                    Text(FString::Printf(TEXT("%s %.0f  /  %s %.0f"),
+                         UTF8_TO_TCHAR(FAVEquipment::StatName(S->StatA)),S->ValueA,
+                         UTF8_TO_TCHAR(FAVEquipment::StatName(S->StatB)),S->ValueB),
+                         Left+379.f*Scale,Top+349.f*Scale,Pale,0.76f);
+                    if(S->PerkId>0)
+                        Text(FString(UTF8_TO_TCHAR(FAVEquipment::PerkName(S->PerkId))),
+                             Left+379.f*Scale,Top+367.f*Scale,GoldColor,0.76f);
+                }
             }
             Text(TEXT("UP/DOWN SELECT   ENTER EQUIP   1-8 UNEQUIP   I/TAB EXIT"),
                  Left+96.f*Scale,Top+390.f*Scale,Mint,0.85f);
@@ -1555,9 +1561,12 @@ void AAVHUD::DrawOverlay(const AAVGameMode& Game)
                      Left+472.f*Scale,Top+111.f*Scale,Pale,0.9f);
                 Text(FString::Printf(TEXT("UNLOCK LEVEL %d"),S->MinLevel),
                      Left+472.f*Scale,Top+145.f*Scale,Aether,0.85f);
-                Text(FString::Printf(TEXT("EFFECT %d   +%.2f / RANK"),
-                     S->EffectId,S->ValuePerRank),
-                     Left+472.f*Scale,Top+183.f*Scale,Pale,0.82f);
+                FString Description=FString(UTF8_TO_TCHAR(FAVSkills::Description(Id)));
+                Text(Description.Left(28),Left+472.f*Scale,
+                     Top+181.f*Scale,Pale,0.79f);
+                if(Description.Len()>28)
+                    Text(Description.Mid(28,28),Left+472.f*Scale,
+                         Top+198.f*Scale,Pale,0.79f);
                 Text(S->PrerequisiteId>=0?
                      FString::Printf(TEXT("REQUIRES SKILL %d"),S->PrerequisiteId):
                      TEXT("NO PREREQUISITE"),
