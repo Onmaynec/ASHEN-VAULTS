@@ -134,6 +134,7 @@ void AAVGameMode::NewRun(bool bSameSeed)
     MaxStamina = FAVContent::HeroStamina(HeroClass); Stamina = MaxStamina;
     AttackPower = FAVContent::HeroAttack(HeroClass);
     MoveSpeed = FAVContent::HeroSpeed(HeroClass); RunTime = 0.f;
+    ArmorRating = 0.f; RangedBonus = 0.f; EquippedGear = 0;
     RelicMask = 0u; RelicCount = 0; Echoes = 0; bRelicPending = false;
     HeroVelocity = FVector2D::ZeroVector;
     PoisonTime = 0.f; BurnTime = 0.f; StatusTick = 0.f; DashCooldown = 0.f;
@@ -304,7 +305,7 @@ void AAVGameMode::GenerateFloor()
             Enemy.Type = FAVContent::EnemyRoll(Floor, RNG.RandRange(0, 99));
             Enemy.Level = FAVContent::EnemyLevel(Floor, RNG.RandRange(0, 99));
             Enemy.Equipment = RNG.FRand() < 0.085f ? RNG.RandRange(1, 3) : 0;
-            if (Enemy.Type == 16 && Enemy.Equipment == 2) Enemy.Type = 25; // armed zombie uses archer AI
+            // Bow zombies keep their own appearance and fire projectiles.
             Enemy.MaxHP = FAVContent::Enemy(Enemy.Type, Floor).Health *
                 FAVContent::LevelHealthMultiplier(Enemy.Level) *
                 (Enemy.Equipment == 1 ? 1.35f : 1.f);
@@ -618,7 +619,7 @@ void AAVGameMode::ThrowKnife()
     Blade.Pos = Hero + Aim * 0.52f;
     Blade.Velocity = Aim * 11.f;
     Blade.Time = 1.1f;
-    Blade.Damage = FMath::RoundToInt(AttackPower * (HasRelic(2) ? 1.12f : 0.83f));
+    Blade.Damage = FMath::RoundToInt(AttackPower * (HasRelic(2) ? 1.12f : 0.83f) + RangedBonus);
     Bolts.Add(Blade);
     AddEffect(Hero, 0, 0.5f, FMath::Atan2(Aim.Y, Aim.X));
 }
@@ -705,7 +706,8 @@ bool AAVGameMode::ActivateNearbyEcho()
 void AAVGameMode::DamageHero(float Damage, const FVector2D& Source)
 {
     if (Invulnerability > 0.f || Phase != EAVPhase::Playing) return;
-    const float AdjustedDamage = HasRelic(1) ? Damage * 0.80f : Damage;
+    const float AdjustedDamage = Damage * (HasRelic(1) ? 0.80f : 1.f) *
+        (1.f - FMath::Clamp(ArmorRating, 0.f, 0.45f));
     HP = FMath::Max(0.f, HP - AdjustedDamage);
     Invulnerability = 0.72f;
     ScreenShake = 0.26f;
@@ -760,8 +762,8 @@ void AAVGameMode::KillEnemy(int32 Index)
     {
         FAVPickup Gear;
         Gear.Pos = Dead.Pos;
-        Gear.Type = Dead.Equipment == 1 ? 5 : Dead.Equipment == 2 ? 7 : 4;
-        Gear.Amount = Dead.Equipment == 3 ? 3 : 1;
+        Gear.Type = Dead.Equipment == 1 ? 8 : Dead.Equipment == 2 ? 9 : 10;
+        Gear.Amount = 1;
         Pickups.Add(Gear);
     }
     AddEffect(Dead.Pos, 3, bBoss ? 2.2f : Dead.bMiniBoss ? 1.7f : 0.9f);
@@ -1144,7 +1146,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         const float Distance = ToHero.Size();
         const FVector2D Direction = SafeDirection(ToHero);
         const float Speed = Spec.Speed * (E.bElite ? 1.18f : 1.f);
-        const bool bCaster = Spec.Ranged && !Spec.Boss;
+        const bool bCaster = (Spec.Ranged || E.Equipment == 2) && !Spec.Boss;
         const bool bMeleeBoss = E.Type == 8;
         const float Reach = Spec.Boss ? (bMeleeBoss ? 2.0f : 1.6f) :
                             (E.Type == 7 || E.Type == 13) ? 1.30f : 1.08f;
@@ -1229,7 +1231,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         }
         if (E.Cooldown > 0.f || Distance > 8.3f || !bSeesTarget) continue;
 
-        const bool bRangedAttack = (Spec.Ranged && Distance >= Reach) ||
+        const bool bRangedAttack = ((Spec.Ranged || E.Equipment == 2) && Distance >= Reach) ||
                                    (bMeleeBoss && Distance >= 2.2f) ||
                                    (E.bMiniBoss && Distance >= 2.3f);
         if (bRangedAttack)
@@ -1411,6 +1413,13 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 Toast = TEXT("ENDURANCE SHARD: +10 MAX STAMINA"); ToastTime = 2.f; break;
             case 7: MoveSpeed += 0.18f;
                 Toast = TEXT("HASTE SHARD: +0.18 SPEED"); ToastTime = 2.f; break;
+            case 8: ArmorRating = FMath::Min(0.45f, ArmorRating + 0.08f);
+                ++EquippedGear;
+                Toast = TEXT("SALVAGED CHESTPLATE: +8% ARMOR"); ToastTime = 2.4f; break;
+            case 9: RangedBonus += 2.f; ++EquippedGear;
+                Toast = TEXT("SALVAGED BOW: +2 RANGED DAMAGE"); ToastTime = 2.4f; break;
+            case 10: AttackPower += 3.f; ++EquippedGear;
+                Toast = TEXT("SALVAGED WEAPON: +3 MELEE DAMAGE"); ToastTime = 2.4f; break;
             default: break;
             }
             Pickups.RemoveAtSwap(I);
