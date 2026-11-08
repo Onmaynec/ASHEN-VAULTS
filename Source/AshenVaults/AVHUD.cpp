@@ -827,6 +827,35 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         Sprite(11, Game.Shrine, 1.4f);
     }
 
+    for (const FVector2D& Wall : Game.CampWalls)
+    {
+        if (!Game.IsVisibleAt(Wall)) continue;
+        const FVector2D Pt = Screen(Wall);
+        Rect(Pt.X - 10.f * Scale, Pt.Y - 10.f * Scale,
+             20.f * Scale, 20.f * Scale, FLinearColor(0.25f, 0.18f, 0.15f, 1.f));
+        Rect(Pt.X - 7.f * Scale, Pt.Y - 9.f * Scale,
+             4.f * Scale, 18.f * Scale, FLinearColor(0.48f, 0.32f, 0.2f, 1.f));
+        Rect(Pt.X + 3.f * Scale, Pt.Y - 9.f * Scale,
+             4.f * Scale, 18.f * Scale, FLinearColor(0.48f, 0.32f, 0.2f, 1.f));
+    }
+    for (const FVector2D& Door : Game.CampDoors)
+    {
+        const FVector2D Pt = Screen(Door);
+        if (!Game.IsExploredCell(FMath::FloorToInt(Door.X), FMath::FloorToInt(Door.Y)) &&
+            FVector2D::Distance(Door, Game.Hero) > 4.f) continue;
+        Rect(Pt.X - 11.f * Scale, Pt.Y - 11.f * Scale,
+             22.f * Scale, 22.f * Scale, FLinearColor(0.16f, 0.11f, 0.10f, 1.f));
+        Rect(Pt.X - 8.f * Scale, Pt.Y - 10.f * Scale,
+             16.f * Scale, 20.f * Scale, FLinearColor(0.54f, 0.31f, 0.17f, 1.f));
+        Rect(Pt.X - 9.f * Scale, Pt.Y - 2.f * Scale,
+             18.f * Scale, 4.f * Scale, FLinearColor(0.23f, 0.20f, 0.22f, 1.f));
+        Rect(Pt.X + 3.f * Scale, Pt.Y + 1.f * Scale,
+             3.f * Scale, 3.f * Scale, GoldColor);
+        if (FVector2D::Distance(Door, Game.Hero) < 2.5f)
+            Text(TEXT("[F] OPEN"), Pt.X - 22.f * Scale, Pt.Y - 23.f * Scale,
+                 GoldColor, 0.76f);
+    }
+
     for (const FAVChest& Chest : Game.Chests)
     {
         if (!Game.IsVisibleAt(Chest.Pos)) continue;
