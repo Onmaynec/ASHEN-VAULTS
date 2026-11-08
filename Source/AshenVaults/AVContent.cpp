@@ -42,7 +42,7 @@ int32 FAVContent::EnemyRoll(int32 Floor, int32 Percentile)
     {
     case 0: return P < 17 ? 0 : P < 30 ? 15 : P < 43 ? 16 : P < 55 ? 17 : P < 65 ? 18 : P < 74 ? 19 : P < 82 ? 20 : P < 89 ? 1 : P < 95 ? 11 : 5;
     case 1: return P < 17 ? 5 : P < 31 ? 6 : P < 44 ? 21 : P < 57 ? 22 : P < 69 ? 23 : P < 79 ? 12 : P < 88 ? 2 : P < 94 ? 16 : 1;
-    default: return P < 18 ? 7 : P < 33 ? 10 : P < 47 ? 24 : P < 59 ? 25 : P < 72 ? 13 : P < 83 ? 14 : P < 91 ? 23 : 1;
+    default: return P < 18 ? 7 : P < 33 ? 10 : P < 47 ? 24 : P < 59 ? 22 : P < 72 ? 13 : P < 83 ? 14 : P < 91 ? 23 : 1;
     }
 }
 
