@@ -71,7 +71,13 @@ void AAVGameMode::BeginPlay()
             Stamina = Save->CheckpointStamina; MaxStamina = Save->CheckpointMaxStamina;
             AttackPower = Save->CheckpointAttack; MoveSpeed = Save->CheckpointSpeed;
             ArmorRating = Save->CheckpointArmor; RangedBonus = Save->CheckpointRanged;
-            EnterLobby();
+            // Do not overwrite the existing checkpoint while booting the lobby.
+            bInLobby = true;
+            bInSafeCamp = false;
+            bWorldStored = false;
+            MakeSafeRoom(true);
+            Toast = TEXT("HOME: PRESS E AT THE PORTAL TO RESUME");
+            ToastTime = 3.f;
         }
     }
 }
