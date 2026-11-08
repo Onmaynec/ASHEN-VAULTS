@@ -70,7 +70,7 @@ UButton* UAVFrontendWidget::AddButton(const FString& Content,int32 Row,bool bAct
     Label->SetJustification(ETextJustify::Center);
     Button->AddChild(Label);
     UCanvasPanelSlot* Slot=MainCanvas->AddChildToCanvas(Button);
-    Slot->SetPosition(FVector2D(76.f,208.f+Row*59.f));
+    Slot->SetPosition(FVector2D(76.f,196.f+Row*52.f));
     Slot->SetSize(FVector2D(320.f,47.f));
     return Button;
 }
@@ -86,7 +86,7 @@ void UAVFrontendWidget::AddHeroText()
         TEXT("Arrows / piercing shots / precision")
     };
     AddLabel(FString::Printf(TEXT("%s  —  %s"),Names[ChosenHero],Roles[ChosenHero]),
-             FVector2D(76.f,178.f),17,Gold,true);
+             FVector2D(420.f,260.f),17,Gold,true);
 }
 
 void UAVFrontendWidget::Rebuild()
@@ -122,7 +122,7 @@ void UAVFrontendWidget::Rebuild()
     }
     else if(Page==1)
     {
-        AddLabel(TEXT("CHOOSE YOUR HERO"),FVector2D(73.f,187.f),17,Gold,true);
+        AddLabel(TEXT("CHOOSE YOUR HERO"),FVector2D(73.f,180.f),17,Gold,true);
         const TCHAR* Labels[4]={TEXT("WARDEN"),TEXT("DUELIST"),TEXT("ARCANIST"),TEXT("MARKSMAN")};
         for(int32 I=0;I<4;++I)
         {
@@ -151,7 +151,7 @@ void UAVFrontendWidget::Rebuild()
         AddLabel(TEXT("WASD MOVE   MOUSE AIM   SPACE DASH"),
                  FVector2D(76.f,474.f),13,Pale);
         AddLabel(TEXT("I INVENTORY   K TALENTS   F3 EFFECTS"),
-                 FVector2D(76.f,494.f),13,Pale);
+                 FVector2D(76.f,493.f),13,Pale);
     }
     else
     {
@@ -164,7 +164,7 @@ void UAVFrontendWidget::Rebuild()
         AddButton(TEXT("BACK"),3)->OnClicked.AddDynamic(this,&UAVFrontendWidget::OnBack);
     }
     AddLabel(TEXT("v1.0.0  /  VISUAL REBIRTH"),
-             FVector2D(76.f,575.f),13,Gold);
+             FVector2D(76.f,514.f),13,Gold);
 }
 
 void UAVFrontendWidget::OnContinue()
