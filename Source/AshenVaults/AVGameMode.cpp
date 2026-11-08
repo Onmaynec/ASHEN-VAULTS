@@ -787,7 +787,7 @@ void AAVGameMode::GenerateFloor()
         Pickup.Amount = 22;
         Pickups.Add(Pickup);
     }
-    if (Floor >= 3)
+    if (Floor >= 3 && CurrentBiome() != 3)
     {
         for (int32 I = 2; I < Rooms.Num() - 1; I += 2)
         {
@@ -805,7 +805,7 @@ void AAVGameMode::GenerateFloor()
     {
         const FRoom& R = Rooms[I];
         FAVProp Prop;
-        Prop.Type = CurrentBiome() == 2 ? 1 : 0;
+        Prop.Type = CurrentBiome() >= 2 ? 1 : 0;
         Prop.Pos = FVector2D(R.X + R.W - 1.5f, R.Y + 1.5f);
         if (FVector2D::Distance(Prop.Pos, Shrine) < 2.f ||
             FVector2D::Distance(Prop.Pos, Exit) < 2.f ||
@@ -2332,6 +2332,7 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
             Enemies.Add(Skeleton);
         }
     }
+    ++E.AttackPattern; // Cycle boss attack patterns and unique summon IDs.
     if (Pattern == 47 && E.Subclass != 0 && Enemies.Num() < 100)
     {
         // Summon only after the caster's effects are complete (TArray may reallocate).
@@ -2343,7 +2344,7 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
             Soldier.Level=E.Level;
             Soldier.MaxHP=FAVContent::Enemy(34,Floor).Health *
                 FAVContent::LevelHealthMultiplier(Soldier.Level) * 0.55f;
-            Soldier.HP=Soldier.MaxHP; Soldier.Id=300000+Floor*100+Kills+E.AttackPattern;
+            Soldier.HP=Soldier.MaxHP; Soldier.Id=300000+E.Id*1000+E.AttackPattern;
             Soldier.Cooldown=0.8f;
             Enemies.Add(Soldier);
         }
