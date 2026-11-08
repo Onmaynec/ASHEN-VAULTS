@@ -279,6 +279,117 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
             Box(4, 12, 11, 14, FColor::Transparent);
         }
     }
+    else if ((Type >= 47 && Type <= 69) || (Type >= 81 && Type <= 103))
+    {
+        // Enemy-specific 16x16 pixel art. 81..103 are alternate walking frames.
+        const bool Walking = Type >= 81;
+        const int32 Kind = Walking ? Type - 70 : Type - 36;
+        const bool Golem = Kind == 23 || Kind == 24 || Kind == 13 || Kind == 29 || Kind == 32;
+        const bool Skeleton = Kind == 17 || Kind == 27;
+        const bool Ghost = Kind == 14 || Kind == 18;
+        const bool Rat = Kind == 15;
+        const bool Zombie = Kind == 16 || Kind == 22;
+        const bool Bandit = Kind == 25 || Kind == 33;
+        const bool Witch = Kind == 12 || Kind == 19 || Kind == 21 || Kind == 28 || Kind == 31;
+        const bool Mini = Kind >= 26 && Kind <= 32;
+        const FColor Primary = Golem ? (Kind == 24 || Kind == 32 ? PixelColor(113, 125, 143) :
+            Kind == 23 || Kind == 29 ? PixelColor(103, 105, 101) : PixelColor(122, 67, 56)) :
+            Skeleton ? PixelColor(211, 207, 174) :
+            Ghost ? PixelColor(107, 171, 187) :
+            Rat ? PixelColor(107, 85, 102) :
+            Zombie ? PixelColor(91, 127, 93) :
+            Bandit ? PixelColor(134, 67, 58) :
+            Witch ? PixelColor(91, 76, 134) :
+            Kind == 20 ? PixelColor(122, 125, 133) :
+            Kind == 30 ? PixelColor(160, 51, 62) : PixelColor(127, 91, 87);
+        const FColor Highlight = Golem ? (Kind == 24 || Kind == 32 ? PixelColor(196, 208, 221) :
+            Kind == 23 || Kind == 29 ? PixelColor(163, 172, 157) : Fire) :
+            Skeleton ? White : Ghost ? PixelColor(171, 242, 233) :
+            Rat ? PixelColor(190, 128, 134) :
+            Zombie ? PixelColor(154, 186, 125) :
+            Bandit ? PixelColor(231, 163, 98) :
+            Witch ? PixelColor(182, 124, 217) : PixelColor(220, 148, 111);
+        const FColor Eyes = Ghost ? White : Witch ? PixelColor(199, 255, 118) : Fire;
+        if (Ghost)
+        {
+            Box(4, 4, 11, 10, Primary);
+            Box(5, 3, 10, 5, Highlight);
+            Box(3, 8, 12, 11, Primary);
+            Box(4, 12, 6, 13, Highlight); Box(9, 12, 11, 13, Highlight);
+            Put(7, 14, Highlight);
+        }
+        else if (Rat)
+        {
+            Box(2, 9, 12, 12, Primary);
+            Box(9, 6, 13, 10, Primary);
+            Box(10, 5, 11, 6, Highlight);
+            Put(12, 8, Eyes);
+            Box(1, 11, 3, 12, Highlight);
+            Box(4, 13, 5, 14, Shadow); Box(10, 13, 11, 14, Shadow);
+        }
+        else if (Golem)
+        {
+            Box(2, 7, 13, 12, Outline);
+            Box(3, 5, 12, 11, Primary);
+            Box(5, 2, 10, 7, Primary);
+            Box(1, 7, 3, 12, Primary); Box(12, 7, 14, 12, Primary);
+            Box(4, 12, 6, 14, Primary); Box(9, 12, 11, 14, Primary);
+            Box(7, 4, 8, 10, Highlight);
+            Put(6, 5, Eyes); Put(9, 5, Eyes);
+            if (Kind == 13) { Put(4, 3, Fire); Put(11, 3, Fire); }
+        }
+        else
+        {
+            Box(4, 7, 11, 12, Outline);
+            Box(5, 7, 10, 11, Primary);
+            Box(5, 11, 7, Walking ? 12 : 14, Primary);
+            Box(9, Walking ? 11 : 12, 11, Walking ? 14 : 13, Primary);
+            Box(5, 3, 10, 7, Outline);
+            Box(6, 4, 9, 6, Skeleton ? White : Highlight);
+            Box(3, 8, 4, 11, Primary);
+            Box(11, 8, 12, 11, Primary);
+            Put(6, 5, Eyes); Put(9, 5, Eyes);
+            if (Skeleton)
+            {
+                Box(7, 8, 8, 11, White);
+                Put(5, 9, White); Put(10, 9, White);
+                Box(6, 6, 9, 6, Shadow);
+            }
+            if (Zombie)
+            {
+                Box(5, 2, 10, 3, Primary);
+                Put(5, 10, Highlight); Put(11, 12, Highlight);
+            }
+            if (Witch)
+            {
+                Box(3, 3, 12, 4, Primary);
+                Box(5, 1, 10, 3, Primary);
+                Box(12, 5, 13, 13, DarkMetal);
+                Put(13, 4, Highlight);
+                Put(13, 2, Eyes);
+            }
+            if (Bandit)
+            {
+                Box(4, 2, 11, 4, Rust);
+                Box(5, 8, 10, 9, Highlight);
+                Box(12, 5, 13, 12, DarkMetal);
+                Put(13, 4, Fire);
+            }
+            if (Kind == 20) { Box(4, 2, 11, 4, Metal); Box(11, 8, 14, 11, Metal); }
+            if (Kind == 11 || Kind == 30) { Box(3, 2, 12, 3, Rust); Put(12, 2, Fire); }
+        }
+        if (Mini)
+        {
+            Put(3, 2, Fire); Put(12, 2, Fire);
+            Box(5, 0, 10, 1, Rust);
+            Put(7, 0, Highlight); Put(9, 0, Highlight);
+        }
+        if (Walking)
+        {
+            Put(3, 12, Highlight);
+            Put(12, 13, Highlight);
+        }
+    }
     else if (Type == 23) // wandering merchant
     {
         Box(3, 12, 12, 14, Shadow);
@@ -422,7 +533,7 @@ UTexture2D* AAVHUD::MakeSprite(int32 Type)
 void AAVHUD::InitSprites()
 {
     if (Sprites.Num() > 0) return;
-    for (int32 I = 0; I <= 35; ++I) Sprites.Add(MakeSprite(I));
+    for (int32 I = 0; I <= 103; ++I) Sprites.Add(MakeSprite(I));
     for (int32 Biome = 0; Biome < 3; ++Biome)
         for (int32 Variant = 0; Variant < FAVArt::VariantsPerBiome; ++Variant)
             BiomeTiles.Add(FAVArt::BuildTile(Biome, Variant));
@@ -792,7 +903,9 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
                        E.Type == 7 ? E.Telegraph / 0.54f : E.Telegraph / 0.31f),
                  2.f * Scale, Warning);
         }
-        const int32 SpriteType = E.Type == 0 ? 1 : E.Type == 1 ? 2 :
+        const int32 SpriteType = E.Type >= 11 ?
+            ((FMath::FloorToInt(Game.RunTime * (E.Type == 15 ? 10.f : 6.f) + E.Id) % 2) == 0 ?
+             36 + E.Type : 70 + E.Type) : E.Type == 0 ? 1 : E.Type == 1 ? 2 :
             E.Type == 2 ? 3 : E.Type == 3 ? 4 : E.Type == 4 ? 16 :
             E.Type == 5 ? 17 : E.Type == 6 ? 18 : E.Type == 7 ? 19 :
             E.Type == 8 ? 20 : E.Type == 9 ? 21 : 22;
