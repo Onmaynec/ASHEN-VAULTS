@@ -33,7 +33,7 @@ def main() -> None:
 
     with ZipFile(io.BytesIO(zip_data)) as archive:
         files = {Path(n).name: n for n in archive.namelist()
-                 if n.lower().endswith(".png") and "/tiles/" in n.lower()}
+                 if n.lower().endswith(".png") and "tiles/" in n.lower()}
         atlas = Image.new("RGBA", (64,64), (0,0,0,0))
         for biome, palette in enumerate(PALETTES):
             for column, idx in enumerate(INDICES):
