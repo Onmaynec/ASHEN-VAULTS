@@ -1,5 +1,6 @@
 #include "AVHUD.h"
 #include "AVGameMode.h"
+#include "AVContent.h"
 #include "AVEquipment.h"
 #include "AVSkills.h"
 #include "AVArt.h"
@@ -1179,6 +1180,14 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
             (E.Type == 10 ? 0.12f : 0.045f);
         Sprite(SpriteType, E.Pos + FVector2D(0.f, EnemyBob),
                Radius, E.Flash > 0.f ? 0.55f : 1.f);
+        if(Game.CurrentBiome()==3 && E.Type>=34 && E.Type<=56 &&
+           (E.bMiniBoss || E.Type==56 ||
+            FVector2D::Distance(E.Pos,Game.Hero)<2.4f)) {
+            const FString Label(UTF8_TO_TCHAR(
+                FAVContent::BastionVariantName(E.Type,E.Subclass)));
+            Text(Label,Pt.X-40.f*Scale,Pt.Y-27.f*Scale*Radius,
+                 E.bMiniBoss || E.Type==56 ? GoldColor : Pale,0.71f);
+        }
         // Secondary subclass mark is visually distinct and does not affect the enemy silhouette.
         if (E.Type >= 34 && E.Type <= 51 && E.Subclass != 0)
             Rect(Pt.X - 2.f * Scale, Pt.Y - 14.f * Scale, 4.f * Scale, 3.f * Scale, GoldColor);
