@@ -880,6 +880,27 @@ void AAVGameMode::GenerateFloor()
             if (!bNearTrap) Decorations.Add(Decor);
         }
     }
+    // v1.0 scenic dressing: four additional non-blocking props per biome.
+    // No puzzle interactions or collision changes; these simply give each
+    // combat room more visual character while keeping the exit traversable.
+    for(int32 RoomIndex=1;RoomIndex<Rooms.Num();++RoomIndex)
+    {
+        const FRoom& R=Rooms[RoomIndex];
+        const int32 Amount=RNG.RandRange(1,3);
+        for(int32 I=0;I<Amount;++I)
+        {
+            FAVDecor D;
+            D.Type=12+CurrentBiome()*4+RNG.RandRange(0,3);
+            D.Pos=FVector2D(R.X+RNG.FRandRange(2.f,FMath::Max(2.1f,float(R.W)-2.f)),
+                            R.Y+RNG.FRandRange(2.f,FMath::Max(2.1f,float(R.H)-2.f)));
+            D.Phase=RNG.FRandRange(0.f,6.2831853f);
+            if(!CanMove(D.Pos,0.34f))continue;
+            if(FVector2D::Distance(D.Pos,Exit)<2.2f ||
+               FVector2D::Distance(D.Pos,Hero)<1.8f ||
+               FVector2D::Distance(D.Pos,Shrine)<1.8f)continue;
+            Decorations.Add(D);
+        }
+    }
     RefreshAwareness(0.f, true);
 }
 
@@ -1223,7 +1244,7 @@ bool AAVGameMode::ActivateNearbyEcho()
 {
     for (FAVDecor& Decor : Decorations)
     {
-        if (Decor.bActivated || Decor.Type % 3 != 2 ||
+        if (Decor.bActivated || (Decor.Type >= 12 || Decor.Type % 3 != 2) ||
             FVector2D::Distance(Decor.Pos, Hero) >= 1.7f)
             continue;
         Decor.bActivated = true;
