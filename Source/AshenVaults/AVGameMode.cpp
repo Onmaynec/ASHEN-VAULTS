@@ -1118,11 +1118,13 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
     {
         if (D < 3.5f)
         {
-            for (int32 K = 0; K < 8; ++K)
+            const int32 Shards = Pattern == 24 ? 12 : Pattern == 23 ? 6 : 8;
+            for (int32 K = 0; K < Shards; ++K)
             {
-                const float A = 6.2831853f * K / 8.f;
+                const float A = 6.2831853f * K / Shards;
                 SpawnEnemyBolt(E, FVector2D(FMath::Cos(A), FMath::Sin(A)),
-                               4.2f, 0.45f, Pattern == 7 ? 2 : 0);
+                               Pattern == 24 ? 6.1f : 4.2f,
+                               Pattern == 24 ? 0.55f : 0.45f, Pattern == 7 ? 2 : 0);
             }
         }
         E.AbilityCooldown = 5.2f;
