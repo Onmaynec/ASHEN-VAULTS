@@ -22,6 +22,8 @@ struct FAVEnemy
     float DodgeCooldown = 0.f;
     float AbilityCooldown = 0.f;
     float AlertTime = 0.f;
+    float PathRefresh = 0.f;
+    FVector2D CachedPathDirection = FVector2D::ZeroVector;
     float AttackWindup = 0.f;
     FVector2D LockedTarget = FVector2D::ZeroVector;
     int32 AttackPattern = 0;
