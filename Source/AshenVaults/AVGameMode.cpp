@@ -162,6 +162,7 @@ void AAVGameMode::GenerateFloor()
     Hazards.Reset(); Props.Reset(); Decorations.Reset();
     HeroVelocity = FVector2D::ZeroVector;
     bMerchantSpawned = false;
+    bBanditCamp = false;
     for (int32 I = 0; I < 3; ++I) ShopPurchased[I] = false;
     PoisonTime = 0.f; BurnTime = 0.f; StatusTick = 0.f;
     AttackCooldown = 0.f; KnifeCooldown = 0.f; SpinCooldown = 0.f;
@@ -169,7 +170,7 @@ void AAVGameMode::GenerateFloor()
     bShrineUsed = false;
     struct FRoom { int32 X, Y, W, H; FVector2D Center() const { return FVector2D(X + W / 2.f, Y + H / 2.f); } };
     TArray<FRoom> Rooms;
-    const int32 TargetCount = FMath::Min(17, 9 + Floor * 2);
+    const int32 TargetCount = FMath::Min(20, 9 + Floor * 2);
     for (int32 Attempt = 0; Attempt < 220 && Rooms.Num() < TargetCount; ++Attempt)
     {
         const int32 W = RNG.RandRange(5, 11);
@@ -276,14 +277,19 @@ void AAVGameMode::GenerateFloor()
         // The merchant's chamber is a safe retreat, not an accidental arena.
         if (bMerchantSpawned && I == 1) continue;
         const FRoom& R = Rooms[I];
-        const int32 Count = RNG.RandRange(1, FMath::Min(4, 2 + Floor));
+        const int32 Count = RNG.RandRange(2 + Floor / 3, FMath::Min(8, 3 + Floor));
         for (int32 E = 0; E < Count; ++E)
         {
             FAVEnemy Enemy;
             Enemy.Pos = FVector2D(RNG.FRandRange(R.X + 1.f, R.X + R.W - 1.f),
                                   RNG.FRandRange(R.Y + 1.f, R.Y + R.H - 1.f));
             Enemy.Type = FAVContent::EnemyRoll(Floor, RNG.RandRange(0, 99));
-            Enemy.MaxHP = FAVContent::Enemy(Enemy.Type, Floor).Health;
+            Enemy.Level = FAVContent::EnemyLevel(Floor, RNG.RandRange(0, 99));
+            Enemy.Equipment = RNG.FRand() < 0.085f ? RNG.RandRange(1, 3) : 0;
+            if (Enemy.Type == 16 && Enemy.Equipment == 2) Enemy.Type = 25; // armed zombie uses archer AI
+            Enemy.MaxHP = FAVContent::Enemy(Enemy.Type, Floor).Health *
+                FAVContent::LevelHealthMultiplier(Enemy.Level) *
+                (Enemy.Equipment == 1 ? 1.35f : 1.f);
             Enemy.bElite = RNG.FRand() < FMath::Min(0.26f, 0.10f + 0.025f * Floor);
             if (Enemy.bElite) Enemy.MaxHP *= 1.65f;
             Enemy.HP = Enemy.MaxHP;
@@ -294,12 +300,60 @@ void AAVGameMode::GenerateFloor()
             Enemies.Add(Enemy);
         }
     }
+    // Optional bandit hideout: occupied chamber with treasure, ambush and rival faction.
+    if (Rooms.Num() >= 5 && RNG.FRand() < 0.38f)
+    {
+        const int32 RoomIndex = RNG.RandRange(2, Rooms.Num() - 2);
+        const FRoom& Camp = Rooms[RoomIndex];
+        BanditCampCenter = Camp.Center();
+        bBanditCamp = true;
+        for (int32 I = 0; I < 3 + Floor / 2; ++I)
+        {
+            FAVEnemy Bandit;
+            Bandit.Pos = FVector2D(RNG.FRandRange(Camp.X + 1.f, Camp.X + Camp.W - 1.f),
+                                   RNG.FRandRange(Camp.Y + 1.f, Camp.Y + Camp.H - 1.f));
+            Bandit.Type = I % 3 == 0 ? 25 : 33;
+            Bandit.Faction = 1;
+            Bandit.Level = FAVContent::EnemyLevel(Floor, RNG.RandRange(0, 99));
+            Bandit.MaxHP = FAVContent::Enemy(Bandit.Type, Floor).Health *
+                           FAVContent::LevelHealthMultiplier(Bandit.Level);
+            Bandit.HP = Bandit.MaxHP;
+            Bandit.Cooldown = RNG.FRandRange(0.3f, 1.1f);
+            Bandit.Id = NextId++;
+            Enemies.Add(Bandit);
+        }
+        for (int32 I = 0; I < 2; ++I)
+        {
+            FAVChest Loot;
+            Loot.Pos = FVector2D(Camp.X + 1.5f + I, Camp.Y + 1.5f);
+            Loot.bMimic = false;
+            Chests.Add(Loot);
+        }
+    }
+    // Seven possible miniboss archetypes, one optional encounter per floor.
+    if (Rooms.Num() >= 4 && RNG.FRand() < 0.55f)
+    {
+        const FRoom& Arena = Rooms[RNG.RandRange(2, Rooms.Num() - 2)];
+        FAVEnemy Mini;
+        Mini.Type = 26 + RNG.RandRange(0, 6);
+        Mini.bMiniBoss = true;
+        Mini.Pos = Arena.Center();
+        Mini.Level = FAVContent::EnemyLevel(Floor, 99);
+        Mini.MaxHP = FAVContent::Enemy(Mini.Type, Floor).Health *
+                     FAVContent::LevelHealthMultiplier(Mini.Level);
+        Mini.HP = Mini.MaxHP;
+        Mini.Cooldown = 1.f;
+        Mini.Id = NextId++;
+        Enemies.Add(Mini);
+    }
     const int32 BossType = FAVContent::Boss(Floor);
     if (BossType >= 0)
     {
         FAVEnemy Boss;
         Boss.Pos = Exit; Boss.Type = BossType;
-        Boss.MaxHP = FAVContent::Enemy(BossType, Floor).Health;
+        Boss.Level = FAVContent::EnemyLevel(Floor, 99);
+        Boss.MaxHP = FAVContent::Enemy(BossType, Floor).Health *
+            FAVContent::LevelHealthMultiplier(Boss.Level);
         Boss.HP = Boss.MaxHP;
         Boss.Cooldown = 1.f; Boss.Id = NextId++;
         Enemies.Add(Boss);
