@@ -1,0 +1,34 @@
+name: Vendor licensed CC0 visual assets
+on:
+  push:
+    branches: [feature/v1.0.0-visual-rebirth]
+    paths: ['Tools/Art/vendor_kenney.py']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install free image converter
+        run: python -m pip install --disable-pip-version-check pillow==10.4.0
+      - name: Fetch CC0 Kenney sprites, verify SHA256, and rebuild 4-biome palettes
+        run: python Tools/Art/vendor_kenney.py
+      - name: Save authored CC0-derived texture atlases
+        shell: bash
+        run: |
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add Content/AVVisuals/Kenney/
+          if ! git diff --cached --quiet; then
+            git commit -m "art(v1.0): vendor SHA-verified Kenney CC0 prop atlas"
+            git push origin HEAD:"$GITHUB_REF_NAME"
+          fi
