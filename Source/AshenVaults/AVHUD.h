@@ -32,6 +32,7 @@ private:
     UPROPERTY(Transient) UTexture2D* EquipmentAtlas = nullptr;
     UPROPERTY(Transient) UTexture2D* BossAtlas = nullptr;
     UPROPERTY(Transient) UTexture2D* EnemyAtlas = nullptr;
+    UPROPERTY(Transient) UTexture2D* KenneyDecorAtlas = nullptr;
     UPROPERTY(Transient) TArray<UMaterialInstanceDynamic*> TileMaterials;
 
     float Scale = 1.f;
