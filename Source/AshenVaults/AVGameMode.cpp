@@ -1024,7 +1024,7 @@ void AAVGameMode::EnterLobby()
     if (bInBossArena) return;
     if (bInSafeCamp) SellPack();
     bInLobby = true; bInSafeCamp = false;
-    bWorldStored = false;
+    // Keep the exact dungeon snapshot for same-session continuation.
     SaveCheckpoint();
     MakeSafeRoom(true);
     Toast = TEXT("HOME: PRESS E AT THE PORTAL TO RESUME");
@@ -1035,7 +1035,8 @@ void AAVGameMode::ResumeFromLobby()
 {
     if (!bInLobby) return;
     bInLobby = false;
-    GenerateFloor();
+    if (bWorldStored) RestoreDungeon();
+    else GenerateFloor(); // Cold restart: reproducible floor from saved seed.
     Toast = TEXT("DESCENT RESUMED");
     ToastTime = 2.5f;
 }
