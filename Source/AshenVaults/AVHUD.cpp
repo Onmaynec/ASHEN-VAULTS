@@ -706,6 +706,19 @@ void AAVHUD::Sprite(int32 Type, const FVector2D& Pos, float Size, float Alpha)
                 1.f, false, 0.f, FVector2D::ZeroVector);
 }
 
+void AAVHUD::SpriteRotated(int32 Type,const FVector2D& Pos,float Size,
+                           float AngleRadians,float Alpha)
+{
+    if(!Canvas || !Sprites.IsValidIndex(Type) || !Sprites[Type])return;
+    const FVector2D At=Screen(Pos);
+    const float Width=AAVGameMode::TilePixels*Scale*Size;
+    DrawTexture(Sprites[Type],At.X-Width*0.5f,At.Y-Width*0.5f,
+                Width,Width,0.f,0.f,1.f,1.f,
+                FLinearColor(1.f,1.f,1.f,Alpha),BLEND_Translucent,
+                1.f,false,FMath::RadiansToDegrees(AngleRadians),
+                FVector2D(0.5f,0.5f));
+}
+
 void AAVHUD::DrawDungeon(const AAVGameMode& Game)
 {
     const float T = AAVGameMode::TilePixels * Scale;
@@ -1131,10 +1144,16 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
                P.Type == 3 ? 8 : P.Type >= 8 && P.Type <= 10 ? 96 + P.Type : P.Type == 11 ? 180 : 12,
                Pt, P.Type >= 8 ? 0.9f : P.Type == 4 ? 0.9f : 0.7f);
     }
-    for (const FAVBolt& Bolt : Game.Bolts)
-        if (Game.IsVisibleAt(Bolt.Pos))
-            Sprite(Bolt.bFriendly ? (Bolt.Visual==4?181:Bolt.Visual!=0?176:15) : 10,
-                   Bolt.Pos, Bolt.bFriendly?0.7f:0.55f);
+    for(const FAVBolt& Bolt:Game.Bolts)
+    {
+        if(!Game.IsVisibleAt(Bolt.Pos))continue;
+        if(Bolt.bFriendly && Bolt.Visual!=0)
+            SpriteRotated(Bolt.Visual==4?181:176,Bolt.Pos,0.72f,
+                FMath::Atan2(Bolt.Velocity.Y,Bolt.Velocity.X));
+        else
+            Sprite(Bolt.bFriendly?15:10,Bolt.Pos,
+                   Bolt.bFriendly?0.7f:0.55f);
+    }
 
     for (const FAVEnemy& E : Game.Enemies)
     {
