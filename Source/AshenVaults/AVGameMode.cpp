@@ -90,6 +90,7 @@ void AAVGameMode::BeginPlay()
                 SkillPoints=FMath::Clamp(Save->CheckpointSkillPoints,0,29);
                 bFreeRespecUsed=Save->bCheckpointFreeRespecUsed;
                 bLastStandUsed=Save->bCheckpointLastStandUsed;
+                bMagicBarrierUsed=Save->bCheckpointMagicBarrierUsed;
             }
             for(int32& Id : EquipmentSlots)
                 if(Id>=0 && !FAVEquipment::CanEquip(Id,HeroClass)) Id=-1;
@@ -416,6 +417,7 @@ void AAVGameMode::NewRun(bool bSameSeed)
     RewardDamageTime=0.f; DashBonusTime=0.f; RevengeTime=0.f;
     BasicAttackSequence=0; MeleeSwingCount=0; BlooddrinkerHitCount=0;
     ChainCooldown=0.f; GuardWhirlTime=0.f; TemporaryShield=0.f;
+    ShieldCooldown=0.f; bMagicBarrierUsed=false;
     LastKillBoostTime=0.f; MarkedHitTime=0.f;
     MapW = 52; MapH = 38; ShotSeries = 0; ShotTargetId = -1;
     ShotCounter = 0; LastConnectedShotId = 0; VolleyCounter = 0;
@@ -449,7 +451,7 @@ void AAVGameMode::GenerateFloor()
     ShotSeries=0; ShotTargetId=-1; LastShotHitTime=-100.f;
     bLastStandUsed=false; RewardDamageTime=0.f;
     TemporaryShield=0.f; LastKillBoostTime=0.f; ChainCooldown=0.f;
-    GuardWhirlTime=0.f;
+    GuardWhirlTime=0.f; ShieldCooldown=0.f; bMagicBarrierUsed=false;
     MapW = CurrentBiome() == 3 ? 60 : 52;
     MapH = CurrentBiome() == 3 ? 44 : 38;
     // Floor layouts are independent of combat loot RNG consumption.
@@ -1223,8 +1225,8 @@ void AAVGameMode::DamageHero(float Damage, const FVector2D& Source)
         Invulnerability=FMath::Max(Invulnerability,0.7f);
     }
     if(HP<MaxHP*0.25f && HeroClass==2 && SkillRank(32)>0 &&
-       TemporaryShield<=0.f && !bLastStandUsed) {
-        TemporaryShield=MaxHP*0.18f; bLastStandUsed=true;
+       TemporaryShield<=0.f && !bMagicBarrierUsed) {
+        TemporaryShield=MaxHP*0.18f; bMagicBarrierUsed=true;
     }
     Invulnerability = 0.72f;
     ScreenShake = 0.26f;
@@ -1518,6 +1520,7 @@ void AAVGameMode::SaveCheckpoint()
     Save->CheckpointSkillPoints=SkillPoints;
     Save->bCheckpointFreeRespecUsed=bFreeRespecUsed;
     Save->bCheckpointLastStandUsed=bLastStandUsed;
+    Save->bCheckpointMagicBarrierUsed=bMagicBarrierUsed;
     // Store the dungeon, not the peaceful camp or the lobby.
     const FAVWorldSnapshot* World = bWorldStored ? &StoredWorld : nullptr;
     const TArray<FAVEnemy>& SavedEnemies = World ? World->Enemies : Enemies;
@@ -1720,6 +1723,10 @@ void AAVGameMode::LoadCheckpointWorld()
     for (int32 I = 0; I + 1 < Save->CheckpointCampWallData.Num(); I += 2)
         CampWalls.Add(FVector2D(Save->CheckpointCampWallData[I],
                                 Save->CheckpointCampWallData[I + 1]));
+    if(Save->bCheckpointV09Data) {
+        bLastStandUsed=Save->bCheckpointLastStandUsed;
+        bMagicBarrierUsed=Save->bCheckpointMagicBarrierUsed;
+    }
     LastVisionX = -1; LastVisionY = -1;
     RefreshAwareness(0.f, true);
 }
@@ -1888,10 +1895,15 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         DashTime = 0.17f;
         Invulnerability=FMath::Max(Invulnerability,0.25f+0.07f*SkillRank(14));
         DashBonusTime=3.f;
-        if(HeroClass==0 && SkillRank(19)>0)
+        if(HeroClass==0 && SkillRank(19)>0 && ShieldCooldown<=0.f) {
             TemporaryShield=FMath::Max(TemporaryShield,MaxHP*0.25f);
+            ShieldCooldown=12.f;
+        }
         AddEffect(Hero,1,0.7f);
     }
+    const float EffectiveMove=MoveSpeed*
+        (HeroClass==1 && LastKillBoostTime>0.f ?
+            (1.f+0.06f*SkillRank(24)):1.f);
     const FVector2D BeforeMovement = Hero;
     if (DashTime > 0.f)
     {
@@ -1899,11 +1911,11 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         const float DashDt = FMath::Min(DashTime, DeltaSeconds);
         Hero = MoveWithCollision(Hero, DashDirection * 16.f, DashDt, 0.27f);
         if (DeltaSeconds > DashDt)
-            Hero = MoveWithCollision(Hero, Direction * MoveSpeed,
+            Hero = MoveWithCollision(Hero, Direction * EffectiveMove,
                                      DeltaSeconds - DashDt, 0.27f);
     }
     else
-        Hero = MoveWithCollision(Hero, Direction * MoveSpeed, DeltaSeconds, 0.27f);
+        Hero=MoveWithCollision(Hero,Direction*EffectiveMove,DeltaSeconds,0.27f);
     HeroVelocity = (Hero - BeforeMovement) / FMath::Max(0.001f, DeltaSeconds);
 
     if (bHit) { if (HeroClass == 3) ShootArrow(); else Strike(false); }
@@ -2858,6 +2870,7 @@ void AAVGameMode::Tick(float DeltaSeconds)
         LastKillBoostTime=FMath::Max(0.f,LastKillBoostTime-DT);
         GuardWhirlTime=FMath::Max(0.f,GuardWhirlTime-DT);
         ChainCooldown=FMath::Max(0.f,ChainCooldown-DT);
+        ShieldCooldown=FMath::Max(0.f,ShieldCooldown-DT);
         ComboTime = FMath::Max(0.f, ComboTime - DT);
         if (ComboTime <= 0.f) Combo = 0;
         ToastTime = FMath::Max(0.f, ToastTime - DT);
