@@ -1094,7 +1094,7 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
             for (int32 K = -1; K <= 1; ++K)
             {
                 const FVector2D Pos = E.Pos + Dir * 2.2f + Side * (K * 1.25f);
-                if (!CanMove(Pos, 0.2f)) continue;
+                if (!CanMove(Pos, 0.2f) || Hazards.Num() >= 40) continue;
                 FAVHazard FirePatch;
                 FirePatch.Pos = Pos;
                 FirePatch.Type = 1;
