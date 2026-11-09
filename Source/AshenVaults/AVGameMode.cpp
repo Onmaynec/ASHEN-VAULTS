@@ -9,6 +9,7 @@
 #include "AVDungeonNavigation.h"
 #include "AVContent.h"
 #include "AVEncounters.h"
+#include "AVDepthDirector.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
@@ -516,7 +517,7 @@ void AAVGameMode::GenerateFloor()
     FlowDistances.Init(-1, MapW * MapH);
     LastVisionX = -1; LastVisionY = -1; FlowRefreshTime = 0.f;
     Enemies.Reset(); Pickups.Reset(); Bolts.Reset(); Effects.Reset(); Traps.Reset(); Chests.Reset();
-    Hazards.Reset(); Props.Reset(); Decorations.Reset();
+    Hazards.Reset(); Props.Reset(); Decorations.Reset(); RoomEvents.Reset();
     HeroVelocity = FVector2D::ZeroVector;
     bMerchantSpawned = false;
     bBanditCamp = false;
@@ -635,6 +636,30 @@ void AAVGameMode::GenerateFloor()
         Tiles[Y * MapW + X] = 1;
     }
     } // end classic room-and-corridor generator
+
+    // Eight distinct combat-room topologies, applied before doors, traps
+    // and hostile camps. The entry room stays clear.
+    for(int32 RoomIndex=1;RoomIndex<Rooms.Num();++RoomIndex)
+    {
+        const FRoom& R=Rooms[RoomIndex];
+        FAVRoomBounds Bounds;
+        Bounds.X=R.X;Bounds.Y=R.Y;Bounds.W=R.W;Bounds.H=R.H;
+        FAVDepthDirector::ApplyGeometry(Tiles,MapW,MapH,Bounds,
+            FAVDepthDirector::Geometry(RunSeed,Floor,RoomIndex,CurrentBiome()));
+    }
+    // Additional shortcuts connect distant wings instead of only consecutive
+    // rooms. The connectivity pass repairs dead pockets after cover placement.
+    if(Rooms.Num()>=5 && (Floor%3)!=0)
+    {
+        const FRoom& A=Rooms[1],& B=Rooms[Rooms.Num()-2];
+        FAVRoomBounds Left,Right;
+        Left.X=A.X;Left.Y=A.Y;Left.W=A.W;Left.H=A.H;
+        Right.X=B.X;Right.Y=B.Y;Right.W=B.W;Right.H=B.H;
+        FAVDepthDirector::CarveAlternativeRoute(
+            Tiles,MapW,MapH,Left,Right,(Floor%2)==0);
+    }
+    if(Rooms.Num()>0)
+        FAVDepthDirector::RepairConnectivity(Tiles,MapW,MapH,Rooms[0].Center());
     if (Rooms.Num() == 0)
     {
         for (int32 Y = 4; Y <= 13; ++Y)
@@ -721,12 +746,21 @@ void AAVGameMode::GenerateFloor()
         const FRoom& R = Rooms[I];
         const FAVEncounterPlan Encounter = FAVEncounters::Plan(
             Floor, R.W * R.H, RNG.RandRange(0, 99), RNG.RandRange(0, 99));
+        FAVRoomBounds Bounds;
+        Bounds.X=R.X;Bounds.Y=R.Y;Bounds.W=R.W;Bounds.H=R.H;
+        const EAVFormation Formation=FAVDepthDirector::Formation(
+            RunSeed,Floor,I,static_cast<int32>(Encounter.Kind));
+        // Traps and opened treasure positions are reserved before spawning.
+        TArray<FVector2D> Occupied;
+        for(const FAVEnemy& Existing:Enemies)Occupied.Add(Existing.Pos);
+        for(const FAVTrap& Trap:Traps)Occupied.Add(Trap.Pos);
+        for(const FAVChest& Chest:Chests)Occupied.Add(Chest.Pos);
         for (int32 E = 0; E < Encounter.EnemyCount; ++E)
         {
             FAVEnemy Enemy;
-            Enemy.Pos = FVector2D(RNG.FRandRange(R.X + 1.f, R.X + R.W - 1.f),
-                                  RNG.FRandRange(R.Y + 1.f, R.Y + R.H - 1.f));
-            if (!CanMove(Enemy.Pos, 0.3f)) Enemy.Pos = R.Center();
+            if(!FAVDepthDirector::FindSpawn(Tiles,MapW,MapH,Bounds,Formation,
+                E,Encounter.EnemyCount,Hero,Exit,Shrine,Occupied,Enemy.Pos,4.5f))
+                continue;
             Enemy.Type = FAVEncounters::SelectType(
                 Floor, Encounter.Kind,
                 RNG.RandRange(0, 99), RNG.RandRange(0, 99),
@@ -746,7 +780,47 @@ void AAVGameMode::GenerateFloor()
             if (bMerchantSpawned && FVector2D::Distance(Enemy.Pos, Merchant) < 2.f)
                 Enemy.Pos = FVector2D(R.X + 1.2f, R.Y + 1.2f);
             Enemy.Id = NextId++;
+            Occupied.Add(Enemy.Pos);
             Enemies.Add(Enemy);
+        }
+
+        // Optional second-stage encounters. The four triggers have distinct
+        // conditions and a visible warning, never surprise instant damage.
+        const int32 MaxRoomEvents=FMath::Min(5,2+BiomeDepth()/2);
+        if(I>1 && I<Rooms.Num()-1 && RoomEvents.Num()<MaxRoomEvents)
+        {
+            const FAVWaveDirective Directive=FAVDepthDirector::Wave(
+                RunSeed,Floor,I,R.W*R.H,static_cast<int32>(Encounter.Kind));
+            if(Directive.Trigger!=EAVWaveTrigger::None)
+            {
+                FAVRoomEvent Event;
+                Event.Center=R.Center();
+                Event.X=R.X;Event.Y=R.Y;Event.W=R.W;Event.H=R.H;
+                Event.Trigger=static_cast<int32>(Directive.Trigger);
+                Event.Formation=static_cast<int32>(Directive.Formation);
+                Event.Kind=Directive.Kind;
+                Event.Count=Directive.UnitCount;
+                Event.Countdown=Directive.WarningSeconds;
+                Event.UniqueId=I;
+                RoomEvents.Add(Event);
+                if(Directive.Trigger==EAVWaveTrigger::OnChestOpen)
+                {
+                    bool bHasTreasure=false;
+                    for(const FAVChest& Chest:Chests)
+                        if(Chest.Pos.X>=R.X && Chest.Pos.X<R.X+R.W &&
+                           Chest.Pos.Y>=R.Y && Chest.Pos.Y<R.Y+R.H)
+                        {bHasTreasure=true;break;}
+                    if(!bHasTreasure)
+                    {
+                        const FVector2D Cache(R.X+1.5f,R.Y+R.H-1.5f);
+                        if(CanMove(Cache,0.3f) &&
+                           (Cache-Hero).SizeSquared()>16.f &&
+                           (Cache-Exit).SizeSquared()>6.25f)
+                        {FAVChest Chest;Chest.Pos=Cache;Chests.Add(Chest);}
+                        else RoomEvents.Pop(); // No reachable reward to guard.
+                    }
+                }
+            }
         }
     }
     // Optional bandit hideout: occupied chamber with treasure, ambush and rival faction.
@@ -782,12 +856,17 @@ void AAVGameMode::GenerateFloor()
             const int32 X = Camp.X + Camp.W / 2, Y = Camp.Y;
             CampDoors.Add(FVector2D(X + 0.5f, Y + 0.5f));
         }
+        FAVRoomBounds CampRegion;
+        CampRegion.X=Camp.X;CampRegion.Y=Camp.Y;
+        CampRegion.W=Camp.W;CampRegion.H=Camp.H;
+        TArray<FVector2D> CampOccupied;
+        for(const FAVEnemy& Other:Enemies)CampOccupied.Add(Other.Pos);
         for (int32 I = 0; I < FAVContent::BanditGroupSize(Floor); ++I)
         {
             FAVEnemy Bandit;
-            Bandit.Pos = FVector2D(RNG.FRandRange(Camp.X + 1.f, Camp.X + Camp.W - 1.f),
-                                   RNG.FRandRange(Camp.Y + 1.f, Camp.Y + Camp.H - 1.f));
-            if (!CanMove(Bandit.Pos, 0.3f)) Bandit.Pos = Camp.Center();
+            if(!FAVDepthDirector::FindSpawn(Tiles,MapW,MapH,CampRegion,
+                EAVFormation::CornerSentries,I,FAVContent::BanditGroupSize(Floor),
+                Hero,Exit,Shrine,CampOccupied,Bandit.Pos,4.f))continue;
             Bandit.Type = I % 3 == 0 ? 25 : 33;
             Bandit.Faction = 1;
             Bandit.Level = FAVContent::EnemyLevel(Floor, RNG.RandRange(0, 99));
@@ -795,6 +874,7 @@ void AAVGameMode::GenerateFloor()
             Bandit.HP = Bandit.MaxHP;
             Bandit.Cooldown = RNG.FRandRange(0.3f, 1.1f);
             Bandit.Id = NextId++;
+            CampOccupied.Add(Bandit.Pos);
             Enemies.Add(Bandit);
         }
         for (int32 I = 0; I < 2; ++I)
@@ -819,6 +899,26 @@ void AAVGameMode::GenerateFloor()
         Mini.Cooldown = 1.f;
         Mini.Id = NextId++;
         Enemies.Add(Mini);
+        // The mini-boss is protected by a small biome-native vanguard.
+        // Escort units are standard enemies, not new archetypes.
+        FAVRoomBounds MinRegion;
+        MinRegion.X=Arena.X;MinRegion.Y=Arena.Y;
+        MinRegion.W=Arena.W;MinRegion.H=Arena.H;
+        TArray<FVector2D> GuardOccupied;
+        for(const FAVEnemy& Existing:Enemies)GuardOccupied.Add(Existing.Pos);
+        for(int32 G=0;G<2;++G)
+        {
+            FAVEnemy Guard;
+            if(!FAVDepthDirector::FindSpawn(Tiles,MapW,MapH,MinRegion,
+                EAVFormation::Wedge,G,2,Hero,Exit,Shrine,
+                GuardOccupied,Guard.Pos,4.5f))continue;
+            Guard.Type=FAVContent::EnemyRoll(Floor,RNG.RandRange(0,99));
+            Guard.Level=FAVContent::EnemyLevel(Floor,RNG.RandRange(0,99));
+            Guard.MaxHP=FAVContent::ScaledEnemyHealth(Guard.Type,Floor,Guard.Level);
+            Guard.HP=Guard.MaxHP; Guard.Cooldown=1.f+0.3f*G;
+            Guard.Id=NextId++;GuardOccupied.Add(Guard.Pos);
+            Enemies.Add(Guard);
+        }
     }
     PendingGuardian = IsGuardianFloor() ? FAVContent::Boss(Floor) : -1;
     // The guardian is spawned in a separate arena when its portal is used.
