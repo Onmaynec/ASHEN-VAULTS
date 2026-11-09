@@ -76,6 +76,16 @@ float FAVAffixes::TakeDamage(int32 Affix,float Incoming,bool& bWardConsumed)
     return Damage;
 }
 
+int32 FAVAffixes::BonusExperience(int32 Floor,int32 Affix)
+{
+    return Affix<=0||Affix>=Count?0:2+FMath::Min(200,FMath::Max(0,Floor-1)/4);
+}
+
+int32 FAVAffixes::BonusGold(int32 Floor,int32 Affix)
+{
+    return Affix<=0||Affix>=Count?0:3+FMath::Min(150,FMath::Max(0,Floor-1)/6);
+}
+
 const char* FAVAffixes::Name(int32 Affix)
 {
     switch(static_cast<EAVEnemyAffix>(Affix))
