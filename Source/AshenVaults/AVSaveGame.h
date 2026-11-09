@@ -19,6 +19,13 @@ public:
 
     UPROPERTY(SaveGame)
     int32 TotalGold = 0;
+    // v1.6.0: explicit save envelope and checkpoint payload versions.
+    UPROPERTY(SaveGame) int32 SaveSchemaVersion = 0;
+    UPROPERTY(SaveGame) int32 CheckpointSchemaVersion = 0;
+
+    bool IsStructurallyValid() const;
+    static UAVSaveGame* LoadBestAvailable();
+    static bool SaveWithBackup(UAVSaveGame* Save);
     UPROPERTY(SaveGame) bool bHasCheckpoint = false;
     UPROPERTY(SaveGame) int32 CheckpointFloor = 1;
     UPROPERTY(SaveGame) int32 CheckpointSeed = 0;
