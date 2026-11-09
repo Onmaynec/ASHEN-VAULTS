@@ -36,9 +36,9 @@ int main()
                 assert(G.EquipmentChance>=0&&G.EquipmentChance<=1);
                 const auto Form=FAVRoomTactics::Formation(
                     T.Garrison,EAVFormation::Perimeter);
-                assert(static_cast<int32>(Form)>=0&&static_cast<int32>(Form)<8);
+                assert(static_cast<int32>(Form)<8);
                 const auto Role=FAVRoomTactics::EnemyRole(T.Garrison,G.Kind);
-                assert(static_cast<int32>(Role)>=0&&static_cast<int32>(Role)<4);
+                assert(static_cast<int32>(Role)<4);
 
                 FAVWaveDirective Wave=FAVDepthDirector::Wave(
                     Seed,Floor,Room,90,static_cast<int32>(G.Kind));
