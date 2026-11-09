@@ -21,6 +21,9 @@ struct FAVEnemy
     int32 Equipment = 0; // 0 none, 1 armor, 2 bow, 3 enchanted weapon
     int32 Affix = 0; // v1.3.0: 0 ordinary, 1..12 special combat mutation
     bool bWardConsumed=false; // rune ward absorbs the first successful hit
+    float PoisonTime=0.f; // player-inflicted poison from special weapons
+    float BurnTime=0.f;
+    float StatusTick=0.f;
     int32 Faction = 0; // 0 dungeon, 1 bandits
     FVector2D LastSeenHero = FVector2D::ZeroVector;
     float MemoryTime = 0.f;
@@ -230,6 +233,10 @@ public:
     float EquipmentAppliedSpeed = 0.f;
     float EquipmentAppliedArmor = 0.f;
     float RewardDamageTime = 0.f;
+    // Temporary effects of v1.5.0 active consumables (seconds remaining).
+    float FoodAttackTime=0.f, FoodGuardTime=0.f, FoodSpeedTime=0.f;
+    float FoodCritTime=0.f, FoodProjectileTime=0.f, FoodBossTime=0.f;
+    float FoodPoisonWardTime=0.f;
     float TemporaryShield = 0.f;
     float LastKillBoostTime = 0.f;
     float MarkedHitTime = 0.f;
@@ -365,6 +372,9 @@ private:
     void SpawnRoomWave(FAVRoomEvent& Event);
     void RebuildCharacterBonuses();
     void EquipInventoryItem(int32 Index);
+    void UseConsumable(int32 Index);
+    int32 EquippedWeaponPattern() const;
+    float StatusResistanceFactor(bool bPoison) const;
     void UnequipSlot(int32 Slot);
     void LearnSkill(int32 Selection);
     void ResetSkills();
@@ -398,7 +408,7 @@ private:
     bool OpenNearbyChest();
     bool OpenNearbyCampDoor();
     bool ActivateNearbyEcho();
-    void DamageHero(float Damage, const FVector2D& Source);
+    void DamageHero(float Damage, const FVector2D& Source, bool bMeleeAttack=false);
     void Strike(bool bSpin);
     float ApplyDamageToEnemy(FAVEnemy& Enemy,float RawDamage);
     void OnAffixedEnemyHitHero(FAVEnemy& Enemy,float ActualDamage);

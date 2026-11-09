@@ -1,5 +1,6 @@
 #include "AVGameMode.h"
 #include "AVEquipment.h"
+#include "AVItemCombat.h"
 #include "AVSkills.h"
 #include "AVFortressLayout.h"
 #include "AVHUD.h"
@@ -99,6 +100,16 @@ void AAVGameMode::BeginPlay()
                 bFreeRespecUsed=Save->bCheckpointFreeRespecUsed;
                 bLastStandUsed=Save->bCheckpointLastStandUsed;
                 bMagicBarrierUsed=Save->bCheckpointMagicBarrierUsed;
+                if(Save->bCheckpointV15Data)
+                {
+                    FoodAttackTime=Save->CheckpointFoodAttackTime;
+                    FoodGuardTime=Save->CheckpointFoodGuardTime;
+                    FoodSpeedTime=Save->CheckpointFoodSpeedTime;
+                    FoodCritTime=Save->CheckpointFoodCritTime;
+                    FoodProjectileTime=Save->CheckpointFoodProjectileTime;
+                    FoodBossTime=Save->CheckpointFoodBossTime;
+                    FoodPoisonWardTime=Save->CheckpointFoodPoisonWardTime;
+                }
             }
             for(int32& Id : EquipmentSlots)
                 if(Id>=0 && !FAVEquipment::CanEquip(Id,HeroClass)) Id=-1;
@@ -269,8 +280,11 @@ FString AAVGameMode::GearName(int32 ItemId) const
 {
     const FAVEquipmentSpec* S = FAVEquipment::Find(ItemId);
     if (!S) return TEXT("EMPTY");
-    FString Name = FString(UTF8_TO_TCHAR(S->CodeName));
-    Name.ReplaceInline(TEXT("_"), TEXT(" "));
+    FString Name = FString(UTF8_TO_TCHAR(S->DisplayName?S->DisplayName:S->CodeName));
+    if(!S->DisplayName)Name.ReplaceInline(TEXT("_"),TEXT(" "));
+    const int32 Affix=FAVEquipment::AffixId(ItemId);
+    if(Affix>0)
+        Name+=TEXT(" [")+FString(UTF8_TO_TCHAR(FAVEquipment::AffixName(Affix)))+TEXT("]");
     return Name.ToUpper();
 }
 
@@ -301,6 +315,20 @@ void AAVGameMode::RebuildCharacterBonuses()
     Stamina = FMath::Min(Stamina, MaxStamina);
 }
 
+int32 AAVGameMode::EquippedWeaponPattern() const
+{
+    if(!EquipmentSlots.IsValidIndex(0))return 0;
+    const FAVEquipmentSpec* W=FAVEquipment::Find(EquipmentSlots[0]);
+    return W&&W->Slot==AVWeapon?W->Pattern:0;
+}
+float AAVGameMode::StatusResistanceFactor(bool bPoison) const
+{
+    const float Special=GearStat(bPoison?AVPoisonResistPercent:AVBurnResistPercent);
+    const float Ward=bPoison&&FoodPoisonWardTime>0.f?35.f:0.f;
+    return FMath::Clamp(1.f-
+        (GearStat(AVStatusResistPercent)+Special+Ward+10.f*SkillRank(1))*0.01f,
+        0.20f,1.f);
+}
 float AAVGameMode::BasicAttackInterval() const
 {
     return FAVContent::BasicAttackInterval(
@@ -311,7 +339,8 @@ float AAVGameMode::ProjectileSpeedMultiplier() const
 {
     const float Skill = HeroClass == 3 ? 7.f * SkillRank(33) : 0.f;
     return FMath::Clamp(1.f + (GearStat(AVProjectileSpeedPercent) + Skill +
-        (HasGearPerk(4) ? 10.f : 0.f)) * 0.01f, 0.8f, 1.8f);
+        (HasGearPerk(4) ? 10.f : 0.f) +
+        (FoodProjectileTime>0.f?20.f:0.f)) * 0.01f, 0.8f, 1.8f);
 }
 
 float AAVGameMode::ModifiedAttackDamage(float Damage, const FAVEnemy& Target,
@@ -320,6 +349,9 @@ float AAVGameMode::ModifiedAttackDamage(float Damage, const FAVEnemy& Target,
     float Percent = bRanged ? GearStat(AVRangedDamagePercent) : GearStat(AVMeleeDamagePercent);
     Percent += bAbility ? GearStat(AVAbilityDamagePercent) + 6.f * SkillRank(27) :
                           4.f * SkillRank(5);
+    if(FoodAttackTime>0.f)Percent+=12.f;
+    if(FoodBossTime>0.f&&(Target.bMiniBoss||FAVContent::Enemy(Target.Type,Floor).Boss))
+        Percent+=14.f;
     if (bAbility && HeroClass == 1 && !bRanged) Percent += 10.f * SkillRank(23);
     if (bAbility && HeroClass == 1 && bRanged) Percent += 12.f * SkillRank(22);
     if (Target.bMiniBoss || FAVContent::Enemy(Target.Type, Floor).Boss)
@@ -339,6 +371,7 @@ float AAVGameMode::ModifiedAttackDamage(float Damage, const FAVEnemy& Target,
     if(GuaranteedCrit) ShotSeries=0;
     const float CritChance=FMath::Clamp(0.05f+
         GearStat(AVCriticalPercent)*0.01f+0.03f*SkillRank(6)+
+        (FoodCritTime>0.f?0.12f:0.f)+
         (HeroClass==1 && DashBonusTime>0.f ? 0.03f*SkillRank(21):0.f),
         0.f,0.40f);
     const bool bCritical=GuaranteedCrit || RNG.FRand()<CritChance;
@@ -354,13 +387,44 @@ float AAVGameMode::ModifiedAttackDamage(float Damage, const FAVEnemy& Target,
             }
         ChainCooldown=1.5f;
     }
-    return FMath::Max(1.f, Damage * (1.f + Percent * 0.01f));
+    const float Effective=FMath::Max(1.f,Damage*(1.f+Percent*0.01f));
+    const int32 Weapon=EquipmentSlots.IsValidIndex(0)?EquipmentSlots[0]:-1;
+    return Effective+FAVEquipment::BonusAgainst(Weapon,CurrentBiome(),
+        Target.bElite,Target.bMiniBoss||FAVContent::Enemy(Target.Type,Floor).Boss);
+}
+
+void AAVGameMode::UseConsumable(int32 Index)
+{
+    if(!InventoryItems.IsValidIndex(Index))return;
+    const int32 Id=InventoryItems[Index];
+    const FAVEquipmentSpec* S=FAVEquipment::Find(Id);
+    if(!S||S->Slot!=AVConsumable)return;
+    switch(S->PerkId)
+    {
+    case 10:if(HP>=MaxHP)return;HP=FMath::Min(MaxHP,HP+S->ValueA);break;
+    case 11:if(Stamina>=MaxStamina)return;Stamina=FMath::Min(MaxStamina,Stamina+S->ValueA);break;
+    case 12:if(PoisonTime<=0.f&&BurnTime<=0.f)return;
+        PoisonTime=0.f;BurnTime=0.f;StatusTick=0.f;break;
+    case 13:PoisonTime=0.f;FoodPoisonWardTime=FMath::Max(FoodPoisonWardTime,S->ValueA);break;
+    case 14:FoodAttackTime=FMath::Max(FoodAttackTime,S->ValueA);break;
+    case 15:FoodGuardTime=FMath::Max(FoodGuardTime,S->ValueA);break;
+    case 16:FoodSpeedTime=FMath::Max(FoodSpeedTime,S->ValueA);break;
+    case 17:FoodCritTime=FMath::Max(FoodCritTime,S->ValueA);break;
+    case 18:FoodProjectileTime=FMath::Max(FoodProjectileTime,S->ValueA);break;
+    case 19:FoodBossTime=FMath::Max(FoodBossTime,S->ValueA);break;
+    default:return;
+    }
+    InventoryItems.RemoveAt(Index);
+    GearSelection=FMath::Clamp(GearSelection,0,FMath::Max(0,InventoryItems.Num()-1));
+    Toast=TEXT("USED: ")+GearName(Id);ToastTime=2.f;
+    AddEffect(Hero,2,0.8f);
 }
 
 void AAVGameMode::EquipInventoryItem(int32 Index)
 {
     if (!InventoryItems.IsValidIndex(Index)) return;
     const int32 ItemId = InventoryItems[Index];
+    if(FAVEquipment::IsConsumable(ItemId)){UseConsumable(Index);return;}
     if (!FAVEquipment::CanEquip(ItemId, HeroClass)) {
         Toast = TEXT("NOT FOR THIS CLASS"); ToastTime=2.f; return;
     }
@@ -421,14 +485,16 @@ void AAVGameMode::ResetSkills()
 
 void AAVGameMode::SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity)
 {
-    // Prefer current-class gear (including universal); depth limits early legends.
+    // Consumables share the backpack but cannot be equipped.
+    const bool bConsumable=RNG.FRand()<0.18f;
     const int32 Rarity = FMath::Max(MinimumRarity, FAVEquipment::RarityRoll(RNG.RandRange(0,99)));
     const int32 MaxTier = Floor < 6 ? AVRare : Floor < 11 ? AVEpic : AVLegendary;
     TArray<int32> Candidates;
     for (int32 I=0; I<FAVEquipment::Count; ++I) {
         const FAVEquipmentSpec* Item = FAVEquipment::Find(I);
         if (!Item || Item->Rarity > MaxTier ||
-            Item->Rarity < FMath::Min(Rarity,MaxTier)) continue;
+            Item->Rarity < FMath::Min(Rarity,MaxTier) ||
+            (Item->Slot==AVConsumable)!=bConsumable)continue;
         if (Item->RequiredHero == HeroClass || Item->RequiredHero == -1)
             Candidates.Add(I);
     }
@@ -436,6 +502,7 @@ void AAVGameMode::SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity)
         for(int32 I=0;I<FAVEquipment::Count;++I) {
             const FAVEquipmentSpec* Item=FAVEquipment::Find(I);
             if(Item && Item->Rarity<=MaxTier &&
+               (Item->Slot==AVConsumable)==bConsumable &&
                (Item->RequiredHero==HeroClass || Item->RequiredHero==-1))
                 Candidates.Add(I);
         }
@@ -443,7 +510,9 @@ void AAVGameMode::SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity)
     FAVPickup Gear;
     Gear.Pos=Pos;
     Gear.Type=11;
-    Gear.Amount=Candidates[RNG.RandRange(0,Candidates.Num()-1)];
+    const int32 BaseId=Candidates[RNG.RandRange(0,Candidates.Num()-1)];
+    Gear.Amount=FAVEquipment::EncodeInstance(BaseId,
+        FAVEquipment::RollAffix(BaseId,RNG.RandRange(0,99)));
     Pickups.Add(Gear);
 }
 
@@ -470,6 +539,9 @@ void AAVGameMode::NewRun(bool bSameSeed, bool bKeepExistingCheckpoint)
     EquipmentAppliedHP=0.f; EquipmentAppliedStamina=0.f;
     EquipmentAppliedAttack=0.f; EquipmentAppliedSpeed=0.f; EquipmentAppliedArmor=0.f;
     RewardDamageTime=0.f; DashBonusTime=0.f; RevengeTime=0.f;
+    FoodAttackTime=0.f;FoodGuardTime=0.f;FoodSpeedTime=0.f;
+    FoodCritTime=0.f;FoodProjectileTime=0.f;FoodBossTime=0.f;
+    FoodPoisonWardTime=0.f;
     BasicAttackSequence=0; MeleeSwingCount=0; BlooddrinkerHitCount=0;
     ChainCooldown=0.f; GuardWhirlTime=0.f; TemporaryShield=0.f;
     ShieldCooldown=0.f; bMagicBarrierUsed=false;
@@ -1297,15 +1369,19 @@ void AAVGameMode::Strike(bool bSpin)
         ++MeleeSwingCount;
     }
     AddEffect(Hero, bSpin ? 1 : 0, bSpin ? 2.2f : 1.75f, FMath::Atan2(Aim.Y, Aim.X));
-    const float Range = bSpin ? 2.25f : 1.92f;
-    const float Damage=AttackPower*(bSpin?(HasRelic(3)?2.f:1.65f):1.f);
+    const int32 Pattern=EquippedWeaponPattern();
+    const FAVMeleeStyle Style=FAVItemCombat::Melee(Pattern,bSpin);
+    const float Range=Style.Range;
+    const float Arc=Style.AimThreshold;
+    const float Damage=AttackPower*
+        (bSpin?(HasRelic(3)?2.f:1.65f):Style.DamageScale);
     for (int32 I = Enemies.Num() - 1; I >= 0; --I)
     {
         FAVEnemy& Enemy = Enemies[I];
         FVector2D Delta = Enemy.Pos - Hero;
         const float Distance = Delta.Size();
         if (Distance > Range + (FAVContent::Enemy(Enemy.Type, Floor).Boss ? 0.45f : 0.f)) continue;
-        if (!bSpin && FVector2D::DotProduct(SafeDirection(Delta), Aim) < 0.10f) continue;
+        if (!bSpin && FVector2D::DotProduct(SafeDirection(Delta), Aim) < Arc) continue;
         // Fix: sword swings can no longer hit actors through solid stone walls.
         if (!FAVDungeonNavigation::LineOfSight(Tiles, MapW, MapH, Hero, Enemy.Pos)) continue;
         // Crypt guards and armored enemies block frontal strikes.
@@ -1317,10 +1393,17 @@ void AAVGameMode::Strike(bool bSpin)
         if(HeroClass==1 && !bSpin && SkillRank(25)>0 &&
             (MeleeSwingCount%3)==0) HitDamage*=1.5f;
         if(bShield && bFacing) HitDamage*=0.58f;
-        ApplyDamageToEnemy(Enemy,HitDamage);
+        const float Applied=ApplyDamageToEnemy(Enemy,HitDamage);
+        if(Applied>0.f)
+        {
+            if(Style.Status==1)Enemy.PoisonTime=FMath::Max(Enemy.PoisonTime,3.5f);
+            if(Style.Status==2)Enemy.BurnTime=FMath::Max(Enemy.BurnTime,3.f);
+            if(Style.HealOnHit>0.f)HP=FMath::Min(MaxHP,HP+Style.HealOnHit);
+        }
         Enemy.Flash = 0.16f;
         Enemy.Knockback += SafeDirection(Delta) *
-            (Enemy.Type == 3 ? 1.f : 5.f + (HasGearPerk(1)?2.f:0.f) +
+            (Enemy.Type == 3 ? 1.f : 5.f + Style.KnockbackBonus +
+             (HasGearPerk(1)?2.f:0.f) +
              (HeroClass==0 ? 0.5f*SkillRank(16) : 0.f));
         AddEffect(Enemy.Pos,2,0.55f);
         if(HasGearPerk(3) && (++BlooddrinkerHitCount%5)==0)
@@ -1364,10 +1447,28 @@ void AAVGameMode::ShootArrow()
     Arrow.Velocity=Aim*(13.f*ProjectileSpeedMultiplier());
     Arrow.Time=8.5f/(13.f*ProjectileSpeedMultiplier());
     Arrow.Damage = FMath::RoundToInt(AttackPower + RangedBonus);
+    const FAVProjectileStyle Style=FAVItemCombat::Projectile(
+        EquippedWeaponPattern());
+    Arrow.PierceRemaining=Style.PierceCount;
+    Arrow.Damage=FMath::RoundToInt(Arrow.Damage*Style.DamageScale);
+    Arrow.Velocity*=Style.SpeedScale;
+    Arrow.Status=Style.Status;
+    Arrow.Time=8.5f/FMath::Max(1.f,Arrow.Velocity.Size());
     Arrow.Visual = 1;
     Arrow.ShotId=++ShotCounter;
     if(HasGearPerk(5) && ShotCounter%4==0) Arrow.PierceRemaining=2;
     Bolts.Add(Arrow);
+    if(Style.ExtraShots>0)
+    {
+        FAVBolt Twin=Arrow;
+        const float A=0.10f;
+        Twin.Velocity=FVector2D(Arrow.Velocity.X*FMath::Cos(A)-
+            Arrow.Velocity.Y*FMath::Sin(A),
+            Arrow.Velocity.X*FMath::Sin(A)+Arrow.Velocity.Y*FMath::Cos(A));
+        Twin.Damage=FMath::Max(1,FMath::RoundToInt(Arrow.Damage*0.60f));
+        Twin.ShotId=++ShotCounter;
+        Bolts.Add(Twin);
+    }
     AddEffect(Hero, 0, 0.5f, FMath::Atan2(Aim.Y, Aim.X));
 }
 
@@ -1440,6 +1541,9 @@ void AAVGameMode::ThrowKnife()
     Blade.Time=1.1f/ProjectileSpeedMultiplier();
     Blade.Damage=FMath::RoundToInt(AttackPower*
         (HasRelic(2)?1.12f:0.83f)+RangedBonus);
+    const int32 Pattern=EquippedWeaponPattern();
+    Blade.Status=FAVItemCombat::Projectile(Pattern).Status;
+    if(Pattern==2){Blade.Velocity*=1.20f;Blade.Time*=0.84f;}
     if(HeroClass==2 &&
        SkillRank(FAVSkills::ArcanistSphereSkillId)>0) {
         Blade.Visual=4; Blade.Damage=FMath::RoundToInt(
@@ -1538,11 +1642,15 @@ bool AAVGameMode::ActivateNearbyEcho()
     return false;
 }
 
-void AAVGameMode::DamageHero(float Damage, const FVector2D& Source)
+void AAVGameMode::DamageHero(float Damage,const FVector2D& Source,
+                             bool bMeleeAttack)
 {
     if (Invulnerability > 0.f || Phase != EAVPhase::Playing || bInSafeCamp || bInLobby) return;
     float AdjustedDamage=Damage*(HasRelic(1)?0.80f:1.f)*
         (1.f-FMath::Clamp(ArmorRating,0.f,0.45f));
+    if(bMeleeAttack)
+        AdjustedDamage*=FAVItemCombat::IncomingMeleeMultiplier(
+            GearStat(AVMeleeResistPercent),FoodGuardTime>0.f);
     if(HP<MaxHP*0.3f) AdjustedDamage*=1.f-0.08f*SkillRank(3);
     if(HeroClass==0 && GuardWhirlTime>0.f)
         AdjustedDamage*=1.f-0.08f*SkillRank(17);
@@ -1611,11 +1719,10 @@ void AAVGameMode::OnAffixedEnemyHitHero(FAVEnemy& Enemy,float ActualDamage)
     const int32 Status=FAVAffixes::Traits(
         Enemy.Affix,Enemy.HP/FMath::Max(1.f,Enemy.MaxHP),
         Enemy.AlertTime).InflictedStatus;
-    const float Resist=FMath::Clamp(1.f-
-        (GearStat(AVStatusResistPercent)+10.f*SkillRank(1))*0.01f,
-        0.4f,1.f);
-    if(Status==1)PoisonTime=FMath::Max(PoisonTime,2.4f*Resist);
-    else if(Status==2)BurnTime=FMath::Max(BurnTime,2.f*Resist);
+    if(Status==1)PoisonTime=FMath::Max(PoisonTime,
+        2.4f*StatusResistanceFactor(true));
+    else if(Status==2)BurnTime=FMath::Max(BurnTime,
+        2.f*StatusResistanceFactor(false));
 }
 
 void AAVGameMode::KillEnemy(int32 Index)
@@ -1884,6 +1991,14 @@ void AAVGameMode::SaveCheckpoint()
     Save->CheckpointRanged=RangedBonus;
     Save->bCheckpointV09Data=true;
     Save->bCheckpointV13Data=true;
+    Save->bCheckpointV15Data=true;
+    Save->CheckpointFoodAttackTime=FoodAttackTime;
+    Save->CheckpointFoodGuardTime=FoodGuardTime;
+    Save->CheckpointFoodSpeedTime=FoodSpeedTime;
+    Save->CheckpointFoodCritTime=FoodCritTime;
+    Save->CheckpointFoodProjectileTime=FoodProjectileTime;
+    Save->CheckpointFoodBossTime=FoodBossTime;
+    Save->CheckpointFoodPoisonWardTime=FoodPoisonWardTime;
     Save->CheckpointMapWidth=MapW; Save->CheckpointMapHeight=MapH;
     Save->CheckpointInventoryItems=InventoryItems;
     Save->CheckpointEquipmentSlots=EquipmentSlots;
@@ -1946,7 +2061,8 @@ void AAVGameMode::SaveCheckpoint()
             E.bMiniBoss ? 1.f : 0.f, E.HP, E.MaxHP, E.Cooldown, E.Flash,
             E.Wander, E.Telegraph, E.bElite ? 1.f : 0.f, float(E.Id),
             E.PhaseShiftTime, E.bPhaseShifted ? 1.f : 0.f,
-            float(E.Subclass),float(E.Affix),E.bWardConsumed?1.f:0.f};
+            float(E.Subclass),float(E.Affix),E.bWardConsumed?1.f:0.f,
+            E.PoisonTime,E.BurnTime,E.StatusTick};
         for (float F : V) Save->CheckpointEnemyData.Add(F);
     }
     Save->CheckpointPickupData.Reset();
@@ -2057,8 +2173,9 @@ void AAVGameMode::LoadCheckpointWorld()
         }
     Enemies.Reset();
     const TArray<float>& ED = Save->CheckpointEnemyData;
-    const int32 EnemyStride = Save->bCheckpointV13Data ? 33 :
-        Save->bCheckpointV09Data ? 31 : 30;
+    const int32 EnemyStride=Save->bCheckpointV15Data?36:
+        Save->bCheckpointV13Data?33:
+        Save->bCheckpointV09Data?31:30;
     for (int32 I = 0; I + EnemyStride - 1 < ED.Num(); I += EnemyStride)
     {
         FAVEnemy E;
@@ -2083,6 +2200,12 @@ void AAVGameMode::LoadCheckpointWorld()
         {
             E.Affix=FMath::Clamp(int32(ED[I+31]),0,12);
             E.bWardConsumed=ED[I+32]!=0.f;
+        }
+        if(EnemyStride>=36)
+        {
+            E.PoisonTime=FMath::Clamp(ED[I+33],0.f,30.f);
+            E.BurnTime=FMath::Clamp(ED[I+34],0.f,30.f);
+            E.StatusTick=FMath::Clamp(ED[I+35],0.f,1.f);
         }
         Enemies.Add(E);
     }
@@ -2328,7 +2451,7 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         }
         AddEffect(Hero,1,0.7f);
     }
-    const float EffectiveMove=MoveSpeed*
+    const float EffectiveMove=MoveSpeed*(FoodSpeedTime>0.f?1.15f:1.f)*
         (HeroClass==1 && LastKillBoostTime>0.f ?
             (1.f+0.06f*SkillRank(24)):1.f);
     const FVector2D BeforeMovement = Hero;
@@ -2794,6 +2917,20 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         if (Phase != EAVPhase::Playing) return;
         if (Enemies[I].HP <= 0.f) { KillEnemy(I); continue; }
         FAVEnemy& E = Enemies[I];
+        E.PoisonTime=FMath::Max(0.f,E.PoisonTime-DeltaSeconds);
+        E.BurnTime=FMath::Max(0.f,E.BurnTime-DeltaSeconds);
+        if(E.PoisonTime>0.f||E.BurnTime>0.f)
+        {
+            E.StatusTick+=DeltaSeconds;
+            if(E.StatusTick>=1.f)
+            {
+                E.StatusTick-=1.f;
+                ApplyDamageToEnemy(E,(E.PoisonTime>0.f?3.f:0.f)+
+                    (E.BurnTime>0.f?5.f:0.f));
+                if(E.HP<=0.f){KillEnemy(I);continue;}
+            }
+        }
+        else E.StatusTick=0.f;
         const FAVEnemySpec Spec = FAVContent::Enemy(E.Type, Floor);
         if (Spec.Boss && !E.bPhaseShifted && E.HP <= E.MaxHP * 0.45f)
         {
@@ -2996,7 +3133,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                     else
                     {
                         const float BeforeHP=HP;
-                        DamageHero(Damage,E.Pos);
+                        DamageHero(Damage,E.Pos,true);
                         if(BeforeHP>HP)
                             OnAffixedEnemyHitHero(E,BeforeHP-HP);
                     }
@@ -3121,7 +3258,12 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 Damage=FMath::RoundToInt(ModifiedAttackDamage(Damage,E,true,Bolt.Visual!=1));
                 Bolt.HitEnemyIds.Add(E.Id);
                 --Bolt.PierceRemaining;
-                ApplyDamageToEnemy(E,Damage);
+                const float Applied=ApplyDamageToEnemy(E,Damage);
+                if(Applied>0.f)
+                {
+                    if(Bolt.Status==1)E.PoisonTime=FMath::Max(E.PoisonTime,3.f);
+                    if(Bolt.Status==2)E.BurnTime=FMath::Max(E.BurnTime,3.f);
+                }
                 E.Flash = 0.16f;
                 E.Knockback += SafeDirection(E.Pos - Old) * 3.1f;
                 AddEffect(E.Pos, 2, 0.4f);
@@ -3169,11 +3311,10 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                             }
                     if (bVulnerable && Phase != EAVPhase::Dead)
                     {
-                        const float Resist=FMath::Clamp(1.f-
-                            (GearStat(AVStatusResistPercent)+10.f*SkillRank(1))*0.01f,
-                            0.4f,1.f);
-                        if(Status==1) PoisonTime=FMath::Max(PoisonTime,4.2f*Resist);
-                        if(Status==2) BurnTime=FMath::Max(BurnTime,3.3f*Resist);
+                        if(Status==1)PoisonTime=FMath::Max(PoisonTime,
+                            4.2f*StatusResistanceFactor(true));
+                        if(Status==2)BurnTime=FMath::Max(BurnTime,
+                            3.3f*StatusResistanceFactor(false));
                     }
                     bHit = true;
                 }
@@ -3200,7 +3341,8 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 {
                     if (FVector2D::Distance(Trap.Pos, Hero) < 1.5f)
                     {
-                        BurnTime = FMath::Max(BurnTime, 3.5f);
+                        BurnTime = FMath::Max(BurnTime,
+                            3.5f*StatusResistanceFactor(false));
                         DamageHero(10.f + Floor * 2.f, Trap.Pos);
                     }
                 }
@@ -3250,11 +3392,10 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             FVector2D::Distance(Hero, Hazard.Pos) > 1.f ||
             Invulnerability > 0.f) continue;
         Hazard.Cooldown = 1.25f;
-        const float StatusFactor=FMath::Clamp(1.f-
-            (GearStat(AVStatusResistPercent)+10.f*SkillRank(1))*0.01f,
-            0.4f,1.f);
-        if(Hazard.Type==0) PoisonTime=FMath::Max(PoisonTime,4.f*StatusFactor);
-        else BurnTime=FMath::Max(BurnTime,3.f*StatusFactor);
+        if(Hazard.Type==0)PoisonTime=FMath::Max(PoisonTime,
+            4.f*StatusResistanceFactor(true));
+        else BurnTime=FMath::Max(BurnTime,
+            3.f*StatusResistanceFactor(false));
         AddEffect(Hazard.Pos, 2, 0.6f);
     }
 
@@ -3355,6 +3496,13 @@ void AAVGameMode::Tick(float DeltaSeconds)
         DashBonusTime=FMath::Max(0.f,DashBonusTime-DT);
         RevengeTime=FMath::Max(0.f,RevengeTime-DT);
         LastKillBoostTime=FMath::Max(0.f,LastKillBoostTime-DT);
+        FoodAttackTime=FMath::Max(0.f,FoodAttackTime-DT);
+        FoodGuardTime=FMath::Max(0.f,FoodGuardTime-DT);
+        FoodSpeedTime=FMath::Max(0.f,FoodSpeedTime-DT);
+        FoodCritTime=FMath::Max(0.f,FoodCritTime-DT);
+        FoodProjectileTime=FMath::Max(0.f,FoodProjectileTime-DT);
+        FoodBossTime=FMath::Max(0.f,FoodBossTime-DT);
+        FoodPoisonWardTime=FMath::Max(0.f,FoodPoisonWardTime-DT);
         GuardWhirlTime=FMath::Max(0.f,GuardWhirlTime-DT);
         ChainCooldown=FMath::Max(0.f,ChainCooldown-DT);
         ShieldCooldown=FMath::Max(0.f,ShieldCooldown-DT);

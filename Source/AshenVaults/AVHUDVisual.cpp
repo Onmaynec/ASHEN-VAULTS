@@ -54,9 +54,9 @@ void AAVHUD::DrawEquipmentIcon(int32 Id,float X,float Y,float Size)
 {
     const FAVEquipmentSpec* Spec=FAVEquipment::Find(Id);
     if(!Spec)return;
-    if(EquipmentAtlas)
+    if(EquipmentAtlas && Spec->Id<FAVEquipment::LegacyCount)
     {
-        const float U=(Id%7)/7.f,V=(Id/7)/6.f;
+        const float U=(Spec->Id%7)/7.f,V=(Spec->Id/7)/6.f;
         DrawTexture(EquipmentAtlas,X,Y,Size,Size,U,V,
                     1.f/7.f,1.f/6.f,FLinearColor::White,
                     BLEND_Translucent,1.f,false,0.f,FVector2D::ZeroVector);
@@ -143,16 +143,28 @@ void AAVHUD::DrawInventoryWindow(const AAVGameMode& Game)
         {
             const FString Name=Game.GearName(Id).Left(32);
             Text(Name,X+361.f*S,Y+407.f*S,Rarity[Spec->Rarity],0.86f);
-            Text(FString::Printf(TEXT("%s %.0f   %s %.0f"),
-                UTF8_TO_TCHAR(FAVEquipment::StatName(Spec->StatA)),Spec->ValueA,
-                UTF8_TO_TCHAR(FAVEquipment::StatName(Spec->StatB)),Spec->ValueB),
-                X+361.f*S,Y+430.f*S,Pale,0.78f);
-            if(Spec->PerkId>0)
+            if(Spec->Slot==AVConsumable)
+            {
+                Text(TEXT("ENTER / E - USE"),X+361.f*S,Y+430.f*S,Pale,0.78f);
                 Text(FString(UTF8_TO_TCHAR(FAVEquipment::PerkName(Spec->PerkId))),
-                     X+361.f*S,Y+452.f*S,Gold,0.72f);
+                    X+361.f*S,Y+452.f*S,Gold,0.72f);
+            }
+            else
+            {
+                Text(FString::Printf(TEXT("%s %.0f   %s %.0f"),
+                    UTF8_TO_TCHAR(FAVEquipment::StatName(Spec->StatA)),Spec->ValueA,
+                    UTF8_TO_TCHAR(FAVEquipment::StatName(Spec->StatB)),Spec->ValueB),
+                    X+361.f*S,Y+430.f*S,Pale,0.78f);
+                const int32 Affix=FAVEquipment::AffixId(Id);
+                const char* Effect=Affix>0?FAVEquipment::AffixName(Affix):
+                    (Spec->Pattern>0?FAVEquipment::PatternName(Spec->Pattern):
+                    FAVEquipment::PerkName(Spec->PerkId));
+                Text(FString(UTF8_TO_TCHAR(Effect)),
+                    X+361.f*S,Y+452.f*S,Gold,0.72f);
+            }
         }
     }
-    Text(TEXT("UP/DOWN  SELECT    ENTER  EQUIP    1-8  UNEQUIP    I/TAB  CLOSE"),
+    Text(TEXT("UP/DOWN SELECT   ENTER EQUIP/USE   1-8 UNEQUIP   I/TAB CLOSE"),
          X+33.f*S,Y+466.f*S,Muted,0.75f);
 }
 

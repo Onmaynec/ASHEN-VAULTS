@@ -46,6 +46,15 @@ public:
     UPROPERTY(SaveGame) bool bCheckpointV09Data = false;
     // v1.3.0: 33 floats per enemy (appended affix ID / consumed ward).
     UPROPERTY(SaveGame) bool bCheckpointV13Data = false;
+    // v1.5.0: 36 floats per enemy, including weapon-applied status timers.
+    UPROPERTY(SaveGame) bool bCheckpointV15Data = false;
+    UPROPERTY(SaveGame) float CheckpointFoodAttackTime = 0.f;
+    UPROPERTY(SaveGame) float CheckpointFoodGuardTime = 0.f;
+    UPROPERTY(SaveGame) float CheckpointFoodSpeedTime = 0.f;
+    UPROPERTY(SaveGame) float CheckpointFoodCritTime = 0.f;
+    UPROPERTY(SaveGame) float CheckpointFoodProjectileTime = 0.f;
+    UPROPERTY(SaveGame) float CheckpointFoodBossTime = 0.f;
+    UPROPERTY(SaveGame) float CheckpointFoodPoisonWardTime = 0.f;
     UPROPERTY(SaveGame) int32 CheckpointMapWidth = 52;
     UPROPERTY(SaveGame) int32 CheckpointMapHeight = 38;
     UPROPERTY(SaveGame) TArray<int32> CheckpointInventoryItems;
