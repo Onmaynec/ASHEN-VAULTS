@@ -269,8 +269,11 @@ FString AAVGameMode::GearName(int32 ItemId) const
 {
     const FAVEquipmentSpec* S = FAVEquipment::Find(ItemId);
     if (!S) return TEXT("EMPTY");
-    FString Name = FString(UTF8_TO_TCHAR(S->CodeName));
-    Name.ReplaceInline(TEXT("_"), TEXT(" "));
+    FString Name = FString(UTF8_TO_TCHAR(S->DisplayName?S->DisplayName:S->CodeName));
+    if(!S->DisplayName)Name.ReplaceInline(TEXT("_"),TEXT(" "));
+    const int32 Affix=FAVEquipment::AffixId(ItemId);
+    if(Affix>0)
+        Name+=TEXT(" [")+FString(UTF8_TO_TCHAR(FAVEquipment::AffixName(Affix)))+TEXT("]");
     return Name.ToUpper();
 }
 
@@ -301,6 +304,20 @@ void AAVGameMode::RebuildCharacterBonuses()
     Stamina = FMath::Min(Stamina, MaxStamina);
 }
 
+int32 AAVGameMode::EquippedWeaponPattern() const
+{
+    if(!EquipmentSlots.IsValidIndex(0))return 0;
+    const FAVEquipmentSpec* W=FAVEquipment::Find(EquipmentSlots[0]);
+    return W&&W->Slot==AVWeapon?W->Pattern:0;
+}
+float AAVGameMode::StatusResistanceFactor(bool bPoison) const
+{
+    const float Special=GearStat(bPoison?AVPoisonResistPercent:AVBurnResistPercent);
+    const float Ward=bPoison&&FoodPoisonWardTime>0.f?35.f:0.f;
+    return FMath::Clamp(1.f-
+        (GearStat(AVStatusResistPercent)+Special+Ward+10.f*SkillRank(1))*0.01f,
+        0.20f,1.f);
+}
 float AAVGameMode::BasicAttackInterval() const
 {
     return FAVContent::BasicAttackInterval(
@@ -311,7 +328,8 @@ float AAVGameMode::ProjectileSpeedMultiplier() const
 {
     const float Skill = HeroClass == 3 ? 7.f * SkillRank(33) : 0.f;
     return FMath::Clamp(1.f + (GearStat(AVProjectileSpeedPercent) + Skill +
-        (HasGearPerk(4) ? 10.f : 0.f)) * 0.01f, 0.8f, 1.8f);
+        (HasGearPerk(4) ? 10.f : 0.f) +
+        (FoodProjectileTime>0.f?20.f:0.f)) * 0.01f, 0.8f, 1.8f);
 }
 
 float AAVGameMode::ModifiedAttackDamage(float Damage, const FAVEnemy& Target,
@@ -320,6 +338,9 @@ float AAVGameMode::ModifiedAttackDamage(float Damage, const FAVEnemy& Target,
     float Percent = bRanged ? GearStat(AVRangedDamagePercent) : GearStat(AVMeleeDamagePercent);
     Percent += bAbility ? GearStat(AVAbilityDamagePercent) + 6.f * SkillRank(27) :
                           4.f * SkillRank(5);
+    if(FoodAttackTime>0.f)Percent+=12.f;
+    if(FoodBossTime>0.f&&(Target.bMiniBoss||FAVContent::Enemy(Target.Type,Floor).Boss))
+        Percent+=14.f;
     if (bAbility && HeroClass == 1 && !bRanged) Percent += 10.f * SkillRank(23);
     if (bAbility && HeroClass == 1 && bRanged) Percent += 12.f * SkillRank(22);
     if (Target.bMiniBoss || FAVContent::Enemy(Target.Type, Floor).Boss)
@@ -339,6 +360,7 @@ float AAVGameMode::ModifiedAttackDamage(float Damage, const FAVEnemy& Target,
     if(GuaranteedCrit) ShotSeries=0;
     const float CritChance=FMath::Clamp(0.05f+
         GearStat(AVCriticalPercent)*0.01f+0.03f*SkillRank(6)+
+        (FoodCritTime>0.f?0.12f:0.f)+
         (HeroClass==1 && DashBonusTime>0.f ? 0.03f*SkillRank(21):0.f),
         0.f,0.40f);
     const bool bCritical=GuaranteedCrit || RNG.FRand()<CritChance;
@@ -354,13 +376,44 @@ float AAVGameMode::ModifiedAttackDamage(float Damage, const FAVEnemy& Target,
             }
         ChainCooldown=1.5f;
     }
-    return FMath::Max(1.f, Damage * (1.f + Percent * 0.01f));
+    const float Effective=FMath::Max(1.f,Damage*(1.f+Percent*0.01f));
+    const int32 Weapon=EquipmentSlots.IsValidIndex(0)?EquipmentSlots[0]:-1;
+    return Effective+FAVEquipment::BonusAgainst(Weapon,CurrentBiome(),
+        Target.bElite,Target.bMiniBoss||FAVContent::Enemy(Target.Type,Floor).Boss);
+}
+
+void AAVGameMode::UseConsumable(int32 Index)
+{
+    if(!InventoryItems.IsValidIndex(Index))return;
+    const int32 Id=InventoryItems[Index];
+    const FAVEquipmentSpec* S=FAVEquipment::Find(Id);
+    if(!S||S->Slot!=AVConsumable)return;
+    switch(S->PerkId)
+    {
+    case 10:if(HP>=MaxHP)return;HP=FMath::Min(MaxHP,HP+S->ValueA);break;
+    case 11:if(Stamina>=MaxStamina)return;Stamina=FMath::Min(MaxStamina,Stamina+S->ValueA);break;
+    case 12:if(PoisonTime<=0.f&&BurnTime<=0.f)return;
+        PoisonTime=0.f;BurnTime=0.f;StatusTick=0.f;break;
+    case 13:PoisonTime=0.f;FoodPoisonWardTime=FMath::Max(FoodPoisonWardTime,S->ValueA);break;
+    case 14:FoodAttackTime=FMath::Max(FoodAttackTime,S->ValueA);break;
+    case 15:FoodGuardTime=FMath::Max(FoodGuardTime,S->ValueA);break;
+    case 16:FoodSpeedTime=FMath::Max(FoodSpeedTime,S->ValueA);break;
+    case 17:FoodCritTime=FMath::Max(FoodCritTime,S->ValueA);break;
+    case 18:FoodProjectileTime=FMath::Max(FoodProjectileTime,S->ValueA);break;
+    case 19:FoodBossTime=FMath::Max(FoodBossTime,S->ValueA);break;
+    default:return;
+    }
+    InventoryItems.RemoveAt(Index);
+    GearSelection=FMath::Clamp(GearSelection,0,FMath::Max(0,InventoryItems.Num()-1));
+    Toast=TEXT("USED: ")+GearName(Id);ToastTime=2.f;
+    AddEffect(Hero,2,0.8f);
 }
 
 void AAVGameMode::EquipInventoryItem(int32 Index)
 {
     if (!InventoryItems.IsValidIndex(Index)) return;
     const int32 ItemId = InventoryItems[Index];
+    if(FAVEquipment::IsConsumable(ItemId)){UseConsumable(Index);return;}
     if (!FAVEquipment::CanEquip(ItemId, HeroClass)) {
         Toast = TEXT("NOT FOR THIS CLASS"); ToastTime=2.f; return;
     }
@@ -421,14 +474,16 @@ void AAVGameMode::ResetSkills()
 
 void AAVGameMode::SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity)
 {
-    // Prefer current-class gear (including universal); depth limits early legends.
+    // Consumables share the backpack but cannot be equipped.
+    const bool bConsumable=RNG.FRand()<0.18f;
     const int32 Rarity = FMath::Max(MinimumRarity, FAVEquipment::RarityRoll(RNG.RandRange(0,99)));
     const int32 MaxTier = Floor < 6 ? AVRare : Floor < 11 ? AVEpic : AVLegendary;
     TArray<int32> Candidates;
     for (int32 I=0; I<FAVEquipment::Count; ++I) {
         const FAVEquipmentSpec* Item = FAVEquipment::Find(I);
         if (!Item || Item->Rarity > MaxTier ||
-            Item->Rarity < FMath::Min(Rarity,MaxTier)) continue;
+            Item->Rarity < FMath::Min(Rarity,MaxTier) ||
+            (Item->Slot==AVConsumable)!=bConsumable)continue;
         if (Item->RequiredHero == HeroClass || Item->RequiredHero == -1)
             Candidates.Add(I);
     }
@@ -436,6 +491,7 @@ void AAVGameMode::SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity)
         for(int32 I=0;I<FAVEquipment::Count;++I) {
             const FAVEquipmentSpec* Item=FAVEquipment::Find(I);
             if(Item && Item->Rarity<=MaxTier &&
+               (Item->Slot==AVConsumable)==bConsumable &&
                (Item->RequiredHero==HeroClass || Item->RequiredHero==-1))
                 Candidates.Add(I);
         }
@@ -443,7 +499,9 @@ void AAVGameMode::SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity)
     FAVPickup Gear;
     Gear.Pos=Pos;
     Gear.Type=11;
-    Gear.Amount=Candidates[RNG.RandRange(0,Candidates.Num()-1)];
+    const int32 BaseId=Candidates[RNG.RandRange(0,Candidates.Num()-1)];
+    Gear.Amount=FAVEquipment::EncodeInstance(BaseId,
+        FAVEquipment::RollAffix(BaseId,RNG.RandRange(0,99)));
     Pickups.Add(Gear);
 }
 
