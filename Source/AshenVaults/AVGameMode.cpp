@@ -1,5 +1,6 @@
 #include "AVGameMode.h"
 #include "AVEquipment.h"
+#include "AVItemCombat.h"
 #include "AVSkills.h"
 #include "AVFortressLayout.h"
 #include "AVHUD.h"
@@ -1369,11 +1370,11 @@ void AAVGameMode::Strike(bool bSpin)
     }
     AddEffect(Hero, bSpin ? 1 : 0, bSpin ? 2.2f : 1.75f, FMath::Atan2(Aim.Y, Aim.X));
     const int32 Pattern=EquippedWeaponPattern();
-    const float Range=bSpin?2.25f:
-        Pattern==2?2.65f:Pattern==1?2.15f:1.92f;
-    const float Arc=Pattern==1?-0.25f:Pattern==2?0.50f:0.10f;
+    const FAVMeleeStyle Style=FAVItemCombat::Melee(Pattern,bSpin);
+    const float Range=Style.Range;
+    const float Arc=Style.AimThreshold;
     const float Damage=AttackPower*
-        (bSpin?(HasRelic(3)?2.f:1.65f):(Pattern==3?1.28f:1.f));
+        (bSpin?(HasRelic(3)?2.f:1.65f):Style.DamageScale);
     for (int32 I = Enemies.Num() - 1; I >= 0; --I)
     {
         FAVEnemy& Enemy = Enemies[I];
@@ -1393,12 +1394,12 @@ void AAVGameMode::Strike(bool bSpin)
             (MeleeSwingCount%3)==0) HitDamage*=1.5f;
         if(bShield && bFacing) HitDamage*=0.58f;
         ApplyDamageToEnemy(Enemy,HitDamage);
-        if(Pattern==4)Enemy.PoisonTime=FMath::Max(Enemy.PoisonTime,3.5f);
-        if(Pattern==5)Enemy.BurnTime=FMath::Max(Enemy.BurnTime,3.f);
-        if(Pattern==10)HP=FMath::Min(MaxHP,HP+2.f);
+        if(Style.Status==1)Enemy.PoisonTime=FMath::Max(Enemy.PoisonTime,3.5f);
+        if(Style.Status==2)Enemy.BurnTime=FMath::Max(Enemy.BurnTime,3.f);
+        if(Style.HealOnHit>0.f)HP=FMath::Min(MaxHP,HP+Style.HealOnHit);
         Enemy.Flash = 0.16f;
         Enemy.Knockback += SafeDirection(Delta) *
-            (Enemy.Type == 3 ? 1.f : 5.f + (Pattern==3?3.f:0.f) +
+            (Enemy.Type == 3 ? 1.f : 5.f + Style.KnockbackBonus +
              (HasGearPerk(1)?2.f:0.f) +
              (HeroClass==0 ? 0.5f*SkillRank(16) : 0.f));
         AddEffect(Enemy.Pos,2,0.55f);
@@ -1443,19 +1444,18 @@ void AAVGameMode::ShootArrow()
     Arrow.Velocity=Aim*(13.f*ProjectileSpeedMultiplier());
     Arrow.Time=8.5f/(13.f*ProjectileSpeedMultiplier());
     Arrow.Damage = FMath::RoundToInt(AttackPower + RangedBonus);
-    const int32 Pattern=EquippedWeaponPattern();
-    if(Pattern==7)Arrow.PierceRemaining=2;
-    if(Pattern==8)Arrow.Velocity*=1.25f;
-    if(Pattern==9){Arrow.Damage=FMath::RoundToInt(Arrow.Damage*1.35f);
-        Arrow.Velocity*=0.82f;}
-    if(Pattern==4)Arrow.Status=1;
-    if(Pattern==5)Arrow.Status=2;
+    const FAVProjectileStyle Style=FAVItemCombat::Projectile(
+        EquippedWeaponPattern());
+    Arrow.PierceRemaining=Style.PierceCount;
+    Arrow.Damage=FMath::RoundToInt(Arrow.Damage*Style.DamageScale);
+    Arrow.Velocity*=Style.SpeedScale;
+    Arrow.Status=Style.Status;
     Arrow.Time=8.5f/FMath::Max(1.f,Arrow.Velocity.Size());
     Arrow.Visual = 1;
     Arrow.ShotId=++ShotCounter;
     if(HasGearPerk(5) && ShotCounter%4==0) Arrow.PierceRemaining=2;
     Bolts.Add(Arrow);
-    if(Pattern==6)
+    if(Style.ExtraShots>0)
     {
         FAVBolt Twin=Arrow;
         const float A=0.10f;
@@ -1539,8 +1539,7 @@ void AAVGameMode::ThrowKnife()
     Blade.Damage=FMath::RoundToInt(AttackPower*
         (HasRelic(2)?1.12f:0.83f)+RangedBonus);
     const int32 Pattern=EquippedWeaponPattern();
-    if(Pattern==4)Blade.Status=1;
-    if(Pattern==5)Blade.Status=2;
+    Blade.Status=FAVItemCombat::Projectile(Pattern).Status;
     if(Pattern==2){Blade.Velocity*=1.20f;Blade.Time*=0.84f;}
     if(HeroClass==2 &&
        SkillRank(FAVSkills::ArcanistSphereSkillId)>0) {
@@ -1647,9 +1646,8 @@ void AAVGameMode::DamageHero(float Damage,const FVector2D& Source,
     float AdjustedDamage=Damage*(HasRelic(1)?0.80f:1.f)*
         (1.f-FMath::Clamp(ArmorRating,0.f,0.45f));
     if(bMeleeAttack)
-        AdjustedDamage*=FMath::Clamp(1.f-
-            GearStat(AVMeleeResistPercent)*0.01f-
-            (FoodGuardTime>0.f?0.12f:0.f),0.45f,1.f);
+        AdjustedDamage*=FAVItemCombat::IncomingMeleeMultiplier(
+            GearStat(AVMeleeResistPercent),FoodGuardTime>0.f);
     if(HP<MaxHP*0.3f) AdjustedDamage*=1.f-0.08f*SkillRank(3);
     if(HeroClass==0 && GuardWhirlTime>0.f)
         AdjustedDamage*=1.f-0.08f*SkillRank(17);
