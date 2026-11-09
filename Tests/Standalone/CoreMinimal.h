@@ -56,6 +56,8 @@ public:
     const T& operator[](int32 Index) const { return Data.at(static_cast<size_t>(Index)); }
     auto begin() -> decltype(Data.begin()) { return Data.begin(); }
     auto end() -> decltype(Data.end()) { return Data.end(); }
+    auto begin() const -> decltype(Data.cbegin()) { return Data.cbegin(); }
+    auto end() const -> decltype(Data.cend()) { return Data.cend(); }
 };
 struct FMath
 {
