@@ -44,6 +44,8 @@ public:
     // v0.9.0 data. Absent/default on v0.8 saves; derived gear bonuses are NOT stored
     // in the base values above, preventing a double application after reload.
     UPROPERTY(SaveGame) bool bCheckpointV09Data = false;
+    // v1.3.0: 33 floats per enemy (appended affix ID / consumed ward).
+    UPROPERTY(SaveGame) bool bCheckpointV13Data = false;
     UPROPERTY(SaveGame) int32 CheckpointMapWidth = 52;
     UPROPERTY(SaveGame) int32 CheckpointMapHeight = 38;
     UPROPERTY(SaveGame) TArray<int32> CheckpointInventoryItems;
