@@ -133,6 +133,24 @@ struct FAVDecor
     float Phase = 0.f;
 };
 
+/** Deferred encounter, persisted when the player returns to town. */
+USTRUCT()
+struct FAVRoomEvent
+{
+    GENERATED_BODY()
+    FVector2D Center=FVector2D::ZeroVector;
+    int32 X=0,Y=0,W=0,H=0;
+    int32 Trigger=0; // EAVWaveTrigger ordinal
+    int32 Kind=0; // encounter role ordinal
+    int32 Formation=0; // EAVFormation ordinal
+    int32 Count=0;
+    int32 UniqueId=0;
+    float Countdown=0.f;
+    bool bArmed=false;
+    bool bTriggered=false;
+    bool bKillWitnessed=false;
+};
+
 struct FAVWorldSnapshot
 {
     TArray<uint8> Tiles, Visible, Explored;
@@ -146,6 +164,7 @@ struct FAVWorldSnapshot
     TArray<FAVProp> Props;
     TArray<FAVDecor> Decorations;
     TArray<FAVEffect> Effects;
+    TArray<FAVRoomEvent> RoomEvents;
     TArray<FVector2D> CampDoors, CampWalls;
     FVector2D Hero, Exit, Shrine, Merchant, BanditCampCenter;
     bool bMerchantSpawned = false, bBanditCamp = false, bShrineUsed = false;
@@ -271,6 +290,7 @@ public:
     TArray<FAVProp> Props;
     TArray<FAVDecor> Decorations;
     TArray<FAVEffect> Effects;
+    TArray<FAVRoomEvent> RoomEvents;
     float AttackCooldown = 0.f;
     float KnifeCooldown = 0.f;
     float SpinCooldown = 0.f;
@@ -290,7 +310,15 @@ public:
     bool CanMove(const FVector2D& Pos, float Radius) const;
     int32 EnemiesRemaining() const { return Enemies.Num(); }
     int32 NextXP() const { return 8 + Level * 7; }
-    bool IsExitReady() const { return Enemies.Num() == 0; }
+    bool IsExitReady() const
+    {
+        if(Enemies.Num()!=0)return false;
+        // Undiscovered optional rooms don't block progress; an active
+        // warning must resolve before the floor can be left.
+        for(const FAVRoomEvent& Event:RoomEvents)
+            if(Event.bArmed&&!Event.bTriggered)return false;
+        return true;
+    }
     bool HasRelic(int32 Index) const { return Index >= 0 && Index < 6 && (RelicMask & (1u << Index)) != 0; }
     int32 CurrentBiome() const { return ((Floor - 1) / FloorsPerBiome) % 4; }
     int32 BiomeDepth() const { return (Floor - 1) % FloorsPerBiome + 1; }
@@ -329,6 +357,8 @@ private:
     float FlowRefreshTime = 0.f;
 
     void GenerateFloor();
+    void UpdateRoomEvents(float DeltaSeconds);
+    void SpawnRoomWave(FAVRoomEvent& Event);
     void RebuildCharacterBonuses();
     void EquipInventoryItem(int32 Index);
     void UnequipSlot(int32 Slot);
