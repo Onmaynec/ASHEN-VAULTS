@@ -56,6 +56,8 @@ public:
     // Cold-restart world snapshot: preserve the exact generated dungeon floor.
     UPROPERTY(SaveGame) TArray<uint8> CheckpointTiles;
     UPROPERTY(SaveGame) TArray<uint8> CheckpointExplored;
+    // v1.3.0: 14 floats per deferred room encounter, optional on old saves.
+    UPROPERTY(SaveGame) TArray<float> CheckpointRoomEventData;
     UPROPERTY(SaveGame) TArray<float> CheckpointEnemyData;
     UPROPERTY(SaveGame) TArray<float> CheckpointPickupData;
     UPROPERTY(SaveGame) TArray<float> CheckpointChestData;
