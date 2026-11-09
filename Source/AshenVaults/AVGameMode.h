@@ -73,6 +73,8 @@ struct FAVBolt
     bool bFriendly = false;
     int32 Status = 0; // poison=1, burn=2
     int32 Faction = 0; // 0 dungeon, 1 bandits; hero projectiles use bFriendly
+    int32 Affix=0; // affix of the firing enemy, for projectile status/damage
+    int32 SourceEnemyId=-1; // allow projectile leech only while caster lives
 };
 
 USTRUCT()
