@@ -99,6 +99,16 @@ void AAVGameMode::BeginPlay()
                 bFreeRespecUsed=Save->bCheckpointFreeRespecUsed;
                 bLastStandUsed=Save->bCheckpointLastStandUsed;
                 bMagicBarrierUsed=Save->bCheckpointMagicBarrierUsed;
+                if(Save->bCheckpointV15Data)
+                {
+                    FoodAttackTime=Save->CheckpointFoodAttackTime;
+                    FoodGuardTime=Save->CheckpointFoodGuardTime;
+                    FoodSpeedTime=Save->CheckpointFoodSpeedTime;
+                    FoodCritTime=Save->CheckpointFoodCritTime;
+                    FoodProjectileTime=Save->CheckpointFoodProjectileTime;
+                    FoodBossTime=Save->CheckpointFoodBossTime;
+                    FoodPoisonWardTime=Save->CheckpointFoodPoisonWardTime;
+                }
             }
             for(int32& Id : EquipmentSlots)
                 if(Id>=0 && !FAVEquipment::CanEquip(Id,HeroClass)) Id=-1;
@@ -528,6 +538,9 @@ void AAVGameMode::NewRun(bool bSameSeed, bool bKeepExistingCheckpoint)
     EquipmentAppliedHP=0.f; EquipmentAppliedStamina=0.f;
     EquipmentAppliedAttack=0.f; EquipmentAppliedSpeed=0.f; EquipmentAppliedArmor=0.f;
     RewardDamageTime=0.f; DashBonusTime=0.f; RevengeTime=0.f;
+    FoodAttackTime=0.f;FoodGuardTime=0.f;FoodSpeedTime=0.f;
+    FoodCritTime=0.f;FoodProjectileTime=0.f;FoodBossTime=0.f;
+    FoodPoisonWardTime=0.f;
     BasicAttackSequence=0; MeleeSwingCount=0; BlooddrinkerHitCount=0;
     ChainCooldown=0.f; GuardWhirlTime=0.f; TemporaryShield=0.f;
     ShieldCooldown=0.f; bMagicBarrierUsed=false;
@@ -1977,6 +1990,14 @@ void AAVGameMode::SaveCheckpoint()
     Save->CheckpointRanged=RangedBonus;
     Save->bCheckpointV09Data=true;
     Save->bCheckpointV13Data=true;
+    Save->bCheckpointV15Data=true;
+    Save->CheckpointFoodAttackTime=FoodAttackTime;
+    Save->CheckpointFoodGuardTime=FoodGuardTime;
+    Save->CheckpointFoodSpeedTime=FoodSpeedTime;
+    Save->CheckpointFoodCritTime=FoodCritTime;
+    Save->CheckpointFoodProjectileTime=FoodProjectileTime;
+    Save->CheckpointFoodBossTime=FoodBossTime;
+    Save->CheckpointFoodPoisonWardTime=FoodPoisonWardTime;
     Save->CheckpointMapWidth=MapW; Save->CheckpointMapHeight=MapH;
     Save->CheckpointInventoryItems=InventoryItems;
     Save->CheckpointEquipmentSlots=EquipmentSlots;
@@ -2039,7 +2060,8 @@ void AAVGameMode::SaveCheckpoint()
             E.bMiniBoss ? 1.f : 0.f, E.HP, E.MaxHP, E.Cooldown, E.Flash,
             E.Wander, E.Telegraph, E.bElite ? 1.f : 0.f, float(E.Id),
             E.PhaseShiftTime, E.bPhaseShifted ? 1.f : 0.f,
-            float(E.Subclass),float(E.Affix),E.bWardConsumed?1.f:0.f};
+            float(E.Subclass),float(E.Affix),E.bWardConsumed?1.f:0.f,
+            E.PoisonTime,E.BurnTime,E.StatusTick};
         for (float F : V) Save->CheckpointEnemyData.Add(F);
     }
     Save->CheckpointPickupData.Reset();
@@ -2150,8 +2172,9 @@ void AAVGameMode::LoadCheckpointWorld()
         }
     Enemies.Reset();
     const TArray<float>& ED = Save->CheckpointEnemyData;
-    const int32 EnemyStride = Save->bCheckpointV13Data ? 33 :
-        Save->bCheckpointV09Data ? 31 : 30;
+    const int32 EnemyStride=Save->bCheckpointV15Data?36:
+        Save->bCheckpointV13Data?33:
+        Save->bCheckpointV09Data?31:30;
     for (int32 I = 0; I + EnemyStride - 1 < ED.Num(); I += EnemyStride)
     {
         FAVEnemy E;
@@ -2176,6 +2199,12 @@ void AAVGameMode::LoadCheckpointWorld()
         {
             E.Affix=FMath::Clamp(int32(ED[I+31]),0,12);
             E.bWardConsumed=ED[I+32]!=0.f;
+        }
+        if(EnemyStride>=36)
+        {
+            E.PoisonTime=FMath::Clamp(ED[I+33],0.f,30.f);
+            E.BurnTime=FMath::Clamp(ED[I+34],0.f,30.f);
+            E.StatusTick=FMath::Clamp(ED[I+35],0.f,1.f);
         }
         Enemies.Add(E);
     }
@@ -3462,6 +3491,13 @@ void AAVGameMode::Tick(float DeltaSeconds)
         DashBonusTime=FMath::Max(0.f,DashBonusTime-DT);
         RevengeTime=FMath::Max(0.f,RevengeTime-DT);
         LastKillBoostTime=FMath::Max(0.f,LastKillBoostTime-DT);
+        FoodAttackTime=FMath::Max(0.f,FoodAttackTime-DT);
+        FoodGuardTime=FMath::Max(0.f,FoodGuardTime-DT);
+        FoodSpeedTime=FMath::Max(0.f,FoodSpeedTime-DT);
+        FoodCritTime=FMath::Max(0.f,FoodCritTime-DT);
+        FoodProjectileTime=FMath::Max(0.f,FoodProjectileTime-DT);
+        FoodBossTime=FMath::Max(0.f,FoodBossTime-DT);
+        FoodPoisonWardTime=FMath::Max(0.f,FoodPoisonWardTime-DT);
         GuardWhirlTime=FMath::Max(0.f,GuardWhirlTime-DT);
         ChainCooldown=FMath::Max(0.f,ChainCooldown-DT);
         ShieldCooldown=FMath::Max(0.f,ShieldCooldown-DT);
