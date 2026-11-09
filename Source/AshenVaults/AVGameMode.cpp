@@ -3335,7 +3335,8 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 {
                     if (FVector2D::Distance(Trap.Pos, Hero) < 1.5f)
                     {
-                        BurnTime = FMath::Max(BurnTime, 3.5f);
+                        BurnTime = FMath::Max(BurnTime,
+                            3.5f*StatusResistanceFactor(false));
                         DamageHero(10.f + Floor * 2.f, Trap.Pos);
                     }
                 }
