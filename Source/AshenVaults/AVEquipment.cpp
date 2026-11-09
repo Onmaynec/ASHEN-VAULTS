@@ -52,7 +52,73 @@ const FAVEquipmentSpec Items[FAVEquipment::Count] = {
     {38,"black_orders_tome",AVAccessory,2,AVLegendary,0,AVNoStat,0,AVNoStat,0,7},
     {39,"marksman_medallion",AVAccessory,3,AVRare,0,AVAttackSpeedPercent,8,AVProjectileSpeedPercent,5,0},
     {40,"last_strike_signet",AVAccessory,-1,AVEpic,0,AVNoStat,0,AVNoStat,0,8},
-    {41,"commandant_seal",AVAccessory,-1,AVLegendary,0,AVNoStat,0,AVNoStat,0,9}
+    {41,"commandant_seal",AVAccessory,-1,AVLegendary,0,AVNoStat,0,AVNoStat,0,9},
+    // v1.5.0: new weapon patterns, armor, rings and consumable items.
+    {42,"crypt_cleaver",AVWeapon,0,AVUncommon,0,AVAttackFlat,10,AVMeleeDamagePercent,5,0,1,"Секач склепов"},
+    {43,"wardens_pike",AVWeapon,0,AVRare,0,AVAttackFlat,14,AVAttackSpeedPercent,-7,0,2,"Пика дозорного"},
+    {44,"tomb_hammer",AVWeapon,0,AVRare,0,AVAttackFlat,17,AVAttackSpeedPercent,-12,1,3,"Могильный молот"},
+    {45,"echo_halberd",AVWeapon,0,AVEpic,0,AVAttackFlat,20,AVAbilityDamagePercent,8,0,2,"Алебарда эха"},
+    {46,"bonebreaker_mace",AVWeapon,0,AVEpic,0,AVAttackFlat,21,AVMeleeDamagePercent,12,1,3,"Костолом"},
+    {47,"sunken_flail",AVWeapon,0,AVEpic,0,AVAttackFlat,19,AVCriticalPercent,6,0,1,"Затонувший кистень"},
+    {48,"bastion_greatsword",AVWeapon,0,AVLegendary,0,AVAttackFlat,29,AVAttackSpeedPercent,-19,2,3,"Меч чёрного бастиона"},
+    {49,"ashward_blade",AVWeapon,0,AVLegendary,0,AVAttackFlat,25,AVArmorPercent,4,0,5,"Пепельный страж"},
+    {50,"dusk_rapier",AVWeapon,1,AVUncommon,0,AVAttackFlat,10,AVCriticalPercent,3,0,2,"Сумеречная рапира"},
+    {51,"serpent_fang",AVWeapon,1,AVRare,0,AVAttackFlat,14,AVAttackSpeedPercent,6,0,4,"Змеиный клык"},
+    {52,"ember_sickle",AVWeapon,1,AVRare,0,AVAttackFlat,15,AVMeleeDamagePercent,8,0,5,"Тлеющий серп"},
+    {53,"ghost_daggers",AVWeapon,1,AVEpic,0,AVAttackFlat,19,AVAttackSpeedPercent,13,0,2,"Призрачные кинжалы"},
+    {54,"redmoon_sabre",AVWeapon,1,AVEpic,0,AVAttackFlat,21,AVCriticalPercent,9,0,1,"Сабля красной луны"},
+    {55,"blight_kukri",AVWeapon,1,AVEpic,0,AVAttackFlat,20,AVMeleeDamagePercent,10,0,4,"Чумной кукри"},
+    {56,"quicksilver_blades",AVWeapon,1,AVLegendary,0,AVAttackFlat,24,AVAttackSpeedPercent,17,3,2,"Ртутные клинки"},
+    {57,"oathbreaker_knife",AVWeapon,1,AVLegendary,0,AVAttackFlat,28,AVCriticalPercent,11,8,10,"Клинок клятвопреступника"},
+    {58,"spore_scepter",AVWeapon,2,AVUncommon,0,AVAttackFlat,10,AVAbilityDamagePercent,6,0,4,"Споровый скипетр"},
+    {59,"cinder_focus",AVWeapon,2,AVRare,0,AVAttackFlat,14,AVCooldownPercent,-5,0,5,"Угольный фокус"},
+    {60,"grave_rod",AVWeapon,2,AVRare,0,AVAttackFlat,16,AVStaminaRegenPercent,9,0,2,"Могильный жезл"},
+    {61,"lantern_staff",AVWeapon,2,AVEpic,0,AVAttackFlat,19,AVAbilityDamagePercent,12,0,5,"Посох странника"},
+    {62,"rune_catalyst",AVWeapon,2,AVEpic,0,AVAttackFlat,21,AVCooldownPercent,-9,7,2,"Рунный катализатор"},
+    {63,"witchbone_wand",AVWeapon,2,AVLegendary,0,AVAttackFlat,26,AVCriticalPercent,8,0,4,"Ведьмина кость"},
+    {64,"void_orb",AVWeapon,2,AVLegendary,0,AVAttackFlat,27,AVAbilityDamagePercent,18,7,5,"Сфера пустоты"},
+    {65,"bone_wood_bow",AVWeapon,3,AVUncommon,0,AVAttackFlat,11,AVProjectileSpeedPercent,6,0,8,"Костяной лук"},
+    {66,"falcon_recurve",AVWeapon,3,AVRare,0,AVAttackFlat,15,AVAttackSpeedPercent,8,4,8,"Соколий рекурсив"},
+    {67,"venom_longbow",AVWeapon,3,AVRare,0,AVAttackFlat,16,AVRangedDamagePercent,8,0,7,"Ядовитый длинный лук"},
+    {68,"ember_arbalest",AVWeapon,3,AVEpic,0,AVAttackFlat,22,AVAttackSpeedPercent,-10,0,9,"Угольный арбалет"},
+    {69,"bastion_repeater",AVWeapon,3,AVEpic,0,AVAttackFlat,20,AVProjectileSpeedPercent,14,5,6,"Бастионный повторитель"},
+    {70,"moonstring_bow",AVWeapon,3,AVLegendary,0,AVAttackFlat,25,AVCriticalPercent,9,0,6,"Лунная тетива"},
+    {71,"blackglass_crossbow",AVWeapon,3,AVLegendary,0,AVAttackFlat,31,AVAttackSpeedPercent,-16,5,7,"Арбалет чёрного стекла"},
+    {72,"gravewatch_visage",AVHead,0,AVUncommon,0,AVArmorPercent,2,AVHealthFlat,7,0,0,"Маска могильного дозора"},
+    {73,"stoneward_plate",AVChest,0,AVRare,0,AVArmorPercent,6,AVMeleeResistPercent,8,0,0,"Плита каменного стража"},
+    {74,"ironbound_grips",AVHands,0,AVRare,0,AVArmorPercent,3,AVMeleeDamagePercent,6,0,0,"Железные рукавицы"},
+    {75,"warden_bulwark_greaves",AVLegs,0,AVEpic,0,AVArmorPercent,5,AVKnockbackResistPercent,14,0,0,"Поножи бастионного щита"},
+    {76,"sentinel_treads",AVBoots,0,AVLegendary,0,AVArmorPercent,4,AVMoveSpeedPercent,5,0,0,"Сапоги часового"},
+    {77,"nightveil_mask",AVHead,1,AVUncommon,0,AVArmorPercent,1,AVCriticalPercent,3,0,0,"Ночная маска"},
+    {78,"shade_runner_coat",AVChest,1,AVRare,0,AVArmorPercent,3,AVMeleeResistPercent,7,0,0,"Куртка теневого бегуна"},
+    {79,"viper_grips",AVHands,1,AVEpic,0,AVArmorPercent,1,AVAttackSpeedPercent,13,0,0,"Змеиные перчатки"},
+    {80,"redmoon_leggings",AVLegs,1,AVEpic,0,AVArmorPercent,2,AVStaminaFlat,17,0,0,"Поножи красной луны"},
+    {81,"windstep_boots",AVBoots,1,AVLegendary,0,AVArmorPercent,2,AVDashCooldownPercent,-16,0,0,"Сапоги ветра"},
+    {82,"moss_crown",AVHead,2,AVUncommon,0,AVArmorPercent,1,AVPoisonResistPercent,16,0,0,"Моховой венец"},
+    {83,"ashen_savant_robe",AVChest,2,AVRare,0,AVArmorPercent,2,AVAbilityDamagePercent,10,0,0,"Роба пепельного мудреца"},
+    {84,"warded_sleeves",AVHands,2,AVRare,0,AVArmorPercent,2,AVBurnResistPercent,14,0,0,"Рукава печатей"},
+    {85,"runeweaver_skirt",AVLegs,2,AVEpic,0,AVArmorPercent,2,AVStaminaFlat,22,0,0,"Рунные одежды"},
+    {86,"starless_boots",AVBoots,2,AVLegendary,0,AVArmorPercent,2,AVCooldownPercent,-12,0,0,"Ботинки беззвёздья"},
+    {87,"falcon_visor",AVHead,3,AVUncommon,0,AVArmorPercent,1,AVCriticalPercent,4,0,0,"Соколиный визор"},
+    {88,"scout_leather",AVChest,3,AVRare,0,AVArmorPercent,3,AVMeleeResistPercent,6,0,0,"Кожанка разведчика"},
+    {89,"archer_wraps",AVHands,3,AVRare,0,AVArmorPercent,1,AVAttackSpeedPercent,10,0,0,"Повязки лучника"},
+    {90,"pathfinder_breeches",AVLegs,3,AVEpic,0,AVArmorPercent,3,AVStaminaRegenPercent,11,0,0,"Штаны следопыта"},
+    {91,"horizon_boots",AVBoots,3,AVLegendary,0,AVArmorPercent,2,AVMoveSpeedPercent,9,0,0,"Сапоги горизонта"},
+    {92,"ring_of_venomward",AVAccessory,-1,AVRare,0,AVPoisonResistPercent,30,AVStatusResistPercent,8,0,0,"Кольцо противоядия"},
+    {93,"ring_of_iron_skin",AVAccessory,-1,AVRare,0,AVMeleeResistPercent,9,AVArmorPercent,2,0,0,"Кольцо железной кожи"},
+    {94,"ring_of_embers",AVAccessory,-1,AVEpic,0,AVBurnResistPercent,35,AVAbilityDamagePercent,8,0,0,"Кольцо углей"},
+    {95,"ring_of_clear_mind",AVAccessory,-1,AVEpic,0,AVCooldownPercent,-8,AVStaminaRegenPercent,12,0,0,"Кольцо ясности"},
+    {96,"ring_of_the_fourth_vault",AVAccessory,-1,AVLegendary,0,AVBossDamagePercent,12,AVHealthFlat,18,0,0,"Кольцо четвёртого свода"},
+    {97,"healing_tonic",AVConsumable,-1,AVUncommon,0,AVNoStat,48,AVNoStat,0,10,0,"Настой живучести"},
+    {98,"stamina_draught",AVConsumable,-1,AVUncommon,0,AVNoStat,55,AVNoStat,0,11,0,"Настой выносливости"},
+    {99,"cleansing_candy",AVConsumable,-1,AVRare,0,AVNoStat,0,AVNoStat,0,12,0,"Очищающая конфета"},
+    {100,"spore_antidote",AVConsumable,-1,AVRare,0,AVNoStat,14,AVNoStat,0,13,0,"Споровое противоядие"},
+    {101,"honey_ash_pie",AVConsumable,-1,AVRare,0,AVNoStat,14,AVNoStat,0,14,0,"Медовый пепельный пирог"},
+    {102,"iron_biscuit",AVConsumable,-1,AVRare,0,AVNoStat,15,AVNoStat,0,15,0,"Железное печенье"},
+    {103,"swiftroot_tea",AVConsumable,-1,AVRare,0,AVNoStat,14,AVNoStat,0,16,0,"Чай быстрого корня"},
+    {104,"eagle_eye_drops",AVConsumable,-1,AVEpic,0,AVNoStat,12,AVNoStat,0,17,0,"Капли орлиного глаза"},
+    {105,"storm_flask",AVConsumable,-1,AVEpic,0,AVNoStat,12,AVNoStat,0,18,0,"Штормовой флакон"},
+    {106,"guardian_tart",AVConsumable,-1,AVEpic,0,AVNoStat,18,AVNoStat,0,19,0,"Пирог хранителя"}
 };
 }
 const char* FAVEquipment::StatName(int32 StatId)
@@ -62,9 +128,9 @@ const char* FAVEquipment::StatName(int32 StatId)
         "Crit %", "Melee damage %", "Ranged damage %", "Skill damage %",
         "Stamina regen %", "Dash cooldown %", "Projectile speed %",
         "Knockback resist %", "Status resist %", "Boss damage %",
-        "Cooldown %"
+        "Cooldown %", "Melee resist %", "Poison resist %", "Burn resist %"
     };
-    return StatId>=0 && StatId<18 ? Names[StatId] : "Unknown";
+    return StatId>=0 && StatId<21 ? Names[StatId] : "Unknown";
 }
 const char* FAVEquipment::PerkName(int32 PerkId)
 {
@@ -72,13 +138,72 @@ const char* FAVEquipment::PerkName(int32 PerkId)
         "-", "Heavy stagger", "Execution bonus", "Heal on fifth hit",
         "Faster arrows", "Pierce every fourth bolt", "Heal 2 HP on kill",
         "Every fourth magic throw echoes", "Execute at low enemy HP",
-        "+10% damage after elite kill"
+        "+10% damage after elite kill",
+        "Restore HP", "Restore stamina", "Cleanse poison and burn",
+        "Poison ward", "Attack buff", "Melee guard", "Speed buff",
+        "Critical focus", "Projectile haste", "Boss-hunter buff"
     };
-    return PerkId>=0 && PerkId<10 ? Names[PerkId] : "Unknown";
+    return PerkId>=0 && PerkId<20 ? Names[PerkId] : "Unknown";
 }
-const FAVEquipmentSpec* FAVEquipment::Find(int32 Id)
+int32 FAVEquipment::BaseId(int32 InstanceId)
 {
-    return Id>=0 && Id<Count ? &Items[Id] : nullptr;
+    return InstanceId>=0 ? InstanceId % InstanceStride : InvalidId;
+}
+int32 FAVEquipment::AffixId(int32 InstanceId)
+{
+    return InstanceId>=0 ? InstanceId / InstanceStride : 0;
+}
+const FAVEquipmentSpec* FAVEquipment::Find(int32 InstanceId)
+{
+    const int32 Id=BaseId(InstanceId);
+    const int32 Affix=AffixId(InstanceId);
+    if(Id<0||Id>=Count||Affix<0||Affix>6)return nullptr;
+    const FAVEquipmentSpec* Spec=&Items[Id];
+    if(Affix>0 && (Spec->Slot!=AVWeapon || Spec->Rarity<AVEpic))
+        return nullptr;
+    return Spec;
+}
+int32 FAVEquipment::EncodeInstance(int32 Id,int32 Affix)
+{
+    const FAVEquipmentSpec* Spec=Find(Id);
+    if(!Spec || Affix<0 || Affix>6 ||
+       (Affix>0 && (Spec->Slot!=AVWeapon || Spec->Rarity<AVEpic)))
+        return InvalidId;
+    return Id+Affix*InstanceStride;
+}
+int32 FAVEquipment::RollAffix(int32 Id,int32 Percentile)
+{
+    const FAVEquipmentSpec* Spec=Find(Id);
+    if(!Spec||Spec->Slot!=AVWeapon||Spec->Rarity<AVEpic)return 0;
+    const int32 Roll=FMath::Clamp(Percentile,0,99);
+    const int32 Threshold=Spec->Rarity==AVLegendary?16:9;
+    return Roll<Threshold?1+((Id*7+Roll)%6):0;
+}
+int32 FAVEquipment::BonusAgainst(int32 InstanceId,int32 Biome,bool bElite,bool bBoss)
+{
+    const int32 Affix=Find(InstanceId)?AffixId(InstanceId):0;
+    if(Affix>=1&&Affix<=4&&Biome==Affix-1)return 3;
+    if(Affix==5&&bElite)return 4;
+    if(Affix==6&&bBoss)return 5;
+    return 0;
+}
+const char* FAVEquipment::AffixName(int32 Affix)
+{
+    static const char* Names[]={"","Crypt Hunter","Spore Hunter",
+        "Foundry Hunter","Bastion Hunter","Elite Slayer","Guardian Bane"};
+    return Affix>=1&&Affix<=6?Names[Affix]:"";
+}
+bool FAVEquipment::IsConsumable(int32 InstanceId)
+{
+    const FAVEquipmentSpec* Spec=Find(InstanceId);
+    return Spec && Spec->Slot==AVConsumable;
+}
+const char* FAVEquipment::PatternName(int32 Pattern)
+{
+    static const char* Names[]={"Classic","Wide Cleave","Long Thrust",
+        "Crushing Blow","Venom Edge","Ember Edge","Twin Shot",
+        "Piercing Shot","Swift Arrow","Heavy Bolt","Leeching Strike"};
+    return Pattern>=0&&Pattern<11?Names[Pattern]:"Classic";
 }
 int32 FAVEquipment::RarityRoll(int32 Percentile)
 {
@@ -88,7 +213,8 @@ int32 FAVEquipment::RarityRoll(int32 Percentile)
 bool FAVEquipment::CanEquip(int32 Id,int32 HeroClass)
 {
     const FAVEquipmentSpec* Spec=Find(Id);
-    return Spec && (Spec->RequiredHero<0 || Spec->RequiredHero==HeroClass);
+    return Spec && Spec->Slot!=AVConsumable &&
+        (Spec->RequiredHero<0 || Spec->RequiredHero==HeroClass);
 }
 float FAVEquipment::SetBonus(int32 SetId,int32 EquippedCount)
 {
