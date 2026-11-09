@@ -97,6 +97,35 @@ int main()
     }
     for(int32 I=0;I<5;++I)assert(Waves[I]>0);
 
+    // Four events are armed only by their own trigger and in-room context.
+    for(int32 Trigger=1;Trigger<=4;++Trigger)
+    {
+        const EAVWaveTrigger Type=static_cast<EAVWaveTrigger>(Trigger);
+        for(int32 Mask=0;Mask<16;++Mask)
+        {
+            const bool Inside=(Mask&1)!=0;
+            const bool Living=(Mask&2)!=0;
+            const bool Opened=(Mask&4)!=0;
+            const bool Killed=(Mask&8)!=0;
+            const bool Should=Inside && (
+                (Trigger==1) || (Trigger==2&&!Living) ||
+                (Trigger==3&&Opened) || (Trigger==4&&Killed));
+            assert(FAVDepthDirector::ShouldArmWave(
+                Type,Inside,Living,Opened,Killed)==Should);
+        }
+    }
+    assert(!FAVDepthDirector::ShouldArmWave(
+        EAVWaveTrigger::None,true,false,true,true));
+    float Warning=1.2f;
+    for(int32 I=0;I<11;++I)
+        assert(!FAVDepthDirector::AdvanceWarning(Warning,0.1f));
+    assert(FAVDepthDirector::AdvanceWarning(Warning,0.1f));
+    assert(Warning==0.f);
+    assert(FAVDepthDirector::AdvanceWarning(Warning,0.f));
+    float Unmodified=0.9f;
+    assert(!FAVDepthDirector::AdvanceWarning(Unmodified,-4.f));
+    assert(Unmodified==0.9f);
+
     // Disconnected islands are repaired without opening exterior bounds.
     TArray<uint8> Disconnected;Disconnected.Init(0,W*H);
     MakeRoom(Disconnected,Entry);MakeRoom(Disconnected,Rear);
