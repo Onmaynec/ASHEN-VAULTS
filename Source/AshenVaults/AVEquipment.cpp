@@ -189,8 +189,9 @@ int32 FAVEquipment::BonusAgainst(int32 InstanceId,int32 Biome,bool bElite,bool b
 }
 const char* FAVEquipment::AffixName(int32 Affix)
 {
-    static const char* Names[]={"","Crypt Hunter","Spore Hunter",
-        "Foundry Hunter","Bastion Hunter","Elite Slayer","Guardian Bane"};
+    static const char* Names[]={"","Охотник склепов","Охотник спор",
+        "Охотник кузни","Охотник бастиона","Истребитель элиты",
+        "Погибель хранителей"};
     return Affix>=1&&Affix<=6?Names[Affix]:"";
 }
 bool FAVEquipment::IsConsumable(int32 InstanceId)
@@ -200,9 +201,10 @@ bool FAVEquipment::IsConsumable(int32 InstanceId)
 }
 const char* FAVEquipment::PatternName(int32 Pattern)
 {
-    static const char* Names[]={"Classic","Wide Cleave","Long Thrust",
-        "Crushing Blow","Venom Edge","Ember Edge","Twin Shot",
-        "Piercing Shot","Swift Arrow","Heavy Bolt","Leeching Strike"};
+    static const char* Names[]={"Обычная атака","Широкий рубящий удар",
+        "Длинный выпад","Тяжёлый удар","Отравляющее попадание",
+        "Огненное попадание","Двойной выстрел","Пробивающий выстрел",
+        "Быстрая стрела","Тяжёлый болт","Восстановление HP"};
     return Pattern>=0&&Pattern<11?Names[Pattern]:"Classic";
 }
 int32 FAVEquipment::RarityRoll(int32 Percentile)
