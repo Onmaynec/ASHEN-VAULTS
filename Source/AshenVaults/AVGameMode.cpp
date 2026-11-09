@@ -1355,15 +1355,19 @@ void AAVGameMode::Strike(bool bSpin)
         ++MeleeSwingCount;
     }
     AddEffect(Hero, bSpin ? 1 : 0, bSpin ? 2.2f : 1.75f, FMath::Atan2(Aim.Y, Aim.X));
-    const float Range = bSpin ? 2.25f : 1.92f;
-    const float Damage=AttackPower*(bSpin?(HasRelic(3)?2.f:1.65f):1.f);
+    const int32 Pattern=EquippedWeaponPattern();
+    const float Range=bSpin?2.25f:
+        Pattern==2?2.65f:Pattern==1?2.15f:1.92f;
+    const float Arc=Pattern==1?-0.25f:Pattern==2?0.50f:0.10f;
+    const float Damage=AttackPower*
+        (bSpin?(HasRelic(3)?2.f:1.65f):(Pattern==3?1.28f:1.f));
     for (int32 I = Enemies.Num() - 1; I >= 0; --I)
     {
         FAVEnemy& Enemy = Enemies[I];
         FVector2D Delta = Enemy.Pos - Hero;
         const float Distance = Delta.Size();
         if (Distance > Range + (FAVContent::Enemy(Enemy.Type, Floor).Boss ? 0.45f : 0.f)) continue;
-        if (!bSpin && FVector2D::DotProduct(SafeDirection(Delta), Aim) < 0.10f) continue;
+        if (!bSpin && FVector2D::DotProduct(SafeDirection(Delta), Aim) < Arc) continue;
         // Fix: sword swings can no longer hit actors through solid stone walls.
         if (!FAVDungeonNavigation::LineOfSight(Tiles, MapW, MapH, Hero, Enemy.Pos)) continue;
         // Crypt guards and armored enemies block frontal strikes.
@@ -1376,9 +1380,13 @@ void AAVGameMode::Strike(bool bSpin)
             (MeleeSwingCount%3)==0) HitDamage*=1.5f;
         if(bShield && bFacing) HitDamage*=0.58f;
         ApplyDamageToEnemy(Enemy,HitDamage);
+        if(Pattern==4)Enemy.PoisonTime=FMath::Max(Enemy.PoisonTime,3.5f);
+        if(Pattern==5)Enemy.BurnTime=FMath::Max(Enemy.BurnTime,3.f);
+        if(Pattern==10)HP=FMath::Min(MaxHP,HP+2.f);
         Enemy.Flash = 0.16f;
         Enemy.Knockback += SafeDirection(Delta) *
-            (Enemy.Type == 3 ? 1.f : 5.f + (HasGearPerk(1)?2.f:0.f) +
+            (Enemy.Type == 3 ? 1.f : 5.f + (Pattern==3?3.f:0.f) +
+             (HasGearPerk(1)?2.f:0.f) +
              (HeroClass==0 ? 0.5f*SkillRank(16) : 0.f));
         AddEffect(Enemy.Pos,2,0.55f);
         if(HasGearPerk(3) && (++BlooddrinkerHitCount%5)==0)
@@ -1422,10 +1430,29 @@ void AAVGameMode::ShootArrow()
     Arrow.Velocity=Aim*(13.f*ProjectileSpeedMultiplier());
     Arrow.Time=8.5f/(13.f*ProjectileSpeedMultiplier());
     Arrow.Damage = FMath::RoundToInt(AttackPower + RangedBonus);
+    const int32 Pattern=EquippedWeaponPattern();
+    if(Pattern==7)Arrow.PierceRemaining=2;
+    if(Pattern==8)Arrow.Velocity*=1.25f;
+    if(Pattern==9){Arrow.Damage=FMath::RoundToInt(Arrow.Damage*1.35f);
+        Arrow.Velocity*=0.82f;}
+    if(Pattern==4)Arrow.Status=1;
+    if(Pattern==5)Arrow.Status=2;
+    Arrow.Time=8.5f/FMath::Max(1.f,Arrow.Velocity.Size());
     Arrow.Visual = 1;
     Arrow.ShotId=++ShotCounter;
     if(HasGearPerk(5) && ShotCounter%4==0) Arrow.PierceRemaining=2;
     Bolts.Add(Arrow);
+    if(Pattern==6)
+    {
+        FAVBolt Twin=Arrow;
+        const float A=0.10f;
+        Twin.Velocity=FVector2D(Arrow.Velocity.X*FMath::Cos(A)-
+            Arrow.Velocity.Y*FMath::Sin(A),
+            Arrow.Velocity.X*FMath::Sin(A)+Arrow.Velocity.Y*FMath::Cos(A));
+        Twin.Damage=FMath::Max(1,FMath::RoundToInt(Arrow.Damage*0.60f));
+        Twin.ShotId=++ShotCounter;
+        Bolts.Add(Twin);
+    }
     AddEffect(Hero, 0, 0.5f, FMath::Atan2(Aim.Y, Aim.X));
 }
 
@@ -1498,6 +1525,10 @@ void AAVGameMode::ThrowKnife()
     Blade.Time=1.1f/ProjectileSpeedMultiplier();
     Blade.Damage=FMath::RoundToInt(AttackPower*
         (HasRelic(2)?1.12f:0.83f)+RangedBonus);
+    const int32 Pattern=EquippedWeaponPattern();
+    if(Pattern==4)Blade.Status=1;
+    if(Pattern==5)Blade.Status=2;
+    if(Pattern==2){Blade.Velocity*=1.20f;Blade.Time*=0.84f;}
     if(HeroClass==2 &&
        SkillRank(FAVSkills::ArcanistSphereSkillId)>0) {
         Blade.Visual=4; Blade.Damage=FMath::RoundToInt(
