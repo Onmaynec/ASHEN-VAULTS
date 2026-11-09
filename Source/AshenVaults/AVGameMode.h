@@ -19,6 +19,8 @@ struct FAVEnemy
     int32 Subclass = 0; // Bastion enemy variant (0 or 1), persisted
     int32 Level = 1;
     int32 Equipment = 0; // 0 none, 1 armor, 2 bow, 3 enchanted weapon
+    int32 Affix = 0; // v1.3.0: 0 ordinary, 1..12 special combat mutation
+    bool bWardConsumed=false; // rune ward absorbs the first successful hit
     int32 Faction = 0; // 0 dungeon, 1 bandits
     FVector2D LastSeenHero = FVector2D::ZeroVector;
     float MemoryTime = 0.f;
@@ -396,6 +398,8 @@ private:
     bool ActivateNearbyEcho();
     void DamageHero(float Damage, const FVector2D& Source);
     void Strike(bool bSpin);
+    float ApplyDamageToEnemy(FAVEnemy& Enemy,float RawDamage);
+    void OnAffixedEnemyHitHero(FAVEnemy& Enemy,float ActualDamage);
     void KillEnemy(int32 Index);
     void GrantExperience(int32 Amount);
     void SelectUpgrade(int32 Choice);
