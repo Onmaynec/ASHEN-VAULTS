@@ -28,6 +28,7 @@ struct FAVEquipmentSpec {
     float ValueB;
     int32 PerkId;
     int32 Pattern=0;
+    const char* DisplayName=nullptr;
 };
 class FAVEquipment
 {
