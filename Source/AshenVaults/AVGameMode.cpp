@@ -1627,11 +1627,16 @@ bool AAVGameMode::ActivateNearbyEcho()
     return false;
 }
 
-void AAVGameMode::DamageHero(float Damage, const FVector2D& Source)
+void AAVGameMode::DamageHero(float Damage,const FVector2D& Source,
+                             bool bMeleeAttack)
 {
     if (Invulnerability > 0.f || Phase != EAVPhase::Playing || bInSafeCamp || bInLobby) return;
     float AdjustedDamage=Damage*(HasRelic(1)?0.80f:1.f)*
         (1.f-FMath::Clamp(ArmorRating,0.f,0.45f));
+    if(bMeleeAttack)
+        AdjustedDamage*=FMath::Clamp(1.f-
+            GearStat(AVMeleeResistPercent)*0.01f-
+            (FoodGuardTime>0.f?0.12f:0.f),0.45f,1.f);
     if(HP<MaxHP*0.3f) AdjustedDamage*=1.f-0.08f*SkillRank(3);
     if(HeroClass==0 && GuardWhirlTime>0.f)
         AdjustedDamage*=1.f-0.08f*SkillRank(17);
@@ -1700,11 +1705,10 @@ void AAVGameMode::OnAffixedEnemyHitHero(FAVEnemy& Enemy,float ActualDamage)
     const int32 Status=FAVAffixes::Traits(
         Enemy.Affix,Enemy.HP/FMath::Max(1.f,Enemy.MaxHP),
         Enemy.AlertTime).InflictedStatus;
-    const float Resist=FMath::Clamp(1.f-
-        (GearStat(AVStatusResistPercent)+10.f*SkillRank(1))*0.01f,
-        0.4f,1.f);
-    if(Status==1)PoisonTime=FMath::Max(PoisonTime,2.4f*Resist);
-    else if(Status==2)BurnTime=FMath::Max(BurnTime,2.f*Resist);
+    if(Status==1)PoisonTime=FMath::Max(PoisonTime,
+        2.4f*StatusResistanceFactor(true));
+    else if(Status==2)BurnTime=FMath::Max(BurnTime,
+        2.f*StatusResistanceFactor(false));
 }
 
 void AAVGameMode::KillEnemy(int32 Index)
@@ -2417,7 +2421,7 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         }
         AddEffect(Hero,1,0.7f);
     }
-    const float EffectiveMove=MoveSpeed*
+    const float EffectiveMove=MoveSpeed*(FoodSpeedTime>0.f?1.15f:1.f)*
         (HeroClass==1 && LastKillBoostTime>0.f ?
             (1.f+0.06f*SkillRank(24)):1.f);
     const FVector2D BeforeMovement = Hero;
@@ -2883,6 +2887,20 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         if (Phase != EAVPhase::Playing) return;
         if (Enemies[I].HP <= 0.f) { KillEnemy(I); continue; }
         FAVEnemy& E = Enemies[I];
+        E.PoisonTime=FMath::Max(0.f,E.PoisonTime-DeltaSeconds);
+        E.BurnTime=FMath::Max(0.f,E.BurnTime-DeltaSeconds);
+        if(E.PoisonTime>0.f||E.BurnTime>0.f)
+        {
+            E.StatusTick+=DeltaSeconds;
+            if(E.StatusTick>=1.f)
+            {
+                E.StatusTick-=1.f;
+                ApplyDamageToEnemy(E,(E.PoisonTime>0.f?3.f:0.f)+
+                    (E.BurnTime>0.f?5.f:0.f));
+                if(E.HP<=0.f){KillEnemy(I);continue;}
+            }
+        }
+        else E.StatusTick=0.f;
         const FAVEnemySpec Spec = FAVContent::Enemy(E.Type, Floor);
         if (Spec.Boss && !E.bPhaseShifted && E.HP <= E.MaxHP * 0.45f)
         {
@@ -3085,7 +3103,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                     else
                     {
                         const float BeforeHP=HP;
-                        DamageHero(Damage,E.Pos);
+                        DamageHero(Damage,E.Pos,true);
                         if(BeforeHP>HP)
                             OnAffixedEnemyHitHero(E,BeforeHP-HP);
                     }
@@ -3211,6 +3229,8 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 Bolt.HitEnemyIds.Add(E.Id);
                 --Bolt.PierceRemaining;
                 ApplyDamageToEnemy(E,Damage);
+                if(Bolt.Status==1)E.PoisonTime=FMath::Max(E.PoisonTime,3.f);
+                if(Bolt.Status==2)E.BurnTime=FMath::Max(E.BurnTime,3.f);
                 E.Flash = 0.16f;
                 E.Knockback += SafeDirection(E.Pos - Old) * 3.1f;
                 AddEffect(E.Pos, 2, 0.4f);
@@ -3258,11 +3278,10 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                             }
                     if (bVulnerable && Phase != EAVPhase::Dead)
                     {
-                        const float Resist=FMath::Clamp(1.f-
-                            (GearStat(AVStatusResistPercent)+10.f*SkillRank(1))*0.01f,
-                            0.4f,1.f);
-                        if(Status==1) PoisonTime=FMath::Max(PoisonTime,4.2f*Resist);
-                        if(Status==2) BurnTime=FMath::Max(BurnTime,3.3f*Resist);
+                        if(Status==1)PoisonTime=FMath::Max(PoisonTime,
+                            4.2f*StatusResistanceFactor(true));
+                        if(Status==2)BurnTime=FMath::Max(BurnTime,
+                            3.3f*StatusResistanceFactor(false));
                     }
                     bHit = true;
                 }
@@ -3339,11 +3358,10 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             FVector2D::Distance(Hero, Hazard.Pos) > 1.f ||
             Invulnerability > 0.f) continue;
         Hazard.Cooldown = 1.25f;
-        const float StatusFactor=FMath::Clamp(1.f-
-            (GearStat(AVStatusResistPercent)+10.f*SkillRank(1))*0.01f,
-            0.4f,1.f);
-        if(Hazard.Type==0) PoisonTime=FMath::Max(PoisonTime,4.f*StatusFactor);
-        else BurnTime=FMath::Max(BurnTime,3.f*StatusFactor);
+        if(Hazard.Type==0)PoisonTime=FMath::Max(PoisonTime,
+            4.f*StatusResistanceFactor(true));
+        else BurnTime=FMath::Max(BurnTime,
+            3.f*StatusResistanceFactor(false));
         AddEffect(Hazard.Pos, 2, 0.6f);
     }
 
