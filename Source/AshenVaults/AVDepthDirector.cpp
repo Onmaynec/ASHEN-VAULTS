@@ -265,3 +265,24 @@ bool FAVDepthDirector::FindSpawn(const TArray<uint8>& Tiles,int32 Width,int32 He
     }
     return false;
 }
+
+bool FAVDepthDirector::ShouldArmWave(EAVWaveTrigger Trigger,bool bInside,
+                                     bool bLiveEnemyInside,bool bOpenedChest,
+                                     bool bKillWitnessed)
+{
+    if(!bInside)return false;
+    switch(Trigger)
+    {
+    case EAVWaveTrigger::OnEntry:return true;
+    case EAVWaveTrigger::AfterClear:return !bLiveEnemyInside;
+    case EAVWaveTrigger::OnChestOpen:return bOpenedChest;
+    case EAVWaveTrigger::OnFirstKill:return bKillWitnessed;
+    default:return false;
+    }
+}
+
+bool FAVDepthDirector::AdvanceWarning(float& Seconds,float DeltaSeconds)
+{
+    Seconds=FMath::Max(0.f,Seconds-FMath::Max(0.f,DeltaSeconds));
+    return Seconds<=0.f;
+}
