@@ -780,6 +780,7 @@ void AAVGameMode::GenerateFloor()
         TArray<FVector2D> Occupied;
         for(const FAVEnemy& Existing:Enemies)Occupied.Add(Existing.Pos);
         for(const FAVTrap& Trap:Traps)Occupied.Add(Trap.Pos);
+        for(const FAVHazard& Hazard:Hazards)Occupied.Add(Hazard.Pos);
         for(const FAVChest& Chest:Chests)Occupied.Add(Chest.Pos);
         for (int32 E = 0; E < Encounter.EnemyCount; ++E)
         {
@@ -806,8 +807,9 @@ void AAVGameMode::GenerateFloor()
                 FAVAffixes::Traits(Enemy.Affix,1.f,0.f).MaxHealthScale;
             Enemy.HP = Enemy.MaxHP;
             Enemy.Cooldown = RNG.FRandRange(0.3f, 1.6f);
-            if (bMerchantSpawned && FVector2D::Distance(Enemy.Pos, Merchant) < 2.f)
-                Enemy.Pos = FVector2D(R.X + 1.2f, R.Y + 1.2f);
+            // Do not teleport a validated spawn onto an unvalidated corner.
+            // Merchant chambers are skipped above; all other positions have
+            // already passed the walkability and occupancy checks.
             Enemy.Id = NextId++;
             Occupied.Add(Enemy.Pos);
             Enemies.Add(Enemy);
