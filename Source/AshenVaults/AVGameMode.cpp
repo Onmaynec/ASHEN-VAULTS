@@ -549,8 +549,13 @@ void AAVGameMode::GenerateFloor()
     {
         const bool bBastion = CurrentBiome() == 3;
         // The Bastion has a guaranteed main battle hall, wings and broad galleries.
-        const int32 W = bBastion ? (Rooms.Num() == 0 ? 18 : RNG.RandRange(8, 14)) : RNG.RandRange(5, 11);
-        const int32 H = bBastion ? (Rooms.Num() == 0 ? 14 : RNG.RandRange(8, 12)) : RNG.RandRange(5, 9);
+        // Every fourth chamber can become a larger arena with room for
+        // crossfire, flanks and elite squads; other rooms remain compact.
+        const bool bArena=Rooms.Num()>0 && Rooms.Num()%4==0;
+        const int32 W=bBastion ? (Rooms.Num()==0?18:RNG.RandRange(8,14)) :
+            RNG.RandRange(bArena?10:5,bArena?15:11);
+        const int32 H=bBastion ? (Rooms.Num()==0?14:RNG.RandRange(8,12)) :
+            RNG.RandRange(bArena?8:5,bArena?11:9);
         FRoom R = { RNG.RandRange(2, MapW - W - 3), RNG.RandRange(2, MapH - H - 3), W, H };
         bool bOverlaps = false;
         for (const FRoom& Existing : Rooms)
@@ -731,9 +736,20 @@ void AAVGameMode::GenerateFloor()
             FVector2D::Distance(Chest.Pos, Exit) < 2.5f ||
             (bMerchantSpawned && FVector2D::Distance(Chest.Pos, Merchant) < 2.5f))
             Chest.Pos = FVector2D(R.X + R.W - 1.5f, R.Y + R.H - 1.5f);
+        TArray<FVector2D> Reserved;
+        for (const FAVTrap& Trap : Traps) Reserved.Add(Trap.Pos);
+        for (const FAVChest& Existing : Chests) Reserved.Add(Existing.Pos);
+        if (!CanMove(Chest.Pos,0.3f))
+        {
+            FAVRoomBounds Bounds;
+            Bounds.X=R.X;Bounds.Y=R.Y;Bounds.W=R.W;Bounds.H=R.H;
+            if(!FAVDepthDirector::FindSpawn(Tiles,MapW,MapH,Bounds,
+                EAVFormation::CornerSentries,I,Rooms.Num(),Hero,Exit,Shrine,
+                Reserved,Chest.Pos,4.f))continue;
+        }
         bool bBlocked = false;
-        for (const FAVTrap& Trap : Traps)
-            bBlocked |= FVector2D::Distance(Chest.Pos, Trap.Pos) < 1.3f;
+        for (const FVector2D& Spot : Reserved)
+            bBlocked |= (Chest.Pos-Spot).SizeSquared()<1.69f;
         if (bBlocked) continue;
         Chest.bMimic = RNG.FRand() < 0.18f;
         Chests.Add(Chest);
@@ -949,6 +965,19 @@ void AAVGameMode::GenerateFloor()
         Pickup.Amount = 22;
         Pickups.Add(Pickup);
     }
+    // A small, deterministic pre-guardian recovery station in the entrance
+    // chamber. Uses existing pickups, with no new artwork or item IDs.
+    if(IsGuardianFloor() && Rooms.Num()>0)
+    {
+        const FVector2D Supply=Hero+FVector2D(1.6f,0.f);
+        if(CanMove(Supply,0.25f))
+        {
+            FAVPickup P;
+            P.Pos=Supply;P.Type=Floor%2==0?2:1;
+            P.Amount=FMath::Min(45,20+BiomeCycle()*4);
+            Pickups.Add(P);
+        }
+    }
     if (Floor >= 3 && CurrentBiome() != 3)
     {
         for (int32 I = 2; I < Rooms.Num() - 1; I += 2)
@@ -957,9 +986,12 @@ void AAVGameMode::GenerateFloor()
             FAVHazard Hazard;
             Hazard.Type = CurrentBiome() == 2 ? 1 : 0;
             Hazard.Pos = FVector2D(R.X + 1.5f, R.Y + R.H - 1.5f);
-            if (FVector2D::Distance(Hazard.Pos, Shrine) > 2.f &&
-                FVector2D::Distance(Hazard.Pos, Exit) > 2.f &&
-                (!bMerchantSpawned || FVector2D::Distance(Hazard.Pos, Merchant) > 2.f))
+            if (CanMove(Hazard.Pos,0.3f) &&
+                (Hazard.Pos-Hero).SizeSquared()>16.f &&
+                (Hazard.Pos-Shrine).SizeSquared()>6.25f &&
+                (Hazard.Pos-Exit).SizeSquared()>6.25f &&
+                (!bMerchantSpawned ||
+                 (Hazard.Pos-Merchant).SizeSquared()>6.25f))
                 Hazards.Add(Hazard);
         }
     }
