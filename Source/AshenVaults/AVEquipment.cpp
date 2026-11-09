@@ -79,7 +79,7 @@ const FAVEquipmentSpec Items[FAVEquipment::Count] = {
     {64,"void_orb",AVWeapon,2,AVLegendary,0,AVAttackFlat,27,AVAbilityDamagePercent,18,7,5,"Сфера пустоты"},
     {65,"bone_wood_bow",AVWeapon,3,AVUncommon,0,AVAttackFlat,11,AVProjectileSpeedPercent,6,0,8,"Костяной лук"},
     {66,"falcon_recurve",AVWeapon,3,AVRare,0,AVAttackFlat,15,AVAttackSpeedPercent,8,4,8,"Соколий рекурсив"},
-    {67,"venom_longbow",AVWeapon,3,AVRare,0,AVAttackFlat,16,AVRangedDamagePercent,8,0,7,"Ядовитый длинный лук"},
+    {67,"venom_longbow",AVWeapon,3,AVRare,0,AVAttackFlat,16,AVRangedDamagePercent,8,0,4,"Ядовитый длинный лук"},
     {68,"ember_arbalest",AVWeapon,3,AVEpic,0,AVAttackFlat,22,AVAttackSpeedPercent,-10,0,9,"Угольный арбалет"},
     {69,"bastion_repeater",AVWeapon,3,AVEpic,0,AVAttackFlat,20,AVProjectileSpeedPercent,14,5,6,"Бастионный повторитель"},
     {70,"moonstring_bow",AVWeapon,3,AVLegendary,0,AVAttackFlat,25,AVCriticalPercent,9,0,6,"Лунная тетива"},
