@@ -1022,6 +1022,107 @@ void AAVGameMode::GenerateFloor()
     RefreshAwareness(0.f, true);
 }
 
+void AAVGameMode::SpawnRoomWave(FAVRoomEvent& Event)
+{
+    FAVRoomBounds Region;
+    Region.X=Event.X;Region.Y=Event.Y;
+    Region.W=Event.W;Region.H=Event.H;
+    TArray<FVector2D> Occupied;
+    for(const FAVEnemy& Mob:Enemies)
+        if(Mob.HP>0.f)Occupied.Add(Mob.Pos);
+    for(const FAVTrap& Trap:Traps)Occupied.Add(Trap.Pos);
+    for(const FAVHazard& Hazard:Hazards)Occupied.Add(Hazard.Pos);
+    for(const FAVChest& Chest:Chests)Occupied.Add(Chest.Pos);
+
+    int32 Spawned=0;
+    for(int32 I=0;I<Event.Count && Enemies.Num()<96;++I)
+    {
+        FAVEnemy E;
+        if(!FAVDepthDirector::FindSpawn(
+            Tiles,MapW,MapH,Region,
+            static_cast<EAVFormation>(FMath::Clamp(Event.Formation,0,7)),
+            I,Event.Count,Hero,Exit,Shrine,Occupied,E.Pos,3.5f))
+            continue; // No stacking inside walls or on the player.
+        const uint32 Salt=FAVDepthDirector::Hash(
+            static_cast<uint32>(RunSeed) ^
+            static_cast<uint32>(Floor)*0x7f4a7c15u ^
+            static_cast<uint32>(Event.UniqueId)*0x85ebca6bu ^
+            static_cast<uint32>(I)*0x165667b1u);
+        E.Type=FAVEncounters::SelectType(Floor,
+            static_cast<EAVEncounterKind>(FMath::Clamp(Event.Kind,0,3)),
+            static_cast<int32>(Salt%100u),
+            static_cast<int32>((Salt>>8)%100u),
+            static_cast<int32>((Salt>>16)%100u));
+        E.Level=FAVContent::EnemyLevel(Floor,static_cast<int32>((Salt>>20)%100u));
+        if(E.Type>=34&&E.Type<=51)E.Subclass=static_cast<int32>((Salt>>27)&1u);
+        E.Equipment=(Event.Kind==3 && I==0) ? 1 : 0;
+        E.bElite=(Event.Kind==3 && I==0);
+        E.MaxHP=FAVContent::ScaledEnemyHealth(E.Type,Floor,E.Level)*
+            (E.Equipment==1?1.35f:1.f)*(E.bElite?1.65f:1.f);
+        E.HP=E.MaxHP;E.Cooldown=0.65f+0.2f*(I%3);
+        // Reserved, stable across cold loads. Do not collide with ordinary
+        // mob IDs (1..N), minibosses or boss summons.
+        E.Id=400000+((Floor%500)*1000)+Event.UniqueId*12+I;
+        Occupied.Add(E.Pos);
+        Enemies.Add(E);
+        ++Spawned;
+        AddEffect(E.Pos,1,0.65f);
+    }
+    Event.bTriggered=true;
+    Event.bArmed=false;
+    Toast=Spawned>0?TEXT("REINFORCEMENTS ARRIVE") :
+        TEXT("REINFORCEMENTS DISPERSED");
+    ToastTime=2.2f;
+}
+
+void AAVGameMode::UpdateRoomEvents(float DeltaSeconds)
+{
+    if(bInSafeCamp||bInLobby||bInBossArena||Phase!=EAVPhase::Playing)return;
+    for(FAVRoomEvent& Event:RoomEvents)
+    {
+        if(Event.bTriggered)continue;
+        FAVRoomBounds Region;
+        Region.X=Event.X;Region.Y=Event.Y;
+        Region.W=Event.W;Region.H=Event.H;
+        const bool bInside=FAVDepthDirector::InRoom(Region,Hero);
+        if(!Event.bArmed)
+        {
+            bool bStart=false;
+            if(Event.Trigger==static_cast<int32>(EAVWaveTrigger::OnEntry))
+                bStart=bInside;
+            else if(Event.Trigger==static_cast<int32>(EAVWaveTrigger::AfterClear) &&
+                    bInside)
+            {
+                bStart=true;
+                for(const FAVEnemy& Mob:Enemies)
+                    if(Mob.HP>0.f&&FAVDepthDirector::InRoom(Region,Mob.Pos))
+                    {bStart=false;break;}
+            }
+            else if(Event.Trigger==static_cast<int32>(EAVWaveTrigger::OnChestOpen) &&
+                    bInside)
+            {
+                for(const FAVChest& Chest:Chests)
+                    if(Chest.bOpened && FAVDepthDirector::InRoom(Region,Chest.Pos))
+                    {bStart=true;break;}
+            }
+            else if(Event.Trigger==static_cast<int32>(EAVWaveTrigger::OnFirstKill))
+                bStart=Event.bKillWitnessed && bInside;
+            if(bStart)
+            {
+                Event.bArmed=true;
+                Toast=TEXT("WARNING: HOSTILE REINFORCEMENTS");
+                ToastTime=2.3f;
+                AddEffect(Event.Center,1,1.4f);
+            }
+        }
+        else
+        {
+            Event.Countdown-=DeltaSeconds;
+            if(Event.Countdown<=0.f)SpawnRoomWave(Event);
+        }
+    }
+}
+
 void AAVGameMode::AddEffect(const FVector2D& Pos, int32 Kind, float Radius, float Angle)
 {
     FAVEffect Effect;
@@ -1449,6 +1550,15 @@ void AAVGameMode::KillEnemy(int32 Index)
 {
     if (!Enemies.IsValidIndex(Index)) return;
     const FAVEnemy Dead = Enemies[Index];
+    for(FAVRoomEvent& Event:RoomEvents)
+    {
+        if(Event.bTriggered || Event.Trigger!=
+            static_cast<int32>(EAVWaveTrigger::OnFirstKill))continue;
+        FAVRoomBounds Bounds;
+        Bounds.X=Event.X;Bounds.Y=Event.Y;Bounds.W=Event.W;Bounds.H=Event.H;
+        if(FAVDepthDirector::InRoom(Bounds,Dead.Pos))
+            Event.bKillWitnessed=true;
+    }
     const bool bBoss = FAVContent::Enemy(Dead.Type, Floor).Boss;
     Enemies.RemoveAtSwap(Index);
     ++Kills;
@@ -1535,7 +1645,8 @@ void AAVGameMode::StoreDungeon()
     StoredWorld.Pickups = Pickups; StoredWorld.Bolts = Bolts; StoredWorld.Traps = Traps;
     StoredWorld.Chests = Chests; StoredWorld.Hazards = Hazards;
     StoredWorld.Props = Props; StoredWorld.Decorations = Decorations;
-    StoredWorld.Effects = Effects; StoredWorld.CampDoors = CampDoors;
+    StoredWorld.Effects = Effects; StoredWorld.RoomEvents=RoomEvents;
+    StoredWorld.CampDoors = CampDoors;
     StoredWorld.CampWalls = CampWalls;
     StoredWorld.Hero = Hero; StoredWorld.Exit = Exit;
     StoredWorld.Shrine = Shrine; StoredWorld.Merchant = Merchant;
@@ -1555,7 +1666,8 @@ void AAVGameMode::RestoreDungeon()
     Bolts = StoredWorld.Bolts; Traps = StoredWorld.Traps;
     Chests = StoredWorld.Chests; Hazards = StoredWorld.Hazards;
     Props = StoredWorld.Props; Decorations = StoredWorld.Decorations;
-    Effects = StoredWorld.Effects; CampDoors = StoredWorld.CampDoors;
+    Effects = StoredWorld.Effects; RoomEvents=StoredWorld.RoomEvents;
+    CampDoors = StoredWorld.CampDoors;
     CampWalls = StoredWorld.CampWalls;
     Hero = StoredWorld.Hero; Exit = StoredWorld.Exit;
     Shrine = StoredWorld.Shrine; Merchant = StoredWorld.Merchant;
@@ -1580,6 +1692,7 @@ void AAVGameMode::MakeSafeRoom(bool bLobby)
     Enemies.Reset(); Bolts.Reset(); Traps.Reset(); Hazards.Reset();
     Chests.Reset(); Pickups.Reset(); Props.Reset(); Decorations.Reset();
     CampDoors.Reset(); CampWalls.Reset(); Effects.Reset();
+    RoomEvents.Reset(); // safe spaces and guardian arenas have no scripted waves
     bMerchantSpawned = !bLobby;
     Merchant = FVector2D(20.5f, 17.5f);
     Hero = FVector2D(26.5f, 22.5f);
@@ -1704,6 +1817,8 @@ void AAVGameMode::SaveCheckpoint()
     Save->bCheckpointMagicBarrierUsed=bMagicBarrierUsed;
     // Store the dungeon, not the peaceful camp or the lobby.
     const FAVWorldSnapshot* World = bWorldStored ? &StoredWorld : nullptr;
+    const TArray<FAVRoomEvent>& SavedRoomEvents =
+        World ? World->RoomEvents : RoomEvents;
     const TArray<FAVEnemy>& SavedEnemies = World ? World->Enemies : Enemies;
     const TArray<FAVPickup>& SavedPickups = World ? World->Pickups : Pickups;
     const TArray<FAVChest>& SavedChests = World ? World->Chests : Chests;
@@ -1730,6 +1845,19 @@ void AAVGameMode::SaveCheckpoint()
     Save->bCheckpointShopPurchased0 = ShopPurchased[0];
     Save->bCheckpointShopPurchased1 = ShopPurchased[1];
     Save->bCheckpointShopPurchased2 = ShopPurchased[2];
+    Save->CheckpointRoomEventData.Reset();
+    for(const FAVRoomEvent& Event:SavedRoomEvents)
+    {
+        const float Fields[]={
+            Event.Center.X,Event.Center.Y,
+            float(Event.X),float(Event.Y),float(Event.W),float(Event.H),
+            float(Event.Trigger),float(Event.Kind),float(Event.Formation),
+            float(Event.Count),float(Event.UniqueId),Event.Countdown,
+            Event.bArmed?1.f:0.f,Event.bTriggered?1.f:0.f,
+            Event.bKillWitnessed?1.f:0.f
+        };
+        for(float Value:Fields)Save->CheckpointRoomEventData.Add(Value);
+    }
     Save->CheckpointEnemyData.Reset();
     for (const FAVEnemy& E : SavedEnemies)
     {
@@ -1825,6 +1953,30 @@ void AAVGameMode::LoadCheckpointWorld()
     ShopPurchased[0] = Save->bCheckpointShopPurchased0;
     ShopPurchased[1] = Save->bCheckpointShopPurchased1;
     ShopPurchased[2] = Save->bCheckpointShopPurchased2;
+    RoomEvents.Reset();
+    const TArray<float>& RD=Save->CheckpointRoomEventData;
+    // Old saves have no scripted room events: continue them unchanged.
+    if(RD.Num()%15==0)
+        for(int32 I=0;I+14<RD.Num();I+=15)
+        {
+            FAVRoomEvent Event;
+            Event.Center=FVector2D(RD[I],RD[I+1]);
+            Event.X=FMath::Clamp(int32(RD[I+2]),0,MapW-1);
+            Event.Y=FMath::Clamp(int32(RD[I+3]),0,MapH-1);
+            Event.W=FMath::Clamp(int32(RD[I+4]),0,MapW-Event.X);
+            Event.H=FMath::Clamp(int32(RD[I+5]),0,MapH-Event.Y);
+            Event.Trigger=FMath::Clamp(int32(RD[I+6]),0,4);
+            Event.Kind=FMath::Clamp(int32(RD[I+7]),0,3);
+            Event.Formation=FMath::Clamp(int32(RD[I+8]),0,7);
+            Event.Count=FMath::Clamp(int32(RD[I+9]),0,5);
+            Event.UniqueId=FMath::Clamp(int32(RD[I+10]),0,128);
+            Event.Countdown=FMath::Clamp(RD[I+11],0.f,5.f);
+            Event.bArmed=RD[I+12]!=0.f;
+            Event.bTriggered=RD[I+13]!=0.f;
+            Event.bKillWitnessed=RD[I+14]!=0.f;
+            if(Event.W>=3&&Event.H>=3&&Event.Trigger>=1)
+                RoomEvents.Add(Event);
+        }
     Enemies.Reset();
     const TArray<float>& ED = Save->CheckpointEnemyData;
     const int32 EnemyStride = Save->bCheckpointV09Data ? 31 : 30;
@@ -3073,6 +3225,7 @@ void AAVGameMode::Tick(float DeltaSeconds)
         if (ComboTime <= 0.f) Combo = 0;
         ToastTime = FMath::Max(0.f, ToastTime - DT);
         RefreshAwareness(DT);
+        if(!bInSafeCamp&&!bInLobby&&!bInBossArena)UpdateRoomEvents(DT);
         if (!bInSafeCamp && !bInLobby) UpdateCombat(DT);
         if (Phase != EAVPhase::Playing) break;
 
