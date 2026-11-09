@@ -2395,7 +2395,13 @@ void AAVGameMode::SpawnEnemyBolt(const FAVEnemy& Enemy, const FVector2D& Directi
         FAVContent::Enemy(Enemy.Type, Floor).Damage *
         FAVContent::LevelDamageMultiplier(Enemy.Level) *
         (Enemy.bElite ? 1.35f : 1.f) * DamageScale));
-    Bolt.Status = Status;
+    const FAVAffixTraits A=FAVAffixes::Traits(Enemy.Affix,
+        Enemy.HP/FMath::Max(1.f,Enemy.MaxHP),Enemy.AlertTime);
+    Bolt.Damage=FMath::RoundToInt(Bolt.Damage*A.OutgoingScale);
+    Bolt.Velocity*=A.BoltSpeedScale;
+    Bolt.Status = Status!=0?Status:A.InflictedStatus;
+    Bolt.Affix=Enemy.Affix;
+    Bolt.SourceEnemyId=Enemy.Id;
     Bolt.Faction = Enemy.Faction;
     Bolt.Time = 2.1f;
     Bolts.Add(Bolt);
@@ -2694,6 +2700,8 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
     // Increment exactly once before any summon can grow Enemies/TArray.
     // Otherwise an old FAVEnemy& may dangle after reallocation.
     ++E.AttackPattern;
+    E.AbilityCooldown*=FAVAffixes::Traits(E.Affix,
+        E.HP/FMath::Max(1.f,E.MaxHP),E.AlertTime).CooldownScale;
     AddEffect(E.Pos, 1, E.bMiniBoss || FAVContent::Enemy(E.Type, Floor).Boss ? 2.f : 1.f);
     if (Pattern == 8 && Enemies.Num() <= 108) // Leave room for both summons
     {
@@ -2791,7 +2799,8 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         if (bSeesTarget)
         {
             E.LastSeenHero = Target;
-            E.MemoryTime = 3.5f;
+            E.MemoryTime = FAVAffixes::Traits(E.Affix,
+                E.HP/FMath::Max(1.f,E.MaxHP),E.AlertTime).MemorySeconds;
             E.AlertTime = 5.f;
             // Nearby allies receive the target position as a group alert.
             for (int32 J = 0; J < Enemies.Num(); ++J)
@@ -2811,8 +2820,28 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         const FVector2D ToHero = Target - E.Pos;
         const float Distance = ToHero.Size();
         const FVector2D Direction = SafeDirection(ToHero);
-        const float Speed = Spec.Speed * (E.bElite ? 1.18f : 1.f) *
-            ((E.Type == 56 || E.Type == 39) && E.HP < E.MaxHP * 0.45f ? 1.27f : 1.f);
+        const FAVAffixTraits Affix=FAVAffixes::Traits(
+            E.Affix,E.HP/FMath::Max(1.f,E.MaxHP),E.AlertTime);
+        float CommandAura=1.f;
+        for(const FAVEnemy& Ally:Enemies)
+        {
+            if(Ally.Id==E.Id||Ally.HP<=0.f||Ally.Faction!=E.Faction||
+               Ally.Affix!=static_cast<int32>(EAVEnemyAffix::Commander))
+                continue;
+            if((Ally.Pos-E.Pos).SizeSquared()<25.f)
+            {CommandAura=1.18f;break;}
+        }
+        const float Speed=Spec.Speed*(E.bElite?1.18f:1.f)*
+            ((E.Type==56||E.Type==39)&&E.HP<E.MaxHP*0.45f?1.27f:1.f)*
+            Affix.MovementScale*CommandAura;
+        // Medics heal their living nearby allies continuously while fighting.
+        if(Affix.AllyHealingPerSecond>0.f)
+            for(FAVEnemy& Ally:Enemies)
+                if(Ally.Id!=E.Id&&Ally.HP>0.f&&Ally.Faction==E.Faction &&
+                   Ally.HP<Ally.MaxHP&&
+                   (Ally.Pos-E.Pos).SizeSquared()<16.f)
+                    Ally.HP=FMath::Min(Ally.MaxHP,
+                        Ally.HP+Ally.MaxHP*Affix.AllyHealingPerSecond*DeltaSeconds);
         const bool bCaster = (Spec.Ranged || E.Equipment == 2) && !Spec.Boss;
         const bool bMeleeBoss = E.Type == 8 || E.Type == 56;
         const float Reach = Spec.Boss ? (bMeleeBoss ? 2.0f : 1.6f) :
@@ -2907,7 +2936,8 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 if (Distance < Reach + 0.16f && bSeesTarget)
                 {
                     const float Damage = Spec.Damage * FAVContent::LevelDamageMultiplier(E.Level) *
-                        (E.bElite ? 1.35f : 1.f) * (E.Equipment == 3 ? 1.25f : 1.f);
+                        (E.bElite ? 1.35f : 1.f) * (E.Equipment == 3 ? 1.25f : 1.f)*
+                        Affix.OutgoingScale;
                     if (bTargetEnemy)
                     {
                         for (int32 J = 0; J < Enemies.Num(); ++J)
@@ -2917,10 +2947,16 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                             { ApplyDamageToEnemy(Enemies[J],Damage); break; }
                         }
                     }
-                    else DamageHero(Damage, E.Pos);
+                    else
+                    {
+                        const float BeforeHP=HP;
+                        DamageHero(Damage,E.Pos);
+                        if(BeforeHP>HP)
+                            OnAffixedEnemyHitHero(E,BeforeHP-HP);
+                    }
                 }
-                E.Cooldown = Spec.Boss ? 1.15f : E.Type == 7 ? 1.6f :
-                             E.Type == 1 ? 1.4f : 1.08f;
+                E.Cooldown = (Spec.Boss ? 1.15f : E.Type == 7 ? 1.6f :
+                             E.Type == 1 ? 1.4f : 1.08f)*Affix.CooldownScale;
             }
             continue;
         }
@@ -2939,10 +2975,15 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             }
             FAVBolt Bolt;
             Bolt.Pos = E.Pos;
-            Bolt.Velocity = Direction * (Spec.Boss ? 7.8f : E.Type == 10 ? 9.f : 6.8f);
+            Bolt.Velocity = Direction * (Spec.Boss ? 7.8f : E.Type == 10 ? 9.f : 6.8f)*
+                Affix.BoltSpeedScale;
             Bolt.Damage = FMath::RoundToInt(Spec.Damage * FAVContent::LevelDamageMultiplier(E.Level) *
-                (E.bElite ? 1.35f : 1.f) * (E.Equipment == 3 ? 1.25f : 1.f));
-            Bolt.Status = (E.Type == 6 ? 1 : E.Type == 9 ? 2 : 0);
+                (E.bElite ? 1.35f : 1.f) * (E.Equipment == 3 ? 1.25f : 1.f)*
+                Affix.OutgoingScale);
+            Bolt.Status = Affix.InflictedStatus!=0 ? Affix.InflictedStatus :
+                (E.Type == 6 ? 1 : E.Type == 9 ? 2 : 0);
+            Bolt.Affix=E.Affix;
+            Bolt.SourceEnemyId=E.Id;
             Bolt.Faction = E.Faction;
             Bolts.Add(Bolt);
 
@@ -2963,10 +3004,12 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                     }
                 }
                 // Minibosses use seven distinct spread widths and cadence profiles.
-                E.Cooldown = E.bMiniBoss ? (0.85f + (E.Type - 26) * 0.13f) :
-                    bFurious ? (E.Type == 9 ? 0.85f : 0.96f) : 1.35f;
+                E.Cooldown = (E.bMiniBoss ? (0.85f + (E.Type - 26) * 0.13f) :
+                    bFurious ? (E.Type == 9 ? 0.85f : 0.96f) : 1.35f)*
+                    Affix.CooldownScale;
             }
-            else E.Cooldown = E.Type == 10 ? 1.40f : E.Type == 6 ? 1.75f : 2.1f;
+            else E.Cooldown = (E.Type == 10 ? 1.40f : E.Type == 6 ? 1.75f : 2.1f)*
+                Affix.CooldownScale;
         }
         else if (Distance < Reach + 0.2f)
         {
@@ -3067,7 +3110,17 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 {
                     const bool bVulnerable = Invulnerability <= 0.f;
                     const int32 Status = Bolt.Status;
+                    const float BeforeHP=HP;
                     DamageHero(Bolt.Damage, Bolt.Pos);
+                    if(BeforeHP>HP && Bolt.Affix==
+                       static_cast<int32>(EAVEnemyAffix::Blooddrinker))
+                        for(FAVEnemy& Source:Enemies)
+                            if(Source.Id==Bolt.SourceEnemyId && Source.HP>0.f)
+                            {
+                                Source.HP=FMath::Min(Source.MaxHP,
+                                    Source.HP+(BeforeHP-HP)*0.20f);
+                                break;
+                            }
                     if (bVulnerable && Phase != EAVPhase::Dead)
                     {
                         const float Resist=FMath::Clamp(1.f-
