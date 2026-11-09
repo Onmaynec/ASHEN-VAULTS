@@ -10,6 +10,7 @@
 #include "AVContent.h"
 #include "AVEncounters.h"
 #include "AVDepthDirector.h"
+#include "AVRoomTactics.h"
 #include "AVAffixes.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -652,6 +653,9 @@ void AAVGameMode::GenerateFloor()
         Bounds.X=R.X;Bounds.Y=R.Y;Bounds.W=R.W;Bounds.H=R.H;
         FAVDepthDirector::ApplyGeometry(Tiles,MapW,MapH,Bounds,
             FAVDepthDirector::Geometry(RunSeed,Floor,RoomIndex,CurrentBiome()));
+        const FAVRoomTactic Tactic=FAVRoomTactics::Select(
+            RunSeed,Floor,RoomIndex,CurrentBiome());
+        FAVRoomTactics::ApplyShape(Tiles,MapW,MapH,Bounds,Tactic.Shape);
     }
     // Additional shortcuts connect distant wings instead of only consecutive
     // rooms. The connectivity pass repairs dead pockets after cover placement.
@@ -761,16 +765,22 @@ void AAVGameMode::GenerateFloor()
         // The merchant's chamber is a safe retreat, not an accidental arena.
         if (bMerchantSpawned && I == 1) continue;
         const FRoom& R = Rooms[I];
-        const FAVEncounterPlan Encounter = FAVEncounters::Plan(
-            Floor, R.W * R.H, RNG.RandRange(0, 99), RNG.RandRange(0, 99));
+        const FAVRoomTactic Tactic=FAVRoomTactics::Select(
+            RunSeed,Floor,I,CurrentBiome());
+        const FAVEncounterPlan Encounter = FAVRoomTactics::Garrison(
+            FAVEncounters::Plan(Floor,R.W*R.H,
+                RNG.RandRange(0,99),RNG.RandRange(0,99)),
+            Tactic.Garrison,R.W*R.H,Floor);
         FAVRoomBounds Bounds;
         Bounds.X=R.X;Bounds.Y=R.Y;Bounds.W=R.W;Bounds.H=R.H;
-        const EAVFormation Formation=FAVDepthDirector::Formation(
-            RunSeed,Floor,I,static_cast<int32>(Encounter.Kind));
+        const EAVFormation Formation=FAVRoomTactics::Formation(
+            Tactic.Garrison,FAVDepthDirector::Formation(
+                RunSeed,Floor,I,static_cast<int32>(Encounter.Kind)));
         // Traps and opened treasure positions are reserved before spawning.
         TArray<FVector2D> Occupied;
         for(const FAVEnemy& Existing:Enemies)Occupied.Add(Existing.Pos);
         for(const FAVTrap& Trap:Traps)Occupied.Add(Trap.Pos);
+        for(const FAVHazard& Hazard:Hazards)Occupied.Add(Hazard.Pos);
         for(const FAVChest& Chest:Chests)Occupied.Add(Chest.Pos);
         for (int32 E = 0; E < Encounter.EnemyCount; ++E)
         {
@@ -779,7 +789,7 @@ void AAVGameMode::GenerateFloor()
                 E,Encounter.EnemyCount,Hero,Exit,Shrine,Occupied,Enemy.Pos,4.5f))
                 continue;
             Enemy.Type = FAVEncounters::SelectType(
-                Floor, Encounter.Kind,
+                Floor, FAVRoomTactics::EnemyRole(Tactic.Garrison,Encounter.Kind),
                 RNG.RandRange(0, 99), RNG.RandRange(0, 99),
                 RNG.RandRange(0, 99));
             if (Enemy.Type >= 34 && Enemy.Type <= 51) Enemy.Subclass = RNG.RandRange(0, 1);
@@ -797,8 +807,9 @@ void AAVGameMode::GenerateFloor()
                 FAVAffixes::Traits(Enemy.Affix,1.f,0.f).MaxHealthScale;
             Enemy.HP = Enemy.MaxHP;
             Enemy.Cooldown = RNG.FRandRange(0.3f, 1.6f);
-            if (bMerchantSpawned && FVector2D::Distance(Enemy.Pos, Merchant) < 2.f)
-                Enemy.Pos = FVector2D(R.X + 1.2f, R.Y + 1.2f);
+            // Do not teleport a validated spawn onto an unvalidated corner.
+            // Merchant chambers are skipped above; all other positions have
+            // already passed the walkability and occupancy checks.
             Enemy.Id = NextId++;
             Occupied.Add(Enemy.Pos);
             Enemies.Add(Enemy);
@@ -809,8 +820,10 @@ void AAVGameMode::GenerateFloor()
         const int32 MaxRoomEvents=FMath::Min(5,2+BiomeDepth()/2);
         if(I>1 && I<Rooms.Num()-1 && RoomEvents.Num()<MaxRoomEvents)
         {
-            const FAVWaveDirective Directive=FAVDepthDirector::Wave(
-                RunSeed,Floor,I,R.W*R.H,static_cast<int32>(Encounter.Kind));
+            const FAVWaveDirective Directive=FAVRoomTactics::Response(
+                FAVDepthDirector::Wave(RunSeed,Floor,I,R.W*R.H,
+                    static_cast<int32>(Encounter.Kind)),
+                Tactic.Response,R.W*R.H,Floor);
             if(Directive.Trigger!=EAVWaveTrigger::None)
             {
                 FAVRoomEvent Event;
