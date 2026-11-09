@@ -1572,8 +1572,11 @@ void AAVGameMode::OnAffixedEnemyHitHero(FAVEnemy& Enemy,float ActualDamage)
     const int32 Status=FAVAffixes::Traits(
         Enemy.Affix,Enemy.HP/FMath::Max(1.f,Enemy.MaxHP),
         Enemy.AlertTime).InflictedStatus;
-    if(Status==1)PoisonTime=FMath::Max(PoisonTime,2.4f);
-    else if(Status==2)BurnTime=FMath::Max(BurnTime,2.f);
+    const float Resist=FMath::Clamp(1.f-
+        (GearStat(AVStatusResistPercent)+10.f*SkillRank(1))*0.01f,
+        0.4f,1.f);
+    if(Status==1)PoisonTime=FMath::Max(PoisonTime,2.4f*Resist);
+    else if(Status==2)BurnTime=FMath::Max(BurnTime,2.f*Resist);
 }
 
 void AAVGameMode::KillEnemy(int32 Index)
