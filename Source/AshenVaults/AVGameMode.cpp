@@ -10,6 +10,7 @@
 #include "AVContent.h"
 #include "AVEncounters.h"
 #include "AVDepthDirector.h"
+#include "AVAffixes.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
@@ -769,12 +770,15 @@ void AAVGameMode::GenerateFloor()
             Enemy.Level = FAVContent::EnemyLevel(Floor, RNG.RandRange(0, 99));
             Enemy.Equipment = RNG.FRand() < Encounter.EquipmentChance ?
                 RNG.RandRange(1, 3) : 0;
-            // Bow zombies keep their own appearance and fire projectiles.
-            Enemy.MaxHP = FAVContent::ScaledEnemyHealth(Enemy.Type, Floor, Enemy.Level) *
-                (Enemy.Equipment == 1 ? 1.35f : 1.f);
             Enemy.bElite = E < Encounter.GuaranteedElites ||
                 RNG.FRand() < Encounter.EliteChance;
-            if (Enemy.bElite) Enemy.MaxHP *= 1.65f;
+            Enemy.Affix=FAVAffixes::Roll(static_cast<uint32>(RunSeed),
+                Floor,Enemy.Type,NextId,Enemy.bElite,false);
+            // Affix health modifies the same single-pass floor-scaled base.
+            Enemy.MaxHP = FAVContent::ScaledEnemyHealth(Enemy.Type,Floor,Enemy.Level)*
+                (Enemy.Equipment==1?1.35f:1.f)*
+                (Enemy.bElite?1.65f:1.f)*
+                FAVAffixes::Traits(Enemy.Affix,1.f,0.f).MaxHealthScale;
             Enemy.HP = Enemy.MaxHP;
             Enemy.Cooldown = RNG.FRandRange(0.3f, 1.6f);
             if (bMerchantSpawned && FVector2D::Distance(Enemy.Pos, Merchant) < 2.f)
@@ -870,7 +874,10 @@ void AAVGameMode::GenerateFloor()
             Bandit.Type = I % 3 == 0 ? 25 : 33;
             Bandit.Faction = 1;
             Bandit.Level = FAVContent::EnemyLevel(Floor, RNG.RandRange(0, 99));
-            Bandit.MaxHP = FAVContent::ScaledEnemyHealth(Bandit.Type, Floor, Bandit.Level);
+            Bandit.Affix=FAVAffixes::Roll(static_cast<uint32>(RunSeed),
+                Floor,Bandit.Type,NextId,false,false);
+            Bandit.MaxHP = FAVContent::ScaledEnemyHealth(Bandit.Type, Floor, Bandit.Level)*
+                FAVAffixes::Traits(Bandit.Affix,1.f,0.f).MaxHealthScale;
             Bandit.HP = Bandit.MaxHP;
             Bandit.Cooldown = RNG.FRandRange(0.3f, 1.1f);
             Bandit.Id = NextId++;
@@ -1057,8 +1064,12 @@ void AAVGameMode::SpawnRoomWave(FAVRoomEvent& Event)
         if(E.Type>=34&&E.Type<=51)E.Subclass=static_cast<int32>((Salt>>27)&1u);
         E.Equipment=(Event.Kind==3 && I==0) ? 1 : 0;
         E.bElite=(Event.Kind==3 && I==0);
+        E.Affix=FAVAffixes::Roll(Salt,Floor,E.Type,
+            400000+((Floor%500)*1000)+Event.UniqueId*12+I,
+            E.bElite,false);
         E.MaxHP=FAVContent::ScaledEnemyHealth(E.Type,Floor,E.Level)*
-            (E.Equipment==1?1.35f:1.f)*(E.bElite?1.65f:1.f);
+            (E.Equipment==1?1.35f:1.f)*(E.bElite?1.65f:1.f)*
+            FAVAffixes::Traits(E.Affix,1.f,0.f).MaxHealthScale;
         E.HP=E.MaxHP;E.Cooldown=0.65f+0.2f*(I%3);
         // Reserved, stable across cold loads. Do not collide with ordinary
         // mob IDs (1..N), minibosses or boss summons.
@@ -1267,7 +1278,7 @@ void AAVGameMode::Strike(bool bSpin)
         if(HeroClass==1 && !bSpin && SkillRank(25)>0 &&
             (MeleeSwingCount%3)==0) HitDamage*=1.5f;
         if(bShield && bFacing) HitDamage*=0.58f;
-        Enemy.HP-=HitDamage;
+        ApplyDamageToEnemy(Enemy,HitDamage);
         Enemy.Flash = 0.16f;
         Enemy.Knockback += SafeDirection(Delta) *
             (Enemy.Type == 3 ? 1.f : 5.f + (HasGearPerk(1)?2.f:0.f) +
@@ -1546,6 +1557,25 @@ void AAVGameMode::DropLoot(const FVector2D& Pos, bool bBoss)
     }
 }
 
+float AAVGameMode::ApplyDamageToEnemy(FAVEnemy& Enemy,float RawDamage)
+{
+    const float Actual=FAVAffixes::TakeDamage(
+        Enemy.Affix,RawDamage,Enemy.bWardConsumed);
+    Enemy.HP-=Actual;
+    return Actual;
+}
+
+void AAVGameMode::OnAffixedEnemyHitHero(FAVEnemy& Enemy,float ActualDamage)
+{
+    if(Enemy.Affix==static_cast<int32>(EAVEnemyAffix::Blooddrinker))
+        Enemy.HP=FMath::Min(Enemy.MaxHP,Enemy.HP+ActualDamage*0.20f);
+    const int32 Status=FAVAffixes::Traits(
+        Enemy.Affix,Enemy.HP/FMath::Max(1.f,Enemy.MaxHP),
+        Enemy.AlertTime).InflictedStatus;
+    if(Status==1)PoisonTime=FMath::Max(PoisonTime,2.4f);
+    else if(Status==2)BurnTime=FMath::Max(BurnTime,2.f);
+}
+
 void AAVGameMode::KillEnemy(int32 Index)
 {
     if (!Enemies.IsValidIndex(Index)) return;
@@ -1807,6 +1837,7 @@ void AAVGameMode::SaveCheckpoint()
     Save->CheckpointArmor=ArmorRating-EquipmentAppliedArmor;
     Save->CheckpointRanged=RangedBonus;
     Save->bCheckpointV09Data=true;
+    Save->bCheckpointV13Data=true;
     Save->CheckpointMapWidth=MapW; Save->CheckpointMapHeight=MapH;
     Save->CheckpointInventoryItems=InventoryItems;
     Save->CheckpointEquipmentSlots=EquipmentSlots;
@@ -1868,7 +1899,8 @@ void AAVGameMode::SaveCheckpoint()
             E.AttackWindup, E.LockedTarget.X, E.LockedTarget.Y, float(E.AttackPattern),
             E.bMiniBoss ? 1.f : 0.f, E.HP, E.MaxHP, E.Cooldown, E.Flash,
             E.Wander, E.Telegraph, E.bElite ? 1.f : 0.f, float(E.Id),
-            E.PhaseShiftTime, E.bPhaseShifted ? 1.f : 0.f, float(E.Subclass)};
+            E.PhaseShiftTime, E.bPhaseShifted ? 1.f : 0.f,
+            float(E.Subclass),float(E.Affix),E.bWardConsumed?1.f:0.f};
         for (float F : V) Save->CheckpointEnemyData.Add(F);
     }
     Save->CheckpointPickupData.Reset();
@@ -1979,7 +2011,8 @@ void AAVGameMode::LoadCheckpointWorld()
         }
     Enemies.Reset();
     const TArray<float>& ED = Save->CheckpointEnemyData;
-    const int32 EnemyStride = Save->bCheckpointV09Data ? 31 : 30;
+    const int32 EnemyStride = Save->bCheckpointV13Data ? 33 :
+        Save->bCheckpointV09Data ? 31 : 30;
     for (int32 I = 0; I + EnemyStride - 1 < ED.Num(); I += EnemyStride)
     {
         FAVEnemy E;
@@ -1999,7 +2032,12 @@ void AAVGameMode::LoadCheckpointWorld()
         E.Telegraph = ED[I + 25]; E.bElite = ED[I + 26] != 0.f;
         E.Id = int32(ED[I + 27]); E.PhaseShiftTime = ED[I + 28];
         E.bPhaseShifted = ED[I + 29] != 0.f;
-        if (EnemyStride == 31) E.Subclass = FMath::Clamp(int32(ED[I + 30]),0,1);
+        if (EnemyStride >= 31) E.Subclass = FMath::Clamp(int32(ED[I+30]),0,1);
+        if (EnemyStride >= 33)
+        {
+            E.Affix=FMath::Clamp(int32(ED[I+31]),0,12);
+            E.bWardConsumed=ED[I+32]!=0.f;
+        }
         Enemies.Add(E);
     }
     Pickups.Reset();
@@ -2876,7 +2914,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                         {
                             if (J != I && Enemies[J].Faction != E.Faction &&
                                 FVector2D::Distance(Enemies[J].Pos, Target) < 0.6f)
-                            { Enemies[J].HP -= Damage; break; }
+                            { ApplyDamageToEnemy(Enemies[J],Damage); break; }
                         }
                     }
                     else DamageHero(Damage, E.Pos);
@@ -2994,7 +3032,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 Damage=FMath::RoundToInt(ModifiedAttackDamage(Damage,E,true,Bolt.Visual!=1));
                 Bolt.HitEnemyIds.Add(E.Id);
                 --Bolt.PierceRemaining;
-                E.HP-=Damage;
+                ApplyDamageToEnemy(E,Damage);
                 E.Flash = 0.16f;
                 E.Knockback += SafeDirection(E.Pos - Old) * 3.1f;
                 AddEffect(E.Pos, 2, 0.4f);
@@ -3015,7 +3053,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 const float T = LenSq > KINDA_SMALL_NUMBER ?
                     FMath::Clamp(FVector2D::DotProduct(Victim.Pos - Old, Segment) / LenSq, 0.f, 1.f) : 0.f;
                 if ((Old + Segment * T - Victim.Pos).SizeSquared() > 0.1764f) continue;
-                Victim.HP -= Bolt.Damage;
+                ApplyDamageToEnemy(Victim,Bolt.Damage);
                 Victim.Flash = 0.15f;
                 AddEffect(Victim.Pos, 2, 0.5f);
                 bHit = true;
