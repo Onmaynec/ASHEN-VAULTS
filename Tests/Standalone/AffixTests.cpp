@@ -46,6 +46,20 @@ int main()
     assert(FAVAffixes::Traits(11,1.f,0.f).MaxHealthScale>1.f);
     assert(FAVAffixes::Traits(11,1.f,0.f).MovementScale<1.f);
     assert(FAVAffixes::Traits(12,1.f,0.f).bConsumesRuneWard);
+    for(int32 Floor : {1,5,20,40,100,500})
+    {
+        assert(FAVAffixes::BonusExperience(Floor,0)==0);
+        assert(FAVAffixes::BonusGold(Floor,0)==0);
+        assert(FAVAffixes::BonusExperience(Floor,99)==0);
+        assert(FAVAffixes::BonusGold(Floor,-1)==0);
+        for(int32 Id=1;Id<FAVAffixes::Count;++Id)
+        {
+            assert(FAVAffixes::BonusExperience(Floor,Id)>=2);
+            assert(FAVAffixes::BonusGold(Floor,Id)>=3);
+            assert(FAVAffixes::BonusExperience(Floor,Id)<=202);
+            assert(FAVAffixes::BonusGold(Floor,Id)<=153);
+        }
+    }
     for(int32 Id=0;Id<FAVAffixes::Count;++Id)
     {
         bool bWard=false;
