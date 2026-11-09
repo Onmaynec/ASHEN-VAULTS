@@ -3,19 +3,21 @@
 #include <cassert>
 #include <iostream>
 int main() {
-    int weapons=0,armor=0,accessories=0,sets[6]={0,0,0,0,0,0};
+    int weapons=0,armor=0,accessories=0,consumables=0,sets[6]={0,0,0,0,0,0};
     for(int id=0;id<FAVEquipment::Count;++id) {
         const FAVEquipmentSpec* p=FAVEquipment::Find(id);
         assert(p && p->Id==id && p->CodeName[0]!=0);
         assert(p->Rarity>=AVCommon && p->Rarity<=AVLegendary);
         assert(p->RequiredHero>=-1 && p->RequiredHero<4);
-        assert(FAVEquipment::CanEquip(id,p->RequiredHero<0?0:p->RequiredHero));
+        assert(FAVEquipment::CanEquip(id,p->RequiredHero<0?0:p->RequiredHero)==
+            (p->Slot!=AVConsumable));
         if(p->Slot==AVWeapon)++weapons;
         else if(p->Slot==AVAccessory)++accessories;
+        else if(p->Slot==AVConsumable)++consumables;
         else ++armor;
         if(p->SetId>0) {assert(p->SetId<=5);++sets[p->SetId];}
     }
-    assert(weapons==10 && armor==25 && accessories==7);
+    assert(weapons==40 && armor==45 && accessories==12 && consumables==10);
     for(int id=1;id<=5;++id){assert(sets[id]==5);assert(FAVEquipment::SetBonus(id,3)>0);}
     assert(FAVEquipment::RarityRoll(0)==AVCommon);
     assert(FAVEquipment::RarityRoll(39)==AVCommon);
@@ -23,7 +25,7 @@ int main() {
     assert(FAVEquipment::RarityRoll(70)==AVRare);
     assert(FAVEquipment::RarityRoll(88)==AVEpic);
     assert(FAVEquipment::RarityRoll(99)==AVLegendary);
-    assert(!FAVEquipment::Find(-1) && !FAVEquipment::Find(42));
+    assert(!FAVEquipment::Find(-1) && !FAVEquipment::Find(107));
     uint8 ranks[FAVSkills::Count]={0};
     for(int id=0;id<FAVSkills::Count;++id) {
         const FAVSkillSpec* p=FAVSkills::Find(id);
@@ -41,6 +43,6 @@ int main() {
     assert(!FAVSkills::CanLearn(15,3,20,ranks,FAVSkills::Count,1)); // wrong class
     assert(!FAVSkills::CanLearn(37,3,19,ranks,FAVSkills::Count,1)); // below level
     assert(!FAVSkills::CanLearn(0,3,20,ranks,FAVSkills::Count,0)); // no points
-    std::cout<<"PASS: 42 equipment specs, five sets, 39 skills and restrictions\n";
+    std::cout<<"PASS: 107 item specs (40 weapons, 45 armor, 12 accessories, 10 consumables), five sets and 39 skills\n";
     return 0;
 }
