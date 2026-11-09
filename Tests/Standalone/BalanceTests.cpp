@@ -90,12 +90,13 @@ int main()
     {
         const FAVEquipmentSpec* Item = FAVEquipment::Find(Id);
         assert(Item);
-        assert(Item->Slot >= AVWeapon && Item->Slot <= AVAccessory);
+        assert(Item->Slot >= AVWeapon && Item->Slot <= AVConsumable);
         assert(Item->ValueA >= -100.f && Item->ValueA <= 100.f);
         assert(Item->ValueB >= -100.f && Item->ValueB <= 100.f);
         for (int32 Hero = 0; Hero < 4; ++Hero)
             assert(FAVEquipment::CanEquip(Id, Hero) ==
-                (Item->RequiredHero == -1 || Item->RequiredHero == Hero));
+                (Item->Slot!=AVConsumable &&
+                 (Item->RequiredHero == -1 || Item->RequiredHero == Hero)));
     }
 
     std::cout << "FLOOR  LEVEL  HP_MULT  DMG_MULT  BANDITS\n";
@@ -110,6 +111,6 @@ int main()
                   << "\n";
     }
     std::cout << "PASS: 57 enemy stats over 10 depths, 250 camp sizes, "
-                 "four heroes, gear and skill restrictions\n";
+                 "four heroes, 107 items and skill restrictions\n";
     return 0;
 }
