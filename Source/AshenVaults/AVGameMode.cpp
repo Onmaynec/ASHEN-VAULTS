@@ -1130,27 +1130,19 @@ void AAVGameMode::UpdateRoomEvents(float DeltaSeconds)
         const bool bInside=FAVDepthDirector::InRoom(Region,Hero);
         if(!Event.bArmed)
         {
-            bool bStart=false;
-            if(Event.Trigger==static_cast<int32>(EAVWaveTrigger::OnEntry))
-                bStart=bInside;
-            else if(Event.Trigger==static_cast<int32>(EAVWaveTrigger::AfterClear) &&
-                    bInside)
-            {
-                bStart=true;
-                for(const FAVEnemy& Mob:Enemies)
-                    if(Mob.HP>0.f&&FAVDepthDirector::InRoom(Region,Mob.Pos))
-                    {bStart=false;break;}
-            }
-            else if(Event.Trigger==static_cast<int32>(EAVWaveTrigger::OnChestOpen) &&
-                    bInside)
-            {
+            bool bLiveEnemyInside=false;
+            for(const FAVEnemy& Mob:Enemies)
+                if(Mob.HP>0.f&&FAVDepthDirector::InRoom(Region,Mob.Pos))
+                {bLiveEnemyInside=true;break;}
+            bool bOpenedChest=false;
+            if(Event.Trigger==static_cast<int32>(EAVWaveTrigger::OnChestOpen))
                 for(const FAVChest& Chest:Chests)
-                    if(Chest.bOpened && FAVDepthDirector::InRoom(Region,Chest.Pos))
-                    {bStart=true;break;}
-            }
-            else if(Event.Trigger==static_cast<int32>(EAVWaveTrigger::OnFirstKill))
-                bStart=Event.bKillWitnessed && bInside;
-            if(bStart)
+                    if(Chest.bOpened &&
+                       FAVDepthDirector::InRoom(Region,Chest.Pos))
+                    {bOpenedChest=true;break;}
+            if(FAVDepthDirector::ShouldArmWave(
+                static_cast<EAVWaveTrigger>(Event.Trigger),
+                bInside,bLiveEnemyInside,bOpenedChest,Event.bKillWitnessed))
             {
                 Event.bArmed=true;
                 Toast=TEXT("WARNING: HOSTILE REINFORCEMENTS");
@@ -1158,11 +1150,9 @@ void AAVGameMode::UpdateRoomEvents(float DeltaSeconds)
                 AddEffect(Event.Center,1,1.4f);
             }
         }
-        else
-        {
-            Event.Countdown-=DeltaSeconds;
-            if(Event.Countdown<=0.f)SpawnRoomWave(Event);
-        }
+        else if(FAVDepthDirector::AdvanceWarning(
+            Event.Countdown,DeltaSeconds))
+            SpawnRoomWave(Event);
     }
 }
 
