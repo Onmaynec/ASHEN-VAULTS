@@ -1630,7 +1630,11 @@ void AAVGameMode::KillEnemy(int32 Index)
         Toast = TEXT("COMBO BONUS  +5 GOLD");
         ToastTime = 1.5f;
     }
-    GrantExperience(bBoss ? 22 + Floor * 5 : (3 + Floor) * (Dead.bElite ? 2 : 1));
+    const int32 XPReward=(bBoss ? 22+Floor*5 :
+        (3+Floor)*(Dead.bElite?2:1))+
+        FAVAffixes::BonusExperience(Floor,Dead.Affix);
+    GrantExperience(XPReward);
+    Gold+=FAVAffixes::BonusGold(Floor,Dead.Affix);
     if (Dead.Equipment != 0) ++PackMaterials;
     if (Dead.Equipment != 0 && RNG.FRand() < 0.14f)
     {
