@@ -13,6 +13,9 @@ int main()
     std::set<std::string> Names;
     int NewWeapons[4]={0,0,0,0};
     int NewArmor[4]={0,0,0,0};
+    int CommonWeapons[4]={0,0,0,0};
+    int LegendaryWeapons[4]={0,0,0,0};
+    int CommonArmor[4]={0,0,0,0};
     int Patterns[11]={0};
     int SpecialResists=0;
     for(int Id=0;Id<FAVEquipment::Count;++Id)
@@ -34,6 +37,10 @@ int main()
         {
             assert(S->Slot==AVWeapon&&S->RequiredHero>=0);
             ++NewWeapons[S->RequiredHero];
+            if(S->Rarity==AVCommon)++CommonWeapons[S->RequiredHero];
+            if(S->Rarity==AVLegendary)++LegendaryWeapons[S->RequiredHero];
+            for(int Hero=0;Hero<4;++Hero)
+                assert(FAVEquipment::CanEquip(Id,Hero)==(Hero==S->RequiredHero));
             assert(S->Pattern>=1&&S->Pattern<=10);
             ++Patterns[S->Pattern];
         }
@@ -42,6 +49,7 @@ int main()
             assert(S->Slot>=AVHead&&S->Slot<=AVBoots);
             assert(S->RequiredHero>=0);
             ++NewArmor[S->RequiredHero];
+            if(S->Rarity==AVCommon)++CommonArmor[S->RequiredHero];
             assert(S->Pattern==0);
         }
         if(Id>=92&&Id<=96)
@@ -70,7 +78,13 @@ int main()
     assert(Names.size()==107&&SpecialResists>=5);
     assert(NewWeapons[0]==8&&NewWeapons[1]==8);
     assert(NewWeapons[2]==7&&NewWeapons[3]==7);
-    for(int Hero=0;Hero<4;++Hero)assert(NewArmor[Hero]==5);
+    for(int Hero=0;Hero<4;++Hero)
+    {
+        assert(NewArmor[Hero]==5);
+        assert(CommonWeapons[Hero]>=1);
+        assert(LegendaryWeapons[Hero]>=1);
+        assert(CommonArmor[Hero]>=1);
+    }
     for(int Pattern=1;Pattern<=10;++Pattern)
         assert(FAVEquipment::PatternName(Pattern)[0]);
 
@@ -88,6 +102,8 @@ int main()
     {
         const int Encoded=FAVEquipment::EncodeInstance(48,Affix);
         assert(Encoded>FAVEquipment::Count&&Encoded<65536);
+        const float SavedPickupAmount=static_cast<float>(Encoded);
+        assert(static_cast<int>(SavedPickupAmount)==Encoded);
         assert(FAVEquipment::BaseId(Encoded)==48);
         assert(FAVEquipment::AffixId(Encoded)==Affix);
         assert(FAVEquipment::Find(Encoded)==FAVEquipment::Find(48));
