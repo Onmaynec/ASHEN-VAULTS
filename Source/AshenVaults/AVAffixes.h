@@ -35,5 +35,7 @@ public:
     static FAVAffixTraits Traits(int32 Affix,float HealthFraction,
                                  float AlertTime);
     static float TakeDamage(int32 Affix,float Incoming,bool& bWardConsumed);
+    static int32 BonusExperience(int32 Floor,int32 Affix);
+    static int32 BonusGold(int32 Floor,int32 Affix);
     static const char* Name(int32 Affix);
 };
