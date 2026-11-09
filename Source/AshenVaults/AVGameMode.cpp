@@ -1393,10 +1393,13 @@ void AAVGameMode::Strike(bool bSpin)
         if(HeroClass==1 && !bSpin && SkillRank(25)>0 &&
             (MeleeSwingCount%3)==0) HitDamage*=1.5f;
         if(bShield && bFacing) HitDamage*=0.58f;
-        ApplyDamageToEnemy(Enemy,HitDamage);
-        if(Style.Status==1)Enemy.PoisonTime=FMath::Max(Enemy.PoisonTime,3.5f);
-        if(Style.Status==2)Enemy.BurnTime=FMath::Max(Enemy.BurnTime,3.f);
-        if(Style.HealOnHit>0.f)HP=FMath::Min(MaxHP,HP+Style.HealOnHit);
+        const float Applied=ApplyDamageToEnemy(Enemy,HitDamage);
+        if(Applied>0.f)
+        {
+            if(Style.Status==1)Enemy.PoisonTime=FMath::Max(Enemy.PoisonTime,3.5f);
+            if(Style.Status==2)Enemy.BurnTime=FMath::Max(Enemy.BurnTime,3.f);
+            if(Style.HealOnHit>0.f)HP=FMath::Min(MaxHP,HP+Style.HealOnHit);
+        }
         Enemy.Flash = 0.16f;
         Enemy.Knockback += SafeDirection(Delta) *
             (Enemy.Type == 3 ? 1.f : 5.f + Style.KnockbackBonus +
@@ -3255,9 +3258,12 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 Damage=FMath::RoundToInt(ModifiedAttackDamage(Damage,E,true,Bolt.Visual!=1));
                 Bolt.HitEnemyIds.Add(E.Id);
                 --Bolt.PierceRemaining;
-                ApplyDamageToEnemy(E,Damage);
-                if(Bolt.Status==1)E.PoisonTime=FMath::Max(E.PoisonTime,3.f);
-                if(Bolt.Status==2)E.BurnTime=FMath::Max(E.BurnTime,3.f);
+                const float Applied=ApplyDamageToEnemy(E,Damage);
+                if(Applied>0.f)
+                {
+                    if(Bolt.Status==1)E.PoisonTime=FMath::Max(E.PoisonTime,3.f);
+                    if(Bolt.Status==2)E.BurnTime=FMath::Max(E.BurnTime,3.f);
+                }
                 E.Flash = 0.16f;
                 E.Knockback += SafeDirection(E.Pos - Old) * 3.1f;
                 AddEffect(E.Pos, 2, 0.4f);
