@@ -986,7 +986,11 @@ void AAVGameMode::GenerateFloor()
             FAVHazard Hazard;
             Hazard.Type = CurrentBiome() == 2 ? 1 : 0;
             Hazard.Pos = FVector2D(R.X + 1.5f, R.Y + R.H - 1.5f);
-            if (CanMove(Hazard.Pos,0.3f) &&
+            bool bNearEnemy=false;
+            for(const FAVEnemy& Enemy:Enemies)
+                if((Enemy.Pos-Hazard.Pos).SizeSquared()<2.25f)
+                {bNearEnemy=true;break;}
+            if (!bNearEnemy && CanMove(Hazard.Pos,0.3f) &&
                 (Hazard.Pos-Hero).SizeSquared()>16.f &&
                 (Hazard.Pos-Shrine).SizeSquared()>6.25f &&
                 (Hazard.Pos-Exit).SizeSquared()>6.25f &&
