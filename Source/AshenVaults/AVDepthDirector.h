@@ -62,4 +62,8 @@ public:
                           const TArray<FVector2D>& Occupied,FVector2D& Out,
                           float HeroBuffer=4.f);
     static bool InRoom(const FAVRoomBounds& R,const FVector2D& Pos);
+    static bool ShouldArmWave(EAVWaveTrigger Trigger,bool bInside,
+                              bool bLiveEnemyInside,bool bOpenedChest,
+                              bool bKillWitnessed);
+    static bool AdvanceWarning(float& Seconds,float DeltaSeconds);
 };
