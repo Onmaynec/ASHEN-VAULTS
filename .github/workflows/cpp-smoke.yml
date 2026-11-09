@@ -85,5 +85,7 @@ jobs:
         run: bash Tests/Standalone/run_tactics.sh
       - name: Elite and mutated enemy combat traits
         run: bash Tests/Standalone/run_affixes.sh
+      - name: v1.5.0 expanded items and rare instance traits
+        run: bash Tests/Standalone/run_items.sh
 
 # Does NOT build Unreal Engine, run UHT, or verify Windows packaging.
