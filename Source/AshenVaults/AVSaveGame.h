@@ -44,6 +44,8 @@ public:
     // v0.9.0 data. Absent/default on v0.8 saves; derived gear bonuses are NOT stored
     // in the base values above, preventing a double application after reload.
     UPROPERTY(SaveGame) bool bCheckpointV09Data = false;
+    // v1.3.0: 33 floats per enemy (appended affix ID / consumed ward).
+    UPROPERTY(SaveGame) bool bCheckpointV13Data = false;
     UPROPERTY(SaveGame) int32 CheckpointMapWidth = 52;
     UPROPERTY(SaveGame) int32 CheckpointMapHeight = 38;
     UPROPERTY(SaveGame) TArray<int32> CheckpointInventoryItems;
@@ -56,6 +58,8 @@ public:
     // Cold-restart world snapshot: preserve the exact generated dungeon floor.
     UPROPERTY(SaveGame) TArray<uint8> CheckpointTiles;
     UPROPERTY(SaveGame) TArray<uint8> CheckpointExplored;
+    // v1.3.0: 14 floats per deferred room encounter, optional on old saves.
+    UPROPERTY(SaveGame) TArray<float> CheckpointRoomEventData;
     UPROPERTY(SaveGame) TArray<float> CheckpointEnemyData;
     UPROPERTY(SaveGame) TArray<float> CheckpointPickupData;
     UPROPERTY(SaveGame) TArray<float> CheckpointChestData;

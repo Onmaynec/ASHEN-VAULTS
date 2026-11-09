@@ -9,6 +9,8 @@
 #include "AVDungeonNavigation.h"
 #include "AVContent.h"
 #include "AVEncounters.h"
+#include "AVDepthDirector.h"
+#include "AVAffixes.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
@@ -516,7 +518,7 @@ void AAVGameMode::GenerateFloor()
     FlowDistances.Init(-1, MapW * MapH);
     LastVisionX = -1; LastVisionY = -1; FlowRefreshTime = 0.f;
     Enemies.Reset(); Pickups.Reset(); Bolts.Reset(); Effects.Reset(); Traps.Reset(); Chests.Reset();
-    Hazards.Reset(); Props.Reset(); Decorations.Reset();
+    Hazards.Reset(); Props.Reset(); Decorations.Reset(); RoomEvents.Reset();
     HeroVelocity = FVector2D::ZeroVector;
     bMerchantSpawned = false;
     bBanditCamp = false;
@@ -547,8 +549,13 @@ void AAVGameMode::GenerateFloor()
     {
         const bool bBastion = CurrentBiome() == 3;
         // The Bastion has a guaranteed main battle hall, wings and broad galleries.
-        const int32 W = bBastion ? (Rooms.Num() == 0 ? 18 : RNG.RandRange(8, 14)) : RNG.RandRange(5, 11);
-        const int32 H = bBastion ? (Rooms.Num() == 0 ? 14 : RNG.RandRange(8, 12)) : RNG.RandRange(5, 9);
+        // Every fourth chamber can become a larger arena with room for
+        // crossfire, flanks and elite squads; other rooms remain compact.
+        const bool bArena=Rooms.Num()>0 && Rooms.Num()%4==0;
+        const int32 W=bBastion ? (Rooms.Num()==0?18:RNG.RandRange(8,14)) :
+            RNG.RandRange(bArena?10:5,bArena?15:11);
+        const int32 H=bBastion ? (Rooms.Num()==0?14:RNG.RandRange(8,12)) :
+            RNG.RandRange(bArena?8:5,bArena?11:9);
         FRoom R = { RNG.RandRange(2, MapW - W - 3), RNG.RandRange(2, MapH - H - 3), W, H };
         bool bOverlaps = false;
         for (const FRoom& Existing : Rooms)
@@ -635,6 +642,30 @@ void AAVGameMode::GenerateFloor()
         Tiles[Y * MapW + X] = 1;
     }
     } // end classic room-and-corridor generator
+
+    // Eight distinct combat-room topologies, applied before doors, traps
+    // and hostile camps. The entry room stays clear.
+    for(int32 RoomIndex=1;RoomIndex<Rooms.Num();++RoomIndex)
+    {
+        const FRoom& R=Rooms[RoomIndex];
+        FAVRoomBounds Bounds;
+        Bounds.X=R.X;Bounds.Y=R.Y;Bounds.W=R.W;Bounds.H=R.H;
+        FAVDepthDirector::ApplyGeometry(Tiles,MapW,MapH,Bounds,
+            FAVDepthDirector::Geometry(RunSeed,Floor,RoomIndex,CurrentBiome()));
+    }
+    // Additional shortcuts connect distant wings instead of only consecutive
+    // rooms. The connectivity pass repairs dead pockets after cover placement.
+    if(Rooms.Num()>=5 && (Floor%3)!=0)
+    {
+        const FRoom& A=Rooms[1],& B=Rooms[Rooms.Num()-2];
+        FAVRoomBounds Left,Right;
+        Left.X=A.X;Left.Y=A.Y;Left.W=A.W;Left.H=A.H;
+        Right.X=B.X;Right.Y=B.Y;Right.W=B.W;Right.H=B.H;
+        FAVDepthDirector::CarveAlternativeRoute(
+            Tiles,MapW,MapH,Left,Right,(Floor%2)==0);
+    }
+    if(Rooms.Num()>0)
+        FAVDepthDirector::RepairConnectivity(Tiles,MapW,MapH,Rooms[0].Center());
     if (Rooms.Num() == 0)
     {
         for (int32 Y = 4; Y <= 13; ++Y)
@@ -705,9 +736,20 @@ void AAVGameMode::GenerateFloor()
             FVector2D::Distance(Chest.Pos, Exit) < 2.5f ||
             (bMerchantSpawned && FVector2D::Distance(Chest.Pos, Merchant) < 2.5f))
             Chest.Pos = FVector2D(R.X + R.W - 1.5f, R.Y + R.H - 1.5f);
+        TArray<FVector2D> Reserved;
+        for (const FAVTrap& Trap : Traps) Reserved.Add(Trap.Pos);
+        for (const FAVChest& Existing : Chests) Reserved.Add(Existing.Pos);
+        if (!CanMove(Chest.Pos,0.3f))
+        {
+            FAVRoomBounds Bounds;
+            Bounds.X=R.X;Bounds.Y=R.Y;Bounds.W=R.W;Bounds.H=R.H;
+            if(!FAVDepthDirector::FindSpawn(Tiles,MapW,MapH,Bounds,
+                EAVFormation::CornerSentries,I,Rooms.Num(),Hero,Exit,Shrine,
+                Reserved,Chest.Pos,4.f))continue;
+        }
         bool bBlocked = false;
-        for (const FAVTrap& Trap : Traps)
-            bBlocked |= FVector2D::Distance(Chest.Pos, Trap.Pos) < 1.3f;
+        for (const FVector2D& Spot : Reserved)
+            bBlocked |= (Chest.Pos-Spot).SizeSquared()<1.69f;
         if (bBlocked) continue;
         Chest.bMimic = RNG.FRand() < 0.18f;
         Chests.Add(Chest);
@@ -721,12 +763,21 @@ void AAVGameMode::GenerateFloor()
         const FRoom& R = Rooms[I];
         const FAVEncounterPlan Encounter = FAVEncounters::Plan(
             Floor, R.W * R.H, RNG.RandRange(0, 99), RNG.RandRange(0, 99));
+        FAVRoomBounds Bounds;
+        Bounds.X=R.X;Bounds.Y=R.Y;Bounds.W=R.W;Bounds.H=R.H;
+        const EAVFormation Formation=FAVDepthDirector::Formation(
+            RunSeed,Floor,I,static_cast<int32>(Encounter.Kind));
+        // Traps and opened treasure positions are reserved before spawning.
+        TArray<FVector2D> Occupied;
+        for(const FAVEnemy& Existing:Enemies)Occupied.Add(Existing.Pos);
+        for(const FAVTrap& Trap:Traps)Occupied.Add(Trap.Pos);
+        for(const FAVChest& Chest:Chests)Occupied.Add(Chest.Pos);
         for (int32 E = 0; E < Encounter.EnemyCount; ++E)
         {
             FAVEnemy Enemy;
-            Enemy.Pos = FVector2D(RNG.FRandRange(R.X + 1.f, R.X + R.W - 1.f),
-                                  RNG.FRandRange(R.Y + 1.f, R.Y + R.H - 1.f));
-            if (!CanMove(Enemy.Pos, 0.3f)) Enemy.Pos = R.Center();
+            if(!FAVDepthDirector::FindSpawn(Tiles,MapW,MapH,Bounds,Formation,
+                E,Encounter.EnemyCount,Hero,Exit,Shrine,Occupied,Enemy.Pos,4.5f))
+                continue;
             Enemy.Type = FAVEncounters::SelectType(
                 Floor, Encounter.Kind,
                 RNG.RandRange(0, 99), RNG.RandRange(0, 99),
@@ -735,18 +786,61 @@ void AAVGameMode::GenerateFloor()
             Enemy.Level = FAVContent::EnemyLevel(Floor, RNG.RandRange(0, 99));
             Enemy.Equipment = RNG.FRand() < Encounter.EquipmentChance ?
                 RNG.RandRange(1, 3) : 0;
-            // Bow zombies keep their own appearance and fire projectiles.
-            Enemy.MaxHP = FAVContent::ScaledEnemyHealth(Enemy.Type, Floor, Enemy.Level) *
-                (Enemy.Equipment == 1 ? 1.35f : 1.f);
             Enemy.bElite = E < Encounter.GuaranteedElites ||
                 RNG.FRand() < Encounter.EliteChance;
-            if (Enemy.bElite) Enemy.MaxHP *= 1.65f;
+            Enemy.Affix=FAVAffixes::Roll(static_cast<uint32>(RunSeed),
+                Floor,Enemy.Type,NextId,Enemy.bElite,false);
+            // Affix health modifies the same single-pass floor-scaled base.
+            Enemy.MaxHP = FAVContent::ScaledEnemyHealth(Enemy.Type,Floor,Enemy.Level)*
+                (Enemy.Equipment==1?1.35f:1.f)*
+                (Enemy.bElite?1.65f:1.f)*
+                FAVAffixes::Traits(Enemy.Affix,1.f,0.f).MaxHealthScale;
             Enemy.HP = Enemy.MaxHP;
             Enemy.Cooldown = RNG.FRandRange(0.3f, 1.6f);
             if (bMerchantSpawned && FVector2D::Distance(Enemy.Pos, Merchant) < 2.f)
                 Enemy.Pos = FVector2D(R.X + 1.2f, R.Y + 1.2f);
             Enemy.Id = NextId++;
+            Occupied.Add(Enemy.Pos);
             Enemies.Add(Enemy);
+        }
+
+        // Optional second-stage encounters. The four triggers have distinct
+        // conditions and a visible warning, never surprise instant damage.
+        const int32 MaxRoomEvents=FMath::Min(5,2+BiomeDepth()/2);
+        if(I>1 && I<Rooms.Num()-1 && RoomEvents.Num()<MaxRoomEvents)
+        {
+            const FAVWaveDirective Directive=FAVDepthDirector::Wave(
+                RunSeed,Floor,I,R.W*R.H,static_cast<int32>(Encounter.Kind));
+            if(Directive.Trigger!=EAVWaveTrigger::None)
+            {
+                FAVRoomEvent Event;
+                Event.Center=R.Center();
+                Event.X=R.X;Event.Y=R.Y;Event.W=R.W;Event.H=R.H;
+                Event.Trigger=static_cast<int32>(Directive.Trigger);
+                Event.Formation=static_cast<int32>(Directive.Formation);
+                Event.Kind=Directive.Kind;
+                Event.Count=Directive.UnitCount;
+                Event.Countdown=Directive.WarningSeconds;
+                Event.UniqueId=I;
+                RoomEvents.Add(Event);
+                if(Directive.Trigger==EAVWaveTrigger::OnChestOpen)
+                {
+                    bool bHasTreasure=false;
+                    for(const FAVChest& Chest:Chests)
+                        if(Chest.Pos.X>=R.X && Chest.Pos.X<R.X+R.W &&
+                           Chest.Pos.Y>=R.Y && Chest.Pos.Y<R.Y+R.H)
+                        {bHasTreasure=true;break;}
+                    if(!bHasTreasure)
+                    {
+                        const FVector2D Cache(R.X+1.5f,R.Y+R.H-1.5f);
+                        if(CanMove(Cache,0.3f) &&
+                           (Cache-Hero).SizeSquared()>16.f &&
+                           (Cache-Exit).SizeSquared()>6.25f)
+                        {FAVChest Chest;Chest.Pos=Cache;Chests.Add(Chest);}
+                        else RoomEvents.Pop(); // No reachable reward to guard.
+                    }
+                }
+            }
         }
     }
     // Optional bandit hideout: occupied chamber with treasure, ambush and rival faction.
@@ -782,19 +876,28 @@ void AAVGameMode::GenerateFloor()
             const int32 X = Camp.X + Camp.W / 2, Y = Camp.Y;
             CampDoors.Add(FVector2D(X + 0.5f, Y + 0.5f));
         }
+        FAVRoomBounds CampRegion;
+        CampRegion.X=Camp.X;CampRegion.Y=Camp.Y;
+        CampRegion.W=Camp.W;CampRegion.H=Camp.H;
+        TArray<FVector2D> CampOccupied;
+        for(const FAVEnemy& Other:Enemies)CampOccupied.Add(Other.Pos);
         for (int32 I = 0; I < FAVContent::BanditGroupSize(Floor); ++I)
         {
             FAVEnemy Bandit;
-            Bandit.Pos = FVector2D(RNG.FRandRange(Camp.X + 1.f, Camp.X + Camp.W - 1.f),
-                                   RNG.FRandRange(Camp.Y + 1.f, Camp.Y + Camp.H - 1.f));
-            if (!CanMove(Bandit.Pos, 0.3f)) Bandit.Pos = Camp.Center();
+            if(!FAVDepthDirector::FindSpawn(Tiles,MapW,MapH,CampRegion,
+                EAVFormation::CornerSentries,I,FAVContent::BanditGroupSize(Floor),
+                Hero,Exit,Shrine,CampOccupied,Bandit.Pos,4.f))continue;
             Bandit.Type = I % 3 == 0 ? 25 : 33;
             Bandit.Faction = 1;
             Bandit.Level = FAVContent::EnemyLevel(Floor, RNG.RandRange(0, 99));
-            Bandit.MaxHP = FAVContent::ScaledEnemyHealth(Bandit.Type, Floor, Bandit.Level);
+            Bandit.Affix=FAVAffixes::Roll(static_cast<uint32>(RunSeed),
+                Floor,Bandit.Type,NextId,false,false);
+            Bandit.MaxHP = FAVContent::ScaledEnemyHealth(Bandit.Type, Floor, Bandit.Level)*
+                FAVAffixes::Traits(Bandit.Affix,1.f,0.f).MaxHealthScale;
             Bandit.HP = Bandit.MaxHP;
             Bandit.Cooldown = RNG.FRandRange(0.3f, 1.1f);
             Bandit.Id = NextId++;
+            CampOccupied.Add(Bandit.Pos);
             Enemies.Add(Bandit);
         }
         for (int32 I = 0; I < 2; ++I)
@@ -819,6 +922,26 @@ void AAVGameMode::GenerateFloor()
         Mini.Cooldown = 1.f;
         Mini.Id = NextId++;
         Enemies.Add(Mini);
+        // The mini-boss is protected by a small biome-native vanguard.
+        // Escort units are standard enemies, not new archetypes.
+        FAVRoomBounds MinRegion;
+        MinRegion.X=Arena.X;MinRegion.Y=Arena.Y;
+        MinRegion.W=Arena.W;MinRegion.H=Arena.H;
+        TArray<FVector2D> GuardOccupied;
+        for(const FAVEnemy& Existing:Enemies)GuardOccupied.Add(Existing.Pos);
+        for(int32 G=0;G<2;++G)
+        {
+            FAVEnemy Guard;
+            if(!FAVDepthDirector::FindSpawn(Tiles,MapW,MapH,MinRegion,
+                EAVFormation::Wedge,G,2,Hero,Exit,Shrine,
+                GuardOccupied,Guard.Pos,4.5f))continue;
+            Guard.Type=FAVContent::EnemyRoll(Floor,RNG.RandRange(0,99));
+            Guard.Level=FAVContent::EnemyLevel(Floor,RNG.RandRange(0,99));
+            Guard.MaxHP=FAVContent::ScaledEnemyHealth(Guard.Type,Floor,Guard.Level);
+            Guard.HP=Guard.MaxHP; Guard.Cooldown=1.f+0.3f*G;
+            Guard.Id=NextId++;GuardOccupied.Add(Guard.Pos);
+            Enemies.Add(Guard);
+        }
     }
     PendingGuardian = IsGuardianFloor() ? FAVContent::Boss(Floor) : -1;
     // The guardian is spawned in a separate arena when its portal is used.
@@ -842,6 +965,19 @@ void AAVGameMode::GenerateFloor()
         Pickup.Amount = 22;
         Pickups.Add(Pickup);
     }
+    // A small, deterministic pre-guardian recovery station in the entrance
+    // chamber. Uses existing pickups, with no new artwork or item IDs.
+    if(IsGuardianFloor() && Rooms.Num()>0)
+    {
+        const FVector2D Supply=Hero+FVector2D(1.6f,0.f);
+        if(CanMove(Supply,0.25f))
+        {
+            FAVPickup P;
+            P.Pos=Supply;P.Type=Floor%2==0?2:1;
+            P.Amount=FMath::Min(45,20+BiomeCycle()*4);
+            Pickups.Add(P);
+        }
+    }
     if (Floor >= 3 && CurrentBiome() != 3)
     {
         for (int32 I = 2; I < Rooms.Num() - 1; I += 2)
@@ -850,9 +986,16 @@ void AAVGameMode::GenerateFloor()
             FAVHazard Hazard;
             Hazard.Type = CurrentBiome() == 2 ? 1 : 0;
             Hazard.Pos = FVector2D(R.X + 1.5f, R.Y + R.H - 1.5f);
-            if (FVector2D::Distance(Hazard.Pos, Shrine) > 2.f &&
-                FVector2D::Distance(Hazard.Pos, Exit) > 2.f &&
-                (!bMerchantSpawned || FVector2D::Distance(Hazard.Pos, Merchant) > 2.f))
+            bool bNearEnemy=false;
+            for(const FAVEnemy& Enemy:Enemies)
+                if((Enemy.Pos-Hazard.Pos).SizeSquared()<2.25f)
+                {bNearEnemy=true;break;}
+            if (!bNearEnemy && CanMove(Hazard.Pos,0.3f) &&
+                (Hazard.Pos-Hero).SizeSquared()>16.f &&
+                (Hazard.Pos-Shrine).SizeSquared()>6.25f &&
+                (Hazard.Pos-Exit).SizeSquared()>6.25f &&
+                (!bMerchantSpawned ||
+                 (Hazard.Pos-Merchant).SizeSquared()>6.25f))
                 Hazards.Add(Hazard);
         }
     }
@@ -920,6 +1063,101 @@ void AAVGameMode::GenerateFloor()
         }
     }
     RefreshAwareness(0.f, true);
+}
+
+void AAVGameMode::SpawnRoomWave(FAVRoomEvent& Event)
+{
+    FAVRoomBounds Region;
+    Region.X=Event.X;Region.Y=Event.Y;
+    Region.W=Event.W;Region.H=Event.H;
+    TArray<FVector2D> Occupied;
+    for(const FAVEnemy& Mob:Enemies)
+        if(Mob.HP>0.f)Occupied.Add(Mob.Pos);
+    for(const FAVTrap& Trap:Traps)Occupied.Add(Trap.Pos);
+    for(const FAVHazard& Hazard:Hazards)Occupied.Add(Hazard.Pos);
+    for(const FAVChest& Chest:Chests)Occupied.Add(Chest.Pos);
+
+    int32 Spawned=0;
+    for(int32 I=0;I<Event.Count && Enemies.Num()<96;++I)
+    {
+        FAVEnemy E;
+        if(!FAVDepthDirector::FindSpawn(
+            Tiles,MapW,MapH,Region,
+            static_cast<EAVFormation>(FMath::Clamp(Event.Formation,0,7)),
+            I,Event.Count,Hero,Exit,Shrine,Occupied,E.Pos,3.5f))
+            continue; // No stacking inside walls or on the player.
+        const uint32 Salt=FAVDepthDirector::Hash(
+            static_cast<uint32>(RunSeed) ^
+            static_cast<uint32>(Floor)*0x7f4a7c15u ^
+            static_cast<uint32>(Event.UniqueId)*0x85ebca6bu ^
+            static_cast<uint32>(I)*0x165667b1u);
+        E.Type=FAVEncounters::SelectType(Floor,
+            static_cast<EAVEncounterKind>(FMath::Clamp(Event.Kind,0,3)),
+            static_cast<int32>(Salt%100u),
+            static_cast<int32>((Salt>>8)%100u),
+            static_cast<int32>((Salt>>16)%100u));
+        E.Level=FAVContent::EnemyLevel(Floor,static_cast<int32>((Salt>>20)%100u));
+        if(E.Type>=34&&E.Type<=51)E.Subclass=static_cast<int32>((Salt>>27)&1u);
+        E.Equipment=(Event.Kind==3 && I==0) ? 1 : 0;
+        E.bElite=(Event.Kind==3 && I==0);
+        E.Affix=FAVAffixes::Roll(Salt,Floor,E.Type,
+            400000+((Floor%500)*1000)+Event.UniqueId*12+I,
+            E.bElite,false);
+        E.MaxHP=FAVContent::ScaledEnemyHealth(E.Type,Floor,E.Level)*
+            (E.Equipment==1?1.35f:1.f)*(E.bElite?1.65f:1.f)*
+            FAVAffixes::Traits(E.Affix,1.f,0.f).MaxHealthScale;
+        E.HP=E.MaxHP;E.Cooldown=0.65f+0.2f*(I%3);
+        // Reserved, stable across cold loads. Do not collide with ordinary
+        // mob IDs (1..N), minibosses or boss summons.
+        E.Id=400000+((Floor%500)*1000)+Event.UniqueId*12+I;
+        Occupied.Add(E.Pos);
+        Enemies.Add(E);
+        ++Spawned;
+        AddEffect(E.Pos,1,0.65f);
+    }
+    Event.bTriggered=true;
+    Event.bArmed=false;
+    Toast=Spawned>0?TEXT("REINFORCEMENTS ARRIVE") :
+        TEXT("REINFORCEMENTS DISPERSED");
+    ToastTime=2.2f;
+}
+
+void AAVGameMode::UpdateRoomEvents(float DeltaSeconds)
+{
+    if(bInSafeCamp||bInLobby||bInBossArena||Phase!=EAVPhase::Playing)return;
+    for(FAVRoomEvent& Event:RoomEvents)
+    {
+        if(Event.bTriggered)continue;
+        FAVRoomBounds Region;
+        Region.X=Event.X;Region.Y=Event.Y;
+        Region.W=Event.W;Region.H=Event.H;
+        const bool bInside=FAVDepthDirector::InRoom(Region,Hero);
+        if(!Event.bArmed)
+        {
+            bool bLiveEnemyInside=false;
+            for(const FAVEnemy& Mob:Enemies)
+                if(Mob.HP>0.f&&FAVDepthDirector::InRoom(Region,Mob.Pos))
+                {bLiveEnemyInside=true;break;}
+            bool bOpenedChest=false;
+            if(Event.Trigger==static_cast<int32>(EAVWaveTrigger::OnChestOpen))
+                for(const FAVChest& Chest:Chests)
+                    if(Chest.bOpened &&
+                       FAVDepthDirector::InRoom(Region,Chest.Pos))
+                    {bOpenedChest=true;break;}
+            if(FAVDepthDirector::ShouldArmWave(
+                static_cast<EAVWaveTrigger>(Event.Trigger),
+                bInside,bLiveEnemyInside,bOpenedChest,Event.bKillWitnessed))
+            {
+                Event.bArmed=true;
+                Toast=TEXT("WARNING: HOSTILE REINFORCEMENTS");
+                ToastTime=2.3f;
+                AddEffect(Event.Center,1,1.4f);
+            }
+        }
+        else if(FAVDepthDirector::AdvanceWarning(
+            Event.Countdown,DeltaSeconds))
+            SpawnRoomWave(Event);
+    }
 }
 
 void AAVGameMode::AddEffect(const FVector2D& Pos, int32 Kind, float Radius, float Angle)
@@ -1066,7 +1304,7 @@ void AAVGameMode::Strike(bool bSpin)
         if(HeroClass==1 && !bSpin && SkillRank(25)>0 &&
             (MeleeSwingCount%3)==0) HitDamage*=1.5f;
         if(bShield && bFacing) HitDamage*=0.58f;
-        Enemy.HP-=HitDamage;
+        ApplyDamageToEnemy(Enemy,HitDamage);
         Enemy.Flash = 0.16f;
         Enemy.Knockback += SafeDirection(Delta) *
             (Enemy.Type == 3 ? 1.f : 5.f + (HasGearPerk(1)?2.f:0.f) +
@@ -1345,10 +1583,41 @@ void AAVGameMode::DropLoot(const FVector2D& Pos, bool bBoss)
     }
 }
 
+float AAVGameMode::ApplyDamageToEnemy(FAVEnemy& Enemy,float RawDamage)
+{
+    const float Actual=FAVAffixes::TakeDamage(
+        Enemy.Affix,RawDamage,Enemy.bWardConsumed);
+    Enemy.HP-=Actual;
+    return Actual;
+}
+
+void AAVGameMode::OnAffixedEnemyHitHero(FAVEnemy& Enemy,float ActualDamage)
+{
+    if(Enemy.Affix==static_cast<int32>(EAVEnemyAffix::Blooddrinker))
+        Enemy.HP=FMath::Min(Enemy.MaxHP,Enemy.HP+ActualDamage*0.20f);
+    const int32 Status=FAVAffixes::Traits(
+        Enemy.Affix,Enemy.HP/FMath::Max(1.f,Enemy.MaxHP),
+        Enemy.AlertTime).InflictedStatus;
+    const float Resist=FMath::Clamp(1.f-
+        (GearStat(AVStatusResistPercent)+10.f*SkillRank(1))*0.01f,
+        0.4f,1.f);
+    if(Status==1)PoisonTime=FMath::Max(PoisonTime,2.4f*Resist);
+    else if(Status==2)BurnTime=FMath::Max(BurnTime,2.f*Resist);
+}
+
 void AAVGameMode::KillEnemy(int32 Index)
 {
     if (!Enemies.IsValidIndex(Index)) return;
     const FAVEnemy Dead = Enemies[Index];
+    for(FAVRoomEvent& Event:RoomEvents)
+    {
+        if(Event.bTriggered || Event.Trigger!=
+            static_cast<int32>(EAVWaveTrigger::OnFirstKill))continue;
+        FAVRoomBounds Bounds;
+        Bounds.X=Event.X;Bounds.Y=Event.Y;Bounds.W=Event.W;Bounds.H=Event.H;
+        if(FAVDepthDirector::InRoom(Bounds,Dead.Pos))
+            Event.bKillWitnessed=true;
+    }
     const bool bBoss = FAVContent::Enemy(Dead.Type, Floor).Boss;
     Enemies.RemoveAtSwap(Index);
     ++Kills;
@@ -1361,7 +1630,11 @@ void AAVGameMode::KillEnemy(int32 Index)
         Toast = TEXT("COMBO BONUS  +5 GOLD");
         ToastTime = 1.5f;
     }
-    GrantExperience(bBoss ? 22 + Floor * 5 : (3 + Floor) * (Dead.bElite ? 2 : 1));
+    const int32 XPReward=(bBoss ? 22+Floor*5 :
+        (3+Floor)*(Dead.bElite?2:1))+
+        FAVAffixes::BonusExperience(Floor,Dead.Affix);
+    GrantExperience(XPReward);
+    Gold+=FAVAffixes::BonusGold(Floor,Dead.Affix);
     if (Dead.Equipment != 0) ++PackMaterials;
     if (Dead.Equipment != 0 && RNG.FRand() < 0.14f)
     {
@@ -1435,7 +1708,8 @@ void AAVGameMode::StoreDungeon()
     StoredWorld.Pickups = Pickups; StoredWorld.Bolts = Bolts; StoredWorld.Traps = Traps;
     StoredWorld.Chests = Chests; StoredWorld.Hazards = Hazards;
     StoredWorld.Props = Props; StoredWorld.Decorations = Decorations;
-    StoredWorld.Effects = Effects; StoredWorld.CampDoors = CampDoors;
+    StoredWorld.Effects = Effects; StoredWorld.RoomEvents=RoomEvents;
+    StoredWorld.CampDoors = CampDoors;
     StoredWorld.CampWalls = CampWalls;
     StoredWorld.Hero = Hero; StoredWorld.Exit = Exit;
     StoredWorld.Shrine = Shrine; StoredWorld.Merchant = Merchant;
@@ -1455,7 +1729,8 @@ void AAVGameMode::RestoreDungeon()
     Bolts = StoredWorld.Bolts; Traps = StoredWorld.Traps;
     Chests = StoredWorld.Chests; Hazards = StoredWorld.Hazards;
     Props = StoredWorld.Props; Decorations = StoredWorld.Decorations;
-    Effects = StoredWorld.Effects; CampDoors = StoredWorld.CampDoors;
+    Effects = StoredWorld.Effects; RoomEvents=StoredWorld.RoomEvents;
+    CampDoors = StoredWorld.CampDoors;
     CampWalls = StoredWorld.CampWalls;
     Hero = StoredWorld.Hero; Exit = StoredWorld.Exit;
     Shrine = StoredWorld.Shrine; Merchant = StoredWorld.Merchant;
@@ -1480,6 +1755,7 @@ void AAVGameMode::MakeSafeRoom(bool bLobby)
     Enemies.Reset(); Bolts.Reset(); Traps.Reset(); Hazards.Reset();
     Chests.Reset(); Pickups.Reset(); Props.Reset(); Decorations.Reset();
     CampDoors.Reset(); CampWalls.Reset(); Effects.Reset();
+    RoomEvents.Reset(); // safe spaces and guardian arenas have no scripted waves
     bMerchantSpawned = !bLobby;
     Merchant = FVector2D(20.5f, 17.5f);
     Hero = FVector2D(26.5f, 22.5f);
@@ -1594,6 +1870,7 @@ void AAVGameMode::SaveCheckpoint()
     Save->CheckpointArmor=ArmorRating-EquipmentAppliedArmor;
     Save->CheckpointRanged=RangedBonus;
     Save->bCheckpointV09Data=true;
+    Save->bCheckpointV13Data=true;
     Save->CheckpointMapWidth=MapW; Save->CheckpointMapHeight=MapH;
     Save->CheckpointInventoryItems=InventoryItems;
     Save->CheckpointEquipmentSlots=EquipmentSlots;
@@ -1604,6 +1881,8 @@ void AAVGameMode::SaveCheckpoint()
     Save->bCheckpointMagicBarrierUsed=bMagicBarrierUsed;
     // Store the dungeon, not the peaceful camp or the lobby.
     const FAVWorldSnapshot* World = bWorldStored ? &StoredWorld : nullptr;
+    const TArray<FAVRoomEvent>& SavedRoomEvents =
+        World ? World->RoomEvents : RoomEvents;
     const TArray<FAVEnemy>& SavedEnemies = World ? World->Enemies : Enemies;
     const TArray<FAVPickup>& SavedPickups = World ? World->Pickups : Pickups;
     const TArray<FAVChest>& SavedChests = World ? World->Chests : Chests;
@@ -1630,6 +1909,19 @@ void AAVGameMode::SaveCheckpoint()
     Save->bCheckpointShopPurchased0 = ShopPurchased[0];
     Save->bCheckpointShopPurchased1 = ShopPurchased[1];
     Save->bCheckpointShopPurchased2 = ShopPurchased[2];
+    Save->CheckpointRoomEventData.Reset();
+    for(const FAVRoomEvent& Event:SavedRoomEvents)
+    {
+        const float Fields[]={
+            Event.Center.X,Event.Center.Y,
+            float(Event.X),float(Event.Y),float(Event.W),float(Event.H),
+            float(Event.Trigger),float(Event.Kind),float(Event.Formation),
+            float(Event.Count),float(Event.UniqueId),Event.Countdown,
+            Event.bArmed?1.f:0.f,Event.bTriggered?1.f:0.f,
+            Event.bKillWitnessed?1.f:0.f
+        };
+        for(float Value:Fields)Save->CheckpointRoomEventData.Add(Value);
+    }
     Save->CheckpointEnemyData.Reset();
     for (const FAVEnemy& E : SavedEnemies)
     {
@@ -1640,7 +1932,8 @@ void AAVGameMode::SaveCheckpoint()
             E.AttackWindup, E.LockedTarget.X, E.LockedTarget.Y, float(E.AttackPattern),
             E.bMiniBoss ? 1.f : 0.f, E.HP, E.MaxHP, E.Cooldown, E.Flash,
             E.Wander, E.Telegraph, E.bElite ? 1.f : 0.f, float(E.Id),
-            E.PhaseShiftTime, E.bPhaseShifted ? 1.f : 0.f, float(E.Subclass)};
+            E.PhaseShiftTime, E.bPhaseShifted ? 1.f : 0.f,
+            float(E.Subclass),float(E.Affix),E.bWardConsumed?1.f:0.f};
         for (float F : V) Save->CheckpointEnemyData.Add(F);
     }
     Save->CheckpointPickupData.Reset();
@@ -1725,9 +2018,34 @@ void AAVGameMode::LoadCheckpointWorld()
     ShopPurchased[0] = Save->bCheckpointShopPurchased0;
     ShopPurchased[1] = Save->bCheckpointShopPurchased1;
     ShopPurchased[2] = Save->bCheckpointShopPurchased2;
+    RoomEvents.Reset();
+    const TArray<float>& RD=Save->CheckpointRoomEventData;
+    // Old saves have no scripted room events: continue them unchanged.
+    if(RD.Num()%15==0)
+        for(int32 I=0;I+14<RD.Num();I+=15)
+        {
+            FAVRoomEvent Event;
+            Event.Center=FVector2D(RD[I],RD[I+1]);
+            Event.X=FMath::Clamp(int32(RD[I+2]),0,MapW-1);
+            Event.Y=FMath::Clamp(int32(RD[I+3]),0,MapH-1);
+            Event.W=FMath::Clamp(int32(RD[I+4]),0,MapW-Event.X);
+            Event.H=FMath::Clamp(int32(RD[I+5]),0,MapH-Event.Y);
+            Event.Trigger=FMath::Clamp(int32(RD[I+6]),0,4);
+            Event.Kind=FMath::Clamp(int32(RD[I+7]),0,3);
+            Event.Formation=FMath::Clamp(int32(RD[I+8]),0,7);
+            Event.Count=FMath::Clamp(int32(RD[I+9]),0,5);
+            Event.UniqueId=FMath::Clamp(int32(RD[I+10]),0,128);
+            Event.Countdown=FMath::Clamp(RD[I+11],0.f,5.f);
+            Event.bArmed=RD[I+12]!=0.f;
+            Event.bTriggered=RD[I+13]!=0.f;
+            Event.bKillWitnessed=RD[I+14]!=0.f;
+            if(Event.W>=3&&Event.H>=3&&Event.Trigger>=1)
+                RoomEvents.Add(Event);
+        }
     Enemies.Reset();
     const TArray<float>& ED = Save->CheckpointEnemyData;
-    const int32 EnemyStride = Save->bCheckpointV09Data ? 31 : 30;
+    const int32 EnemyStride = Save->bCheckpointV13Data ? 33 :
+        Save->bCheckpointV09Data ? 31 : 30;
     for (int32 I = 0; I + EnemyStride - 1 < ED.Num(); I += EnemyStride)
     {
         FAVEnemy E;
@@ -1747,7 +2065,12 @@ void AAVGameMode::LoadCheckpointWorld()
         E.Telegraph = ED[I + 25]; E.bElite = ED[I + 26] != 0.f;
         E.Id = int32(ED[I + 27]); E.PhaseShiftTime = ED[I + 28];
         E.bPhaseShifted = ED[I + 29] != 0.f;
-        if (EnemyStride == 31) E.Subclass = FMath::Clamp(int32(ED[I + 30]),0,1);
+        if (EnemyStride >= 31) E.Subclass = FMath::Clamp(int32(ED[I+30]),0,1);
+        if (EnemyStride >= 33)
+        {
+            E.Affix=FMath::Clamp(int32(ED[I+31]),0,12);
+            E.bWardConsumed=ED[I+32]!=0.f;
+        }
         Enemies.Add(E);
     }
     Pickups.Reset();
@@ -2105,7 +2428,13 @@ void AAVGameMode::SpawnEnemyBolt(const FAVEnemy& Enemy, const FVector2D& Directi
         FAVContent::Enemy(Enemy.Type, Floor).Damage *
         FAVContent::LevelDamageMultiplier(Enemy.Level) *
         (Enemy.bElite ? 1.35f : 1.f) * DamageScale));
-    Bolt.Status = Status;
+    const FAVAffixTraits A=FAVAffixes::Traits(Enemy.Affix,
+        Enemy.HP/FMath::Max(1.f,Enemy.MaxHP),Enemy.AlertTime);
+    Bolt.Damage=FMath::RoundToInt(Bolt.Damage*A.OutgoingScale);
+    Bolt.Velocity*=A.BoltSpeedScale;
+    Bolt.Status = Status!=0?Status:A.InflictedStatus;
+    Bolt.Affix=Enemy.Affix;
+    Bolt.SourceEnemyId=Enemy.Id;
     Bolt.Faction = Enemy.Faction;
     Bolt.Time = 2.1f;
     Bolts.Add(Bolt);
@@ -2404,6 +2733,8 @@ void AAVGameMode::CastEnemyAbility(int32 Index, const FVector2D& Target)
     // Increment exactly once before any summon can grow Enemies/TArray.
     // Otherwise an old FAVEnemy& may dangle after reallocation.
     ++E.AttackPattern;
+    E.AbilityCooldown*=FAVAffixes::Traits(E.Affix,
+        E.HP/FMath::Max(1.f,E.MaxHP),E.AlertTime).CooldownScale;
     AddEffect(E.Pos, 1, E.bMiniBoss || FAVContent::Enemy(E.Type, Floor).Boss ? 2.f : 1.f);
     if (Pattern == 8 && Enemies.Num() <= 108) // Leave room for both summons
     {
@@ -2501,7 +2832,8 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         if (bSeesTarget)
         {
             E.LastSeenHero = Target;
-            E.MemoryTime = 3.5f;
+            E.MemoryTime = FAVAffixes::Traits(E.Affix,
+                E.HP/FMath::Max(1.f,E.MaxHP),E.AlertTime).MemorySeconds;
             E.AlertTime = 5.f;
             // Nearby allies receive the target position as a group alert.
             for (int32 J = 0; J < Enemies.Num(); ++J)
@@ -2521,8 +2853,28 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
         const FVector2D ToHero = Target - E.Pos;
         const float Distance = ToHero.Size();
         const FVector2D Direction = SafeDirection(ToHero);
-        const float Speed = Spec.Speed * (E.bElite ? 1.18f : 1.f) *
-            ((E.Type == 56 || E.Type == 39) && E.HP < E.MaxHP * 0.45f ? 1.27f : 1.f);
+        const FAVAffixTraits Affix=FAVAffixes::Traits(
+            E.Affix,E.HP/FMath::Max(1.f,E.MaxHP),E.AlertTime);
+        float CommandAura=1.f;
+        for(const FAVEnemy& Ally:Enemies)
+        {
+            if(Ally.Id==E.Id||Ally.HP<=0.f||Ally.Faction!=E.Faction||
+               Ally.Affix!=static_cast<int32>(EAVEnemyAffix::Commander))
+                continue;
+            if((Ally.Pos-E.Pos).SizeSquared()<25.f)
+            {CommandAura=1.18f;break;}
+        }
+        const float Speed=Spec.Speed*(E.bElite?1.18f:1.f)*
+            ((E.Type==56||E.Type==39)&&E.HP<E.MaxHP*0.45f?1.27f:1.f)*
+            Affix.MovementScale*CommandAura;
+        // Medics heal their living nearby allies continuously while fighting.
+        if(Affix.AllyHealingPerSecond>0.f)
+            for(FAVEnemy& Ally:Enemies)
+                if(Ally.Id!=E.Id&&Ally.HP>0.f&&Ally.Faction==E.Faction &&
+                   Ally.HP<Ally.MaxHP&&
+                   (Ally.Pos-E.Pos).SizeSquared()<16.f)
+                    Ally.HP=FMath::Min(Ally.MaxHP,
+                        Ally.HP+Ally.MaxHP*Affix.AllyHealingPerSecond*DeltaSeconds);
         const bool bCaster = (Spec.Ranged || E.Equipment == 2) && !Spec.Boss;
         const bool bMeleeBoss = E.Type == 8 || E.Type == 56;
         const float Reach = Spec.Boss ? (bMeleeBoss ? 2.0f : 1.6f) :
@@ -2617,20 +2969,27 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 if (Distance < Reach + 0.16f && bSeesTarget)
                 {
                     const float Damage = Spec.Damage * FAVContent::LevelDamageMultiplier(E.Level) *
-                        (E.bElite ? 1.35f : 1.f) * (E.Equipment == 3 ? 1.25f : 1.f);
+                        (E.bElite ? 1.35f : 1.f) * (E.Equipment == 3 ? 1.25f : 1.f)*
+                        Affix.OutgoingScale;
                     if (bTargetEnemy)
                     {
                         for (int32 J = 0; J < Enemies.Num(); ++J)
                         {
                             if (J != I && Enemies[J].Faction != E.Faction &&
                                 FVector2D::Distance(Enemies[J].Pos, Target) < 0.6f)
-                            { Enemies[J].HP -= Damage; break; }
+                            { ApplyDamageToEnemy(Enemies[J],Damage); break; }
                         }
                     }
-                    else DamageHero(Damage, E.Pos);
+                    else
+                    {
+                        const float BeforeHP=HP;
+                        DamageHero(Damage,E.Pos);
+                        if(BeforeHP>HP)
+                            OnAffixedEnemyHitHero(E,BeforeHP-HP);
+                    }
                 }
-                E.Cooldown = Spec.Boss ? 1.15f : E.Type == 7 ? 1.6f :
-                             E.Type == 1 ? 1.4f : 1.08f;
+                E.Cooldown = (Spec.Boss ? 1.15f : E.Type == 7 ? 1.6f :
+                             E.Type == 1 ? 1.4f : 1.08f)*Affix.CooldownScale;
             }
             continue;
         }
@@ -2649,10 +3008,15 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
             }
             FAVBolt Bolt;
             Bolt.Pos = E.Pos;
-            Bolt.Velocity = Direction * (Spec.Boss ? 7.8f : E.Type == 10 ? 9.f : 6.8f);
+            Bolt.Velocity = Direction * (Spec.Boss ? 7.8f : E.Type == 10 ? 9.f : 6.8f)*
+                Affix.BoltSpeedScale;
             Bolt.Damage = FMath::RoundToInt(Spec.Damage * FAVContent::LevelDamageMultiplier(E.Level) *
-                (E.bElite ? 1.35f : 1.f) * (E.Equipment == 3 ? 1.25f : 1.f));
-            Bolt.Status = (E.Type == 6 ? 1 : E.Type == 9 ? 2 : 0);
+                (E.bElite ? 1.35f : 1.f) * (E.Equipment == 3 ? 1.25f : 1.f)*
+                Affix.OutgoingScale);
+            Bolt.Status = Affix.InflictedStatus!=0 ? Affix.InflictedStatus :
+                (E.Type == 6 ? 1 : E.Type == 9 ? 2 : 0);
+            Bolt.Affix=E.Affix;
+            Bolt.SourceEnemyId=E.Id;
             Bolt.Faction = E.Faction;
             Bolts.Add(Bolt);
 
@@ -2673,10 +3037,12 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                     }
                 }
                 // Minibosses use seven distinct spread widths and cadence profiles.
-                E.Cooldown = E.bMiniBoss ? (0.85f + (E.Type - 26) * 0.13f) :
-                    bFurious ? (E.Type == 9 ? 0.85f : 0.96f) : 1.35f;
+                E.Cooldown = (E.bMiniBoss ? (0.85f + (E.Type - 26) * 0.13f) :
+                    bFurious ? (E.Type == 9 ? 0.85f : 0.96f) : 1.35f)*
+                    Affix.CooldownScale;
             }
-            else E.Cooldown = E.Type == 10 ? 1.40f : E.Type == 6 ? 1.75f : 2.1f;
+            else E.Cooldown = (E.Type == 10 ? 1.40f : E.Type == 6 ? 1.75f : 2.1f)*
+                Affix.CooldownScale;
         }
         else if (Distance < Reach + 0.2f)
         {
@@ -2742,7 +3108,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 Damage=FMath::RoundToInt(ModifiedAttackDamage(Damage,E,true,Bolt.Visual!=1));
                 Bolt.HitEnemyIds.Add(E.Id);
                 --Bolt.PierceRemaining;
-                E.HP-=Damage;
+                ApplyDamageToEnemy(E,Damage);
                 E.Flash = 0.16f;
                 E.Knockback += SafeDirection(E.Pos - Old) * 3.1f;
                 AddEffect(E.Pos, 2, 0.4f);
@@ -2763,7 +3129,7 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 const float T = LenSq > KINDA_SMALL_NUMBER ?
                     FMath::Clamp(FVector2D::DotProduct(Victim.Pos - Old, Segment) / LenSq, 0.f, 1.f) : 0.f;
                 if ((Old + Segment * T - Victim.Pos).SizeSquared() > 0.1764f) continue;
-                Victim.HP -= Bolt.Damage;
+                ApplyDamageToEnemy(Victim,Bolt.Damage);
                 Victim.Flash = 0.15f;
                 AddEffect(Victim.Pos, 2, 0.5f);
                 bHit = true;
@@ -2777,7 +3143,17 @@ void AAVGameMode::UpdateCombat(float DeltaSeconds)
                 {
                     const bool bVulnerable = Invulnerability <= 0.f;
                     const int32 Status = Bolt.Status;
+                    const float BeforeHP=HP;
                     DamageHero(Bolt.Damage, Bolt.Pos);
+                    if(BeforeHP>HP && Bolt.Affix==
+                       static_cast<int32>(EAVEnemyAffix::Blooddrinker))
+                        for(FAVEnemy& Source:Enemies)
+                            if(Source.Id==Bolt.SourceEnemyId && Source.HP>0.f)
+                            {
+                                Source.HP=FMath::Min(Source.MaxHP,
+                                    Source.HP+(BeforeHP-HP)*0.20f);
+                                break;
+                            }
                     if (bVulnerable && Phase != EAVPhase::Dead)
                     {
                         const float Resist=FMath::Clamp(1.f-
@@ -2973,6 +3349,7 @@ void AAVGameMode::Tick(float DeltaSeconds)
         if (ComboTime <= 0.f) Combo = 0;
         ToastTime = FMath::Max(0.f, ToastTime - DT);
         RefreshAwareness(DT);
+        if(!bInSafeCamp&&!bInLobby&&!bInBossArena)UpdateRoomEvents(DT);
         if (!bInSafeCamp && !bInLobby) UpdateCombat(DT);
         if (Phase != EAVPhase::Playing) break;
 

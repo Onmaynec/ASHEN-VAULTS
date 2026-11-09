@@ -10,6 +10,10 @@ on:
       - 'Source/AshenVaults/AVContent.h'
       - 'Source/AshenVaults/AVEncounters.cpp'
       - 'Source/AshenVaults/AVEncounters.h'
+      - 'Source/AshenVaults/AVDepthDirector.cpp'
+      - 'Source/AshenVaults/AVDepthDirector.h'
+      - 'Source/AshenVaults/AVAffixes.cpp'
+      - 'Source/AshenVaults/AVAffixes.h'
       - 'Source/AshenVaults/AVFortressLayout.cpp'
       - 'Source/AshenVaults/AVFortressLayout.h'
       - 'Source/AshenVaults/AVEquipment.cpp'
@@ -28,6 +32,10 @@ on:
       - 'Source/AshenVaults/AVContent.h'
       - 'Source/AshenVaults/AVEncounters.cpp'
       - 'Source/AshenVaults/AVEncounters.h'
+      - 'Source/AshenVaults/AVDepthDirector.cpp'
+      - 'Source/AshenVaults/AVDepthDirector.h'
+      - 'Source/AshenVaults/AVAffixes.cpp'
+      - 'Source/AshenVaults/AVAffixes.h'
       - 'Source/AshenVaults/AVFortressLayout.cpp'
       - 'Source/AshenVaults/AVFortressLayout.h'
       - 'Source/AshenVaults/AVEquipment.cpp'
@@ -67,5 +75,9 @@ jobs:
         run: bash Tests/Standalone/run_balance.sh
       - name: Procedural combat rooms and Arcanist spell mapping
         run: bash Tests/Standalone/run_encounters.sh
+      - name: Living depths topology, wave triggers and formations
+        run: bash Tests/Standalone/run_depth.sh
+      - name: Elite and mutated enemy combat traits
+        run: bash Tests/Standalone/run_affixes.sh
 
 # Does NOT build Unreal Engine, run UHT, or verify Windows packaging.

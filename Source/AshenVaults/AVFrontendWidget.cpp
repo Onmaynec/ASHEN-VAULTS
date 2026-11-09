@@ -163,7 +163,7 @@ void UAVFrontendWidget::Rebuild()
                  FVector2D(76.f,289.f),14,Dim);
         AddButton(TEXT("BACK"),3)->OnClicked.AddDynamic(this,&UAVFrontendWidget::OnBack);
     }
-    AddLabel(TEXT("v1.2.0  /  DEEP HUNT"),
+    AddLabel(TEXT("v1.3.0  /  LIVING DEPTHS"),
              FVector2D(76.f,514.f),13,Gold);
 }
 

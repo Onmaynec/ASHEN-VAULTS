@@ -1,6 +1,7 @@
 #include "AVHUD.h"
 #include "AVGameMode.h"
 #include "AVContent.h"
+#include "AVAffixes.h"
 #include "AVEquipment.h"
 #include "AVSkills.h"
 #include "AVArt.h"
@@ -1294,6 +1295,15 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         {
             Rect(Pt.X - 11.f * Scale, Pt.Y - 15.f * Scale, 22.f * Scale, 2.f * Scale, GoldColor);
             Rect(Pt.X - 13.f * Scale, Pt.Y - 13.f * Scale, 2.f * Scale, 22.f * Scale, GoldColor);
+        }
+        // Text-only identification until the complete art pass. It keeps new
+        // combat modifiers readable without importing placeholder textures.
+        if(E.Affix>0 && (E.Pos-Game.Hero).SizeSquared()<81.f)
+        {
+            const FString Modifier=FString(
+                ANSI_TO_TCHAR(FAVAffixes::Name(E.Affix)));
+            Text(Modifier,Pt.X-32.f*Scale,Pt.Y-28.f*Scale,
+                 GoldColor,0.53f);
         }
         // Telegraphs belong to the creature silhouette, not UI progress bars.
         // A crouch, pulse and raised casting hands are drawn in the actor space.

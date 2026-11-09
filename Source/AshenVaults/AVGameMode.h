@@ -19,6 +19,8 @@ struct FAVEnemy
     int32 Subclass = 0; // Bastion enemy variant (0 or 1), persisted
     int32 Level = 1;
     int32 Equipment = 0; // 0 none, 1 armor, 2 bow, 3 enchanted weapon
+    int32 Affix = 0; // v1.3.0: 0 ordinary, 1..12 special combat mutation
+    bool bWardConsumed=false; // rune ward absorbs the first successful hit
     int32 Faction = 0; // 0 dungeon, 1 bandits
     FVector2D LastSeenHero = FVector2D::ZeroVector;
     float MemoryTime = 0.f;
@@ -71,6 +73,8 @@ struct FAVBolt
     bool bFriendly = false;
     int32 Status = 0; // poison=1, burn=2
     int32 Faction = 0; // 0 dungeon, 1 bandits; hero projectiles use bFriendly
+    int32 Affix=0; // affix of the firing enemy, for projectile status/damage
+    int32 SourceEnemyId=-1; // allow projectile leech only while caster lives
 };
 
 USTRUCT()
@@ -133,6 +137,24 @@ struct FAVDecor
     float Phase = 0.f;
 };
 
+/** Deferred encounter, persisted when the player returns to town. */
+USTRUCT()
+struct FAVRoomEvent
+{
+    GENERATED_BODY()
+    FVector2D Center=FVector2D::ZeroVector;
+    int32 X=0,Y=0,W=0,H=0;
+    int32 Trigger=0; // EAVWaveTrigger ordinal
+    int32 Kind=0; // encounter role ordinal
+    int32 Formation=0; // EAVFormation ordinal
+    int32 Count=0;
+    int32 UniqueId=0;
+    float Countdown=0.f;
+    bool bArmed=false;
+    bool bTriggered=false;
+    bool bKillWitnessed=false;
+};
+
 struct FAVWorldSnapshot
 {
     TArray<uint8> Tiles, Visible, Explored;
@@ -146,6 +168,7 @@ struct FAVWorldSnapshot
     TArray<FAVProp> Props;
     TArray<FAVDecor> Decorations;
     TArray<FAVEffect> Effects;
+    TArray<FAVRoomEvent> RoomEvents;
     TArray<FVector2D> CampDoors, CampWalls;
     FVector2D Hero, Exit, Shrine, Merchant, BanditCampCenter;
     bool bMerchantSpawned = false, bBanditCamp = false, bShrineUsed = false;
@@ -271,6 +294,7 @@ public:
     TArray<FAVProp> Props;
     TArray<FAVDecor> Decorations;
     TArray<FAVEffect> Effects;
+    TArray<FAVRoomEvent> RoomEvents;
     float AttackCooldown = 0.f;
     float KnifeCooldown = 0.f;
     float SpinCooldown = 0.f;
@@ -290,7 +314,15 @@ public:
     bool CanMove(const FVector2D& Pos, float Radius) const;
     int32 EnemiesRemaining() const { return Enemies.Num(); }
     int32 NextXP() const { return 8 + Level * 7; }
-    bool IsExitReady() const { return Enemies.Num() == 0; }
+    bool IsExitReady() const
+    {
+        if(Enemies.Num()!=0)return false;
+        // Undiscovered optional rooms don't block progress; an active
+        // warning must resolve before the floor can be left.
+        for(const FAVRoomEvent& Event:RoomEvents)
+            if(Event.bArmed&&!Event.bTriggered)return false;
+        return true;
+    }
     bool HasRelic(int32 Index) const { return Index >= 0 && Index < 6 && (RelicMask & (1u << Index)) != 0; }
     int32 CurrentBiome() const { return ((Floor - 1) / FloorsPerBiome) % 4; }
     int32 BiomeDepth() const { return (Floor - 1) % FloorsPerBiome + 1; }
@@ -329,6 +361,8 @@ private:
     float FlowRefreshTime = 0.f;
 
     void GenerateFloor();
+    void UpdateRoomEvents(float DeltaSeconds);
+    void SpawnRoomWave(FAVRoomEvent& Event);
     void RebuildCharacterBonuses();
     void EquipInventoryItem(int32 Index);
     void UnequipSlot(int32 Slot);
@@ -366,6 +400,8 @@ private:
     bool ActivateNearbyEcho();
     void DamageHero(float Damage, const FVector2D& Source);
     void Strike(bool bSpin);
+    float ApplyDamageToEnemy(FAVEnemy& Enemy,float RawDamage);
+    void OnAffixedEnemyHitHero(FAVEnemy& Enemy,float ActualDamage);
     void KillEnemy(int32 Index);
     void GrantExperience(int32 Amount);
     void SelectUpgrade(int32 Choice);

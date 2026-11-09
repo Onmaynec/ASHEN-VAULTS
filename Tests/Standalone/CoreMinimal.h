@@ -35,6 +35,7 @@ struct FVector2D
         const float Length = Size();
         return Length > 0.00001f ? (*this) * (1.f / Length) : FVector2D{};
     }
+    float SizeSquared() const { return X*X+Y*Y; }
     static float Distance(const FVector2D& A, const FVector2D& B) { return (A - B).Size(); }
 };
 struct FIntPoint
@@ -55,9 +56,13 @@ public:
     const T& operator[](int32 Index) const { return Data.at(static_cast<size_t>(Index)); }
     auto begin() -> decltype(Data.begin()) { return Data.begin(); }
     auto end() -> decltype(Data.end()) { return Data.end(); }
+    auto begin() const -> decltype(Data.cbegin()) { return Data.cbegin(); }
+    auto end() const -> decltype(Data.cend()) { return Data.cend(); }
 };
 struct FMath
 {
+    static float Cos(float Value) { return std::cos(Value); }
+    static float Sin(float Value) { return std::sin(Value); }
     static int32 FloorToInt(float Value) { return static_cast<int32>(std::floor(Value)); }
     static int32 CeilToInt(float Value) { return static_cast<int32>(std::ceil(Value)); }
     template<typename T> static T Abs(T A) { return std::abs(A); }
