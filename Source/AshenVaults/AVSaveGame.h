@@ -55,6 +55,12 @@ public:
     UPROPERTY(SaveGame) int32 CheckpointContractProgress = 0;
     UPROPERTY(SaveGame) int32 CheckpointContractGold = 0;
     UPROPERTY(SaveGame) bool bCheckpointContractPaid = false;
+    // v1.7.0 shrine choice and run-long consecutive trial streak.
+    UPROPERTY(SaveGame) bool bCheckpointV17Data = false;
+    UPROPERTY(SaveGame) int32 CheckpointShrineChoice = 0;
+    UPROPERTY(SaveGame) int32 CheckpointShrineRemaining = 0;
+    UPROPERTY(SaveGame) int32 CheckpointShrineStreak = 0;
+    UPROPERTY(SaveGame) bool bCheckpointShrineRewarded = false;
     UPROPERTY(SaveGame) float CheckpointFoodAttackTime = 0.f;
     UPROPERTY(SaveGame) float CheckpointFoodGuardTime = 0.f;
     UPROPERTY(SaveGame) float CheckpointFoodSpeedTime = 0.f;
