@@ -1148,7 +1148,8 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         }
     }
 
-    if (!Game.bShrineUsed && Game.IsVisibleAt(Game.Shrine))
+    if (!Game.bShrineUsed && !Game.bInBossArena && !Game.bInLobby &&
+        !Game.bInSafeCamp && Game.IsVisibleAt(Game.Shrine))
     {
         const FVector2D Site = Screen(Game.Shrine);
         Rect(Site.X - 17.f * Scale, Site.Y - 11.f * Scale,
@@ -1534,7 +1535,8 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
     if (Game.bMerchantSpawned && FVector2D::Distance(Game.Hero, Game.Merchant) < 2.0f)
         Text(TEXT("E  VISIT THE MERCHANT"),
              Hp.X - 77.f * Scale, Hp.Y - 49.f * Scale, GoldColor, 0.85f);
-    else if (!Game.bShrineUsed && FVector2D::Distance(Game.Hero, Game.Shrine) < 2.1f)
+    else if (!Game.bShrineUsed && !Game.bInBossArena && !Game.bInLobby &&
+             !Game.bInSafeCamp && FVector2D::Distance(Game.Hero, Game.Shrine) < 2.1f)
         Text(TEXT("E  SHRINE: CHOOSE YOUR FATE"),
              Hp.X - 69.f * Scale, Hp.Y - 49.f * Scale, Mint, 0.88f);
     else if ([&Game]()
@@ -1593,7 +1595,8 @@ void AAVHUD::DrawMiniMap(const AAVGameMode& Game)
         Rect(X0 + Game.Merchant.X * Unit - Unit * 0.5f,
              Y0 + Game.Merchant.Y * Unit - Unit * 0.5f,
              4.f * Scale, 4.f * Scale, GoldColor);
-    if (!Game.bShrineUsed && Game.IsExploredCell(
+    if (!Game.bShrineUsed && !Game.bInBossArena && !Game.bInLobby &&
+        !Game.bInSafeCamp && Game.IsExploredCell(
             FMath::FloorToInt(Game.Shrine.X), FMath::FloorToInt(Game.Shrine.Y)))
         Rect(X0 + Game.Shrine.X * Unit - Unit * 0.5f,
              Y0 + Game.Shrine.Y * Unit - Unit * 0.5f,
