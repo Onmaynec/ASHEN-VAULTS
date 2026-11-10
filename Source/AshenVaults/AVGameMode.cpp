@@ -14,6 +14,7 @@
 #include "AVRoomTactics.h"
 #include "AVAffixes.h"
 #include "AVContracts.h"
+#include "AVShrineTrials.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
@@ -351,6 +352,7 @@ float AAVGameMode::ModifiedAttackDamage(float Damage, const FAVEnemy& Target,
     Percent += bAbility ? GearStat(AVAbilityDamagePercent) + 6.f * SkillRank(27) :
                           4.f * SkillRank(5);
     if(FoodAttackTime>0.f)Percent+=12.f;
+    Percent+=float(FAVShrineTrials::DamageBonusPercent(ShrineState));
     if(FoodBossTime>0.f&&(Target.bMiniBoss||FAVContent::Enemy(Target.Type,Floor).Boss))
         Percent+=14.f;
     if (bAbility && HeroClass == 1 && !bRanged) Percent += 10.f * SkillRank(23);
@@ -484,10 +486,10 @@ void AAVGameMode::ResetSkills()
     Toast=TEXT("SKILLS RESET"); ToastTime=2.f;
 }
 
-void AAVGameMode::SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity)
+void AAVGameMode::SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity, bool bAllowConsumables)
 {
     // Consumables share the backpack but cannot be equipped.
-    const bool bConsumable=RNG.FRand()<0.18f;
+    const bool bConsumable=bAllowConsumables && RNG.FRand()<0.18f;
     const int32 Rarity = FMath::Max(MinimumRarity, FAVEquipment::RarityRoll(RNG.RandRange(0,99)));
     const int32 MaxTier = Floor < 6 ? AVRare : Floor < 11 ? AVEpic : AVLegendary;
     TArray<int32> Candidates;
@@ -537,6 +539,7 @@ void AAVGameMode::NewRun(bool bSameSeed, bool bKeepExistingCheckpoint)
     LearnedSkills.Init(0, FAVSkills::Count);
     SkillPoints=0; GearSelection=0; SkillSelection=0;
     bFreeRespecUsed=false; bLastStandUsed=false;
+    ShrineState=FAVShrineState{};
     EquipmentAppliedHP=0.f; EquipmentAppliedStamina=0.f;
     EquipmentAppliedAttack=0.f; EquipmentAppliedSpeed=0.f; EquipmentAppliedArmor=0.f;
     RewardDamageTime=0.f; DashBonusTime=0.f; RevengeTime=0.f;
@@ -575,6 +578,7 @@ void AAVGameMode::NewRun(bool bSameSeed, bool bKeepExistingCheckpoint)
 
 void AAVGameMode::GenerateFloor()
 {
+    FAVShrineTrials::NextFloor(ShrineState);
     // Dimensions belong to the biome and never reshape previously generated floors.
     ShotSeries=0; ShotTargetId=-1; LastShotHitTime=-100.f;
     bLastStandUsed=false; RewardDamageTime=0.f;
@@ -1825,6 +1829,20 @@ void AAVGameMode::KillEnemy(int32 Index)
         Upgrade.Amount = 1;
         Pickups.Add(Upgrade);
     }
+    // Trial targets use reserved negative IDs, persisted intact as floats.
+    // Completing the challenge grants a guaranteed gear pickup and pays once.
+    const int32 TrialGold=FAVShrineTrials::OnEnemyDefeated(ShrineState,Dead.Id,Floor);
+    if(TrialGold>0)
+    {
+        Gold+=TrialGold;
+        const int32 Tier=Floor>=16&&ShrineState.Streak>=3?AVLegendary:
+                         Floor>=6?AVEpic:AVRare;
+        SpawnGearDrop(Dead.Pos,Tier,false);
+        AddEffect(Dead.Pos,1,2.f);
+        Toast=FString::Printf(TEXT("TRIAL CLEARED  +%d GOLD  |  STREAK %d"),
+                              TrialGold,ShrineState.Streak);
+        ToastTime=4.f;
+    }
     if (bBoss)
     {
         if (bInBossArena) bGuardianDefeated = true;
@@ -1915,6 +1933,113 @@ void AAVGameMode::MakeSafeRoom(bool bLobby)
     HeroVelocity = FVector2D::ZeroVector;
     LastVisionX = -1; LastVisionY = -1;
     RefreshAwareness(0.f, true);
+}
+
+bool AAVGameMode::PrepareShrineTrial(TArray<FAVEnemy>& OutEnemies)
+{
+    OutEnemies.Reset();
+    if(bInSafeCamp||bInLobby||bInBossArena||Enemies.Num()>=96)return false;
+    // The shrine room itself can be small. Find surrounding walkable,
+    // reachable tiles; never relocate a failed spawn onto a blocked cell.
+    FAVRoomBounds Region;
+    Region.X=FMath::Clamp(FMath::FloorToInt(Shrine.X)-8,1,MapW-3);
+    Region.Y=FMath::Clamp(FMath::FloorToInt(Shrine.Y)-8,1,MapH-3);
+    Region.W=FMath::Min(17,MapW-1-Region.X);
+    Region.H=FMath::Min(17,MapH-1-Region.Y);
+    TArray<FVector2D> Occupied;
+    for(const FAVEnemy& Enemy:Enemies)
+        if(Enemy.HP>0.f)Occupied.Add(Enemy.Pos);
+    for(const FAVTrap& Trap:Traps)Occupied.Add(Trap.Pos);
+    for(const FAVHazard& Hazard:Hazards)Occupied.Add(Hazard.Pos);
+    for(const FAVChest& Chest:Chests)Occupied.Add(Chest.Pos);
+    RefreshAwareness(0.f,true);
+    const int32 Wanted=FAVShrineTrials::UnitsForFloor(Floor);
+    for(int32 I=0;I<Wanted && Enemies.Num()+OutEnemies.Num()<96;++I)
+    {
+        FVector2D Site=FVector2D::ZeroVector;
+        bool bFound=false;
+        for(int32 Attempt=0;Attempt<16;++Attempt)
+        {
+            if(!FAVDepthDirector::FindSpawn(Tiles,MapW,MapH,Region,
+                EAVFormation::Perimeter,I+Attempt*3,Wanted+Attempt,
+                Hero,Exit,Shrine,Occupied,Site,3.8f))break;
+            const int32 Cell=FMath::FloorToInt(Site.Y)*MapW+
+                             FMath::FloorToInt(Site.X);
+            if(FlowDistances.IsValidIndex(Cell)&&FlowDistances[Cell]>=0)
+            {bFound=true;break;}
+            Occupied.Add(Site); // skip unreachable tiles on subsequent attempts
+        }
+        if(!bFound)continue;
+        FAVEnemy Enemy;
+        const int32 Id=FAVShrineTrials::TrialEnemyId(I);
+        const uint32 Salt=FAVDepthDirector::Hash(
+            static_cast<uint32>(RunSeed)^static_cast<uint32>(Floor)*0x9e3779b9u^
+            static_cast<uint32>(I+1)*0x85ebca6bu);
+        const EAVEncounterKind Role=I==0?EAVEncounterKind::EliteGuard:
+                                    EAVEncounterKind::HunterPatrol;
+        Enemy.Type=FAVEncounters::SelectType(Floor,Role,
+            int32(Salt%100u),int32((Salt>>8)%100u),int32((Salt>>16)%100u));
+        Enemy.Level=FAVContent::EnemyLevel(Floor,int32((Salt>>20)%100u));
+        Enemy.Subclass=(Enemy.Type>=34&&Enemy.Type<=51)?int32((Salt>>27)&1u):0;
+        Enemy.bElite=I==0 || (Floor>=16 && I==Wanted-1);
+        Enemy.Equipment=I==0?1:0;
+        Enemy.Id=Id;
+        Enemy.Affix=FAVAffixes::Roll(Salt,Floor,Enemy.Type,Id,Enemy.bElite,false);
+        Enemy.MaxHP=FAVContent::ScaledEnemyHealth(Enemy.Type,Floor,Enemy.Level)*
+            (Enemy.Equipment==1?1.35f:1.f)*(Enemy.bElite?1.65f:1.f)*
+            FAVAffixes::Traits(Enemy.Affix,1.f,0.f).MaxHealthScale;
+        Enemy.HP=Enemy.MaxHP;
+        Enemy.Cooldown=1.25f;
+        Enemy.Pos=Site;
+        OutEnemies.Add(Enemy);
+        Occupied.Add(Site);
+    }
+    return OutEnemies.Num()>0;
+}
+
+void AAVGameMode::ChooseShrineOffering(int32 Choice)
+{
+    if(Phase!=EAVPhase::Shrine||bShrineUsed||ShrineState.Choice!=AVShrineUnchosen)
+        return;
+    TArray<FAVEnemy> TrialEnemies;
+    if(Choice==AVShrineTrial && !PrepareShrineTrial(TrialEnemies))
+    {
+        Toast=TEXT("TRIAL UNAVAILABLE: NO SAFE SPAWN");
+        ToastTime=3.f;
+        return; // Keep the menu open so another choice is possible.
+    }
+    const int32 Cost=FAVShrineTrials::PactCost(MaxHP);
+    if(!FAVShrineTrials::Choose(ShrineState,Choice,TrialEnemies.Num(),HP,MaxHP))
+    {
+        Toast=TEXT("NOT ENOUGH HEALTH FOR THE PACT");
+        ToastTime=3.f;
+        return;
+    }
+    bShrineUsed=true;
+    Phase=EAVPhase::Playing;
+    if(Choice==AVShrineRest)
+    {
+        HP=FMath::Min(MaxHP,HP+35.f);
+        AttackPower+=2.f; // same blessing as before v1.7.0
+        Toast=TEXT("SHRINE BLESSING: +35 HP  +2 ATTACK");
+    }
+    else if(Choice==AVShrinePact)
+    {
+        HP-=float(Cost); // rejected unless at least 1 HP survives
+        Toast=TEXT("BLOOD PACT: +18% DAMAGE THIS FLOOR");
+    }
+    else
+    {
+        for(const FAVEnemy& Enemy:TrialEnemies)
+        {
+            Enemies.Add(Enemy);
+            AddEffect(Enemy.Pos,1,0.85f);
+        }
+        Toast=FString::Printf(TEXT("TRIAL BEGINS: DEFEAT %d FOES"),
+                              TrialEnemies.Num());
+    }
+    ToastTime=3.2f;
+    AddEffect(Shrine,1,1.7f);
 }
 
 void AAVGameMode::EnterSafeCamp()
@@ -2029,6 +2154,11 @@ void AAVGameMode::SaveCheckpoint()
     Save->CheckpointContractProgress=Contract.Progress;
     Save->CheckpointContractGold=Contract.RewardGold;
     Save->bCheckpointContractPaid=Contract.bPaid;
+    Save->bCheckpointV17Data=true;
+    Save->CheckpointShrineChoice=ShrineState.Choice;
+    Save->CheckpointShrineRemaining=ShrineState.Remaining;
+    Save->CheckpointShrineStreak=ShrineState.Streak;
+    Save->bCheckpointShrineRewarded=ShrineState.bRewarded;
     Save->CheckpointFoodAttackTime=FoodAttackTime;
     Save->CheckpointFoodGuardTime=FoodGuardTime;
     Save->CheckpointFoodSpeedTime=FoodSpeedTime;
@@ -2164,6 +2294,17 @@ void AAVGameMode::LoadCheckpointWorld()
     if (!Save || !Save->bHasCheckpoint) { GenerateFloor(); return; }
     GenerateFloor();
     if (Save->CheckpointTiles.Num() != MapW * MapH) return;
+    // Restore the saved shrine, not a freshly available choice on an old floor.
+    ShrineState=FAVShrineState{};
+    if(Save->bCheckpointV17Data)
+    {
+        FAVShrineState SavedShrine;
+        SavedShrine.Choice=Save->CheckpointShrineChoice;
+        SavedShrine.Remaining=Save->CheckpointShrineRemaining;
+        SavedShrine.Streak=Save->CheckpointShrineStreak;
+        SavedShrine.bRewarded=Save->bCheckpointShrineRewarded;
+        if(FAVShrineTrials::Valid(SavedShrine))ShrineState=SavedShrine;
+    }
     // Legacy checkpoints did not record objective progress. Do not grant a
     // fresh bounty on top of a partly completed pre-v1.6 floor.
     Contract=FAVContractState{};
@@ -2452,6 +2593,14 @@ void AAVGameMode::PollInput(float DeltaSeconds)
         else if (PC->WasInputKeyJustPressed(EKeys::Four) && bInSafeCamp) SellPack();
         return;
     }
+    if (Phase == EAVPhase::Shrine)
+    {
+        if(bPause||bUse){Phase=EAVPhase::Playing;return;}
+        if(bChoice0)ChooseShrineOffering(AVShrineRest);
+        else if(bChoice1)ChooseShrineOffering(AVShrineTrial);
+        else if(bChoice2)ChooseShrineOffering(AVShrinePact);
+        return;
+    }
     if (Phase == EAVPhase::Relic)
     {
         if (bChoice0) ChooseRelic(0);
@@ -2572,14 +2721,10 @@ void AAVGameMode::PollInput(float DeltaSeconds)
     {
         Phase = EAVPhase::Shop;
     }
-    else if (bUse && !bShrineUsed && FVector2D::Distance(Hero, Shrine) < 1.55f)
+    else if (bUse && !bInBossArena && !bShrineUsed &&
+             FVector2D::Distance(Hero, Shrine) < 1.55f)
     {
-        bShrineUsed = true;
-        HP = FMath::Min(MaxHP, HP + 35.f);
-        AttackPower += 2.f;
-        Toast = TEXT("SHRINE BLESSING  +35 HP  +2 DAMAGE");
-        ToastTime = 2.6f;
-        AddEffect(Shrine, 1, 1.6f);
+        Phase=EAVPhase::Shrine;
     }
     else if (bUse && OpenNearbyCampDoor())
     {

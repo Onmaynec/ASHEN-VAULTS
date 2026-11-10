@@ -24,6 +24,8 @@ on:
       - 'Source/AshenVaults/AVItemCombat.h'
       - 'Source/AshenVaults/AVContracts.cpp'
       - 'Source/AshenVaults/AVContracts.h'
+      - 'Source/AshenVaults/AVShrineTrials.cpp'
+      - 'Source/AshenVaults/AVShrineTrials.h'
       - 'Source/AshenVaults/AVSkills.cpp'
       - 'Source/AshenVaults/AVSkills.h'
       - 'Source/AshenVaults/AVDungeonNavigation.cpp'
@@ -52,6 +54,8 @@ on:
       - 'Source/AshenVaults/AVItemCombat.h'
       - 'Source/AshenVaults/AVContracts.cpp'
       - 'Source/AshenVaults/AVContracts.h'
+      - 'Source/AshenVaults/AVShrineTrials.cpp'
+      - 'Source/AshenVaults/AVShrineTrials.h'
       - 'Source/AshenVaults/AVSkills.cpp'
       - 'Source/AshenVaults/AVSkills.h'
       - 'Source/AshenVaults/AVDungeonNavigation.cpp'
@@ -99,5 +103,7 @@ jobs:
         run: bash Tests/Standalone/run_item_combat.sh
       - name: v1.6.0 reproducible floor contracts and exactly-once rewards
         run: bash Tests/Standalone/run_contracts.sh
+      - name: v1.7.0 shrine choices, trial streaks and exactly-once rewards
+        run: bash Tests/Standalone/run_shrines.sh
 
 # Does NOT build Unreal Engine, run UHT, or verify Windows packaging.
