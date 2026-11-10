@@ -3,6 +3,7 @@
 #include "AVContent.h"
 #include "AVAffixes.h"
 #include "AVEquipment.h"
+#include "AVContracts.h"
 #include "AVSkills.h"
 #include "AVArt.h"
 #include "AVImageLoader.h"
@@ -1637,6 +1638,20 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
     Text(FString::Printf(TEXT("DEPTH %d  |  %s %d/5  |  LVL %d  |  KILLS %d  |  GOLD %d"),
         Game.Floor, BiomeName, Game.BiomeDepth(), Game.Level, Game.Kills, Game.Gold),
         214.f * Scale, 10.f * Scale, Pale, 0.86f);
+
+    if(Game.Contract.Kind!=AVContractNone && !Game.bInSafeCamp &&
+       !Game.bInLobby && !Game.bInBossArena)
+    {
+        const FString Objective=FString(UTF8_TO_TCHAR(FAVContracts::Name(Game.Contract.Kind)));
+        const FString Line=Game.Contract.bPaid ?
+            FString::Printf(TEXT("CONTRACT DONE  |  %s  |  +%d GOLD"),
+                            *Objective,Game.Contract.RewardGold) :
+            FString::Printf(TEXT("CONTRACT  |  %s  %d/%d  |  +%d GOLD"),
+                            *Objective,Game.Contract.Progress,Game.Contract.Target,
+                            Game.Contract.RewardGold);
+        Text(Line,260.f*Scale,43.f*Scale,
+             Game.Contract.bPaid?Mint:GoldColor,0.72f);
+    }
 
     if (Game.bInSafeCamp)
         Text(TEXT("PEACEFUL CAMP"), Canvas->SizeX * 0.70f, 10.f * Scale, Mint, 0.95f);
