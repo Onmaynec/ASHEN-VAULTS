@@ -4,6 +4,7 @@
 #include "AVAffixes.h"
 #include "AVEquipment.h"
 #include "AVContracts.h"
+#include "AVShrineTrials.h"
 #include "AVSkills.h"
 #include "AVArt.h"
 #include "AVImageLoader.h"
@@ -1534,7 +1535,7 @@ void AAVHUD::DrawActors(const AAVGameMode& Game)
         Text(TEXT("E  VISIT THE MERCHANT"),
              Hp.X - 77.f * Scale, Hp.Y - 49.f * Scale, GoldColor, 0.85f);
     else if (!Game.bShrineUsed && FVector2D::Distance(Game.Hero, Game.Shrine) < 2.1f)
-        Text(TEXT("E  PRAY  +HP / +DAMAGE"),
+        Text(TEXT("E  SHRINE: CHOOSE YOUR FATE"),
              Hp.X - 69.f * Scale, Hp.Y - 49.f * Scale, Mint, 0.88f);
     else if ([&Game]()
     {
@@ -1651,6 +1652,24 @@ void AAVHUD::DrawInterface(const AAVGameMode& Game)
                             Game.Contract.RewardGold);
         Text(Line,260.f*Scale,43.f*Scale,
              Game.Contract.bPaid?Mint:GoldColor,0.72f);
+    }
+
+    if(!Game.bInSafeCamp&&!Game.bInLobby)
+    {
+        if(Game.ShrineState.Choice==AVShrineTrial)
+        {
+            Text(Game.ShrineState.bRewarded ?
+                 FString::Printf(TEXT("TRIAL CLEARED  |  CHAIN %d/3"),
+                                 Game.ShrineState.Streak) :
+                 FString::Printf(TEXT("TRIAL FOES %d  |  CHAIN %d/3"),
+                                 Game.ShrineState.Remaining,Game.ShrineState.Streak),
+                 260.f*Scale,60.f*Scale,Game.ShrineState.bRewarded?Mint:Blood,0.78f);
+        }
+        else if(Game.ShrineState.Choice==AVShrinePact)
+            Text(TEXT("BLOOD PACT  +18% DAMAGE"),260.f*Scale,60.f*Scale,Blood,0.78f);
+        else if(Game.ShrineState.Streak>0)
+            Text(FString::Printf(TEXT("TRIAL CHAIN %d/3  |  VISIT SHRINE"),
+                 Game.ShrineState.Streak),260.f*Scale,60.f*Scale,GoldColor,0.78f);
     }
 
     if (Game.bInSafeCamp)
@@ -1900,6 +1919,25 @@ void AAVHUD::DrawOverlay(const AAVGameMode& Game)
         }
         Text(TEXT("PRESS 1 / 2 / 3 TO CLAIM"),
              Left + 154.f * Scale, Top + 205.f * Scale, GoldColor, 0.9f);
+    }
+    else if (Game.Phase == EAVPhase::Shrine)
+    {
+        Text(TEXT("SHRINE OF CHOICE"),Left+162.f*Scale,
+             Top+18.f*Scale,GoldColor,1.25f);
+        Text(TEXT("1  REST: +35 HP, +2 ATTACK"),Left+42.f*Scale,
+             Top+65.f*Scale,Mint,1.0f);
+        Text(FString::Printf(TEXT("2  TRIAL: %d FOES, RARE+ LOOT AND GOLD"),
+             FAVShrineTrials::UnitsForFloor(Game.Floor)),Left+42.f*Scale,
+             Top+105.f*Scale,GoldColor,0.91f);
+        Text(FString::Printf(TEXT("3  BLOOD PACT: -%d HP, +18%% DAMAGE"),
+             FAVShrineTrials::PactCost(Game.MaxHP)),Left+42.f*Scale,
+             Top+145.f*Scale,
+             FAVShrineTrials::CanPact(Game.HP,Game.MaxHP)?Pale:Blood,0.92f);
+        Text(FString::Printf(TEXT("TRIAL CHAIN %d/3  |  1-3 CHOOSE  ESC CANCEL"),
+             Game.ShrineState.Streak),Left+43.f*Scale,
+             Top+199.f*Scale,Mint,0.79f);
+        if(Game.ToastTime>0.f)
+            Text(Game.Toast,Left+70.f*Scale,Top+174.f*Scale,Blood,0.75f);
     }
     else if (Game.Phase == EAVPhase::Shop)
     {
