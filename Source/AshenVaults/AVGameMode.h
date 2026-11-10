@@ -3,10 +3,11 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
 #include "AVContracts.h"
+#include "AVShrineTrials.h"
 #include "AVGameMode.generated.h"
 
 UENUM()
-enum class EAVPhase : uint8 { Playing, Upgrade, Relic, Shop, Paused, Dead, Victory, Inventory, Skills, MainMenu };
+enum class EAVPhase : uint8 { Playing, Upgrade, Relic, Shop, Paused, Dead, Victory, Inventory, Skills, MainMenu, Shrine };
 
 class UAVFrontendWidget;
 
@@ -228,6 +229,7 @@ public:
     int32 SkillSelection = 0;
     // Current floor contract; no bounty state is carried to the next floor.
     FAVContractState Contract;
+    FAVShrineState ShrineState; // current shrine choice and consecutive trial clears
     bool bFreeRespecUsed = false;
     bool bLastStandUsed = false;
     float EquipmentAppliedHP = 0.f;
@@ -381,7 +383,9 @@ private:
     void UnequipSlot(int32 Slot);
     void LearnSkill(int32 Selection);
     void ResetSkills();
-    void SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity = 0);
+    void SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity = 0, bool bAllowConsumables = true);
+    bool PrepareShrineTrial(TArray<FAVEnemy>& OutEnemies);
+    void ChooseShrineOffering(int32 Choice);
     void AdvanceContract(int32 EventKind);
     float ModifiedAttackDamage(float Damage, const FAVEnemy& Target, bool bRanged, bool bAbility);
     float BasicAttackInterval() const;
