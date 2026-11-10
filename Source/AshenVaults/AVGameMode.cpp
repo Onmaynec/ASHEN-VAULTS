@@ -13,6 +13,7 @@
 #include "AVDepthDirector.h"
 #include "AVRoomTactics.h"
 #include "AVAffixes.h"
+#include "AVContracts.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
@@ -1147,6 +1148,21 @@ void AAVGameMode::GenerateFloor()
             Decorations.Add(D);
         }
     }
+    // Offer only objectives which have at least one possible target on this
+    // generated floor. This is independent from combat and loot RNG.
+    int32 Hostiles=0, Elites=0, Caches=0, EchoSites=0;
+    for(const FAVEnemy& Enemy : Enemies)
+        if(Enemy.HP>0.f)
+        {
+            ++Hostiles;
+            if(Enemy.bElite)++Elites;
+        }
+    for(const FAVChest& Chest : Chests)
+        if(!Chest.bOpened)++Caches; // mimics count when opened
+    for(const FAVDecor& Decor : Decorations)
+        if(!Decor.bActivated && Decor.Type<12 && Decor.Type%3==2)
+            ++EchoSites;
+    Contract=FAVContracts::Offer(RunSeed,Floor,Hostiles,Elites,Caches,EchoSites);
     RefreshAwareness(0.f, true);
 }
 
@@ -1586,6 +1602,7 @@ bool AAVGameMode::OpenNearbyChest()
     {
         if (Chest.bOpened || FVector2D::Distance(Hero, Chest.Pos) >= 1.45f) continue;
         Chest.bOpened = true;
+        AdvanceContract(AVContractChest);
         AddEffect(Chest.Pos, 3, 0.85f);
         if (Chest.bMimic)
         {
@@ -1627,6 +1644,7 @@ bool AAVGameMode::ActivateNearbyEcho()
             continue;
         Decor.bActivated = true;
         ++Echoes;
+        AdvanceContract(AVContractEcho);
         Gold += 5 * Floor;
         MaxStamina += 4.f;
         Stamina = FMath::Min(MaxStamina, Stamina + 18.f);
@@ -1704,6 +1722,18 @@ void AAVGameMode::DropLoot(const FVector2D& Pos, bool bBoss)
     }
 }
 
+void AAVGameMode::AdvanceContract(int32 EventKind)
+{
+    if(bInSafeCamp||bInLobby||bInBossArena)return;
+    const int32 Reward=FAVContracts::Record(Contract,EventKind);
+    if(Reward>0)
+    {
+        Gold+=Reward;
+        Toast=FString::Printf(TEXT("CONTRACT COMPLETE: +%d GOLD"),Reward);
+        ToastTime=3.f;
+    }
+}
+
 float AAVGameMode::ApplyDamageToEnemy(FAVEnemy& Enemy,float RawDamage)
 {
     const float Actual=FAVAffixes::TakeDamage(
@@ -1741,6 +1771,7 @@ void AAVGameMode::KillEnemy(int32 Index)
     const bool bBoss = FAVContent::Enemy(Dead.Type, Floor).Boss;
     Enemies.RemoveAtSwap(Index);
     ++Kills;
+    AdvanceContract(Dead.bElite ? AVContractElite : AVContractCull);
     if (HasRelic(0)) HP = FMath::Min(MaxHP, HP + 3.f);
     Combo = ComboTime > 0.f ? Combo + 1 : 1;
     ComboTime = 4.5f;
@@ -1992,6 +2023,12 @@ void AAVGameMode::SaveCheckpoint()
     Save->bCheckpointV09Data=true;
     Save->bCheckpointV13Data=true;
     Save->bCheckpointV15Data=true;
+    Save->bCheckpointV16Data=true;
+    Save->CheckpointContractKind=Contract.Kind;
+    Save->CheckpointContractTarget=Contract.Target;
+    Save->CheckpointContractProgress=Contract.Progress;
+    Save->CheckpointContractGold=Contract.RewardGold;
+    Save->bCheckpointContractPaid=Contract.bPaid;
     Save->CheckpointFoodAttackTime=FoodAttackTime;
     Save->CheckpointFoodGuardTime=FoodGuardTime;
     Save->CheckpointFoodSpeedTime=FoodSpeedTime;
@@ -2127,6 +2164,19 @@ void AAVGameMode::LoadCheckpointWorld()
     if (!Save || !Save->bHasCheckpoint) { GenerateFloor(); return; }
     GenerateFloor();
     if (Save->CheckpointTiles.Num() != MapW * MapH) return;
+    // Legacy checkpoints did not record objective progress. Do not grant a
+    // fresh bounty on top of a partly completed pre-v1.6 floor.
+    Contract=FAVContractState{};
+    if(Save->bCheckpointV16Data)
+    {
+        FAVContractState Loaded;
+        Loaded.Kind=Save->CheckpointContractKind;
+        Loaded.Target=Save->CheckpointContractTarget;
+        Loaded.Progress=Save->CheckpointContractProgress;
+        Loaded.RewardGold=Save->CheckpointContractGold;
+        Loaded.bPaid=Save->bCheckpointContractPaid;
+        if(FAVContracts::Valid(Loaded))Contract=Loaded;
+    }
     Tiles = Save->CheckpointTiles;
     Explored = Save->CheckpointExplored.Num() == MapW * MapH ?
         Save->CheckpointExplored : Explored;

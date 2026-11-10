@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
+#include "AVContracts.h"
 #include "AVGameMode.generated.h"
 
 UENUM()
@@ -225,6 +226,8 @@ public:
     int32 SkillPoints = 0;
     int32 GearSelection = 0;
     int32 SkillSelection = 0;
+    // Current floor contract; no bounty state is carried to the next floor.
+    FAVContractState Contract;
     bool bFreeRespecUsed = false;
     bool bLastStandUsed = false;
     float EquipmentAppliedHP = 0.f;
@@ -379,6 +382,7 @@ private:
     void LearnSkill(int32 Selection);
     void ResetSkills();
     void SpawnGearDrop(const FVector2D& Pos, int32 MinimumRarity = 0);
+    void AdvanceContract(int32 EventKind);
     float ModifiedAttackDamage(float Damage, const FAVEnemy& Target, bool bRanged, bool bAbility);
     float BasicAttackInterval() const;
     float ProjectileSpeedMultiplier() const;

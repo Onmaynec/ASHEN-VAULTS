@@ -48,6 +48,13 @@ public:
     UPROPERTY(SaveGame) bool bCheckpointV13Data = false;
     // v1.5.0: 36 floats per enemy, including weapon-applied status timers.
     UPROPERTY(SaveGame) bool bCheckpointV15Data = false;
+    // v1.6.0: optional contract for the saved floor, not a run-wide quest.
+    UPROPERTY(SaveGame) bool bCheckpointV16Data = false;
+    UPROPERTY(SaveGame) int32 CheckpointContractKind = 0;
+    UPROPERTY(SaveGame) int32 CheckpointContractTarget = 0;
+    UPROPERTY(SaveGame) int32 CheckpointContractProgress = 0;
+    UPROPERTY(SaveGame) int32 CheckpointContractGold = 0;
+    UPROPERTY(SaveGame) bool bCheckpointContractPaid = false;
     UPROPERTY(SaveGame) float CheckpointFoodAttackTime = 0.f;
     UPROPERTY(SaveGame) float CheckpointFoodGuardTime = 0.f;
     UPROPERTY(SaveGame) float CheckpointFoodSpeedTime = 0.f;

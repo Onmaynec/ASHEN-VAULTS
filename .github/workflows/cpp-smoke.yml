@@ -22,6 +22,8 @@ on:
       - 'Source/AshenVaults/AVEquipment.h'
       - 'Source/AshenVaults/AVItemCombat.cpp'
       - 'Source/AshenVaults/AVItemCombat.h'
+      - 'Source/AshenVaults/AVContracts.cpp'
+      - 'Source/AshenVaults/AVContracts.h'
       - 'Source/AshenVaults/AVSkills.cpp'
       - 'Source/AshenVaults/AVSkills.h'
       - 'Source/AshenVaults/AVDungeonNavigation.cpp'
@@ -48,6 +50,8 @@ on:
       - 'Source/AshenVaults/AVEquipment.h'
       - 'Source/AshenVaults/AVItemCombat.cpp'
       - 'Source/AshenVaults/AVItemCombat.h'
+      - 'Source/AshenVaults/AVContracts.cpp'
+      - 'Source/AshenVaults/AVContracts.h'
       - 'Source/AshenVaults/AVSkills.cpp'
       - 'Source/AshenVaults/AVSkills.h'
       - 'Source/AshenVaults/AVDungeonNavigation.cpp'
@@ -93,5 +97,7 @@ jobs:
         run: bash Tests/Standalone/run_items.sh
       - name: v1.5.0 gameplay combat profiles
         run: bash Tests/Standalone/run_item_combat.sh
+      - name: v1.6.0 reproducible floor contracts and exactly-once rewards
+        run: bash Tests/Standalone/run_contracts.sh
 
 # Does NOT build Unreal Engine, run UHT, or verify Windows packaging.
